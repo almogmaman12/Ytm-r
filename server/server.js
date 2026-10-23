@@ -13,7 +13,7 @@ const PUBLIC_DIR = path.join(__dirname, 'public');
 const MIN_TOKEN_LEN = 20;
 const ALLOWED_CMDS = new Set([
   'play', 'pause', 'toggle', 'next', 'previous', 'volume', 'seek', 'get_state',
-  'search', 'play_video',
+  'search', 'play_video', 'play_next', 'queue_remove',
 ]);
 const MAX_MSG_BYTES = 65536;        // PC -> server (search results can be a few KB)
 const MAX_PHONE_MSG_BYTES = 1024;   // phone -> server (commands are tiny)
@@ -44,6 +44,20 @@ function getRoom(token) {
 function cleanupRoom(token) {
   const room = rooms.get(token);
   if (room && !room.pc && room.phones.size === 0) rooms.delete(token);
+}
+
+// Validates and trims a list of tracks coming from the PC before it reaches a phone.
+function cleanTracks(list) {
+  return list
+    .slice(0, 20)
+    .filter((r) => r && VIDEO_ID_RE.test(String(r.videoId)))
+    .map((r) => ({
+      videoId: String(r.videoId),
+      title: String(r.title || '').slice(0, 200),
+      subtitle: String(r.subtitle || '').slice(0, 200),
+      thumb: typeof r.thumb === 'string' && r.thumb.startsWith('https://')
+        ? r.thumb.slice(0, 500) : '',
+    }));
 }
 
 function send(ws, obj) {
@@ -132,7 +146,7 @@ wss.on('connection', (ws, { token, role }) => {
         const q = String(msg.value || '').trim().slice(0, 100);
         if (!q) return;
         out.value = q;
-      } else if (msg.cmd === 'play_video') {
+      } else if (msg.cmd === 'play_video' || msg.cmd === 'play_next' || msg.cmd === 'queue_remove') {
         if (!VIDEO_ID_RE.test(String(msg.value))) return;
         out.value = String(msg.value);
       }
@@ -153,17 +167,11 @@ wss.on('connection', (ws, { token, role }) => {
     } else if (role === 'pc' && msg.type === 'status' && typeof msg.message === 'string') {
       const out = { type: 'status', message: msg.message.slice(0, 300) };
       room.phones.forEach((p) => send(p, out));
+    } else if (role === 'pc' && msg.type === 'queue' && Array.isArray(msg.items)) {
+      const out = { type: 'queue', items: cleanTracks(msg.items) };
+      room.phones.forEach((p) => send(p, out));
     } else if (role === 'pc' && msg.type === 'results' && Array.isArray(msg.results)) {
-      const results = msg.results
-        .slice(0, 20)
-        .filter((r) => r && VIDEO_ID_RE.test(String(r.videoId)))
-        .map((r) => ({
-          videoId: String(r.videoId),
-          title: String(r.title || '').slice(0, 200),
-          subtitle: String(r.subtitle || '').slice(0, 200),
-          thumb: typeof r.thumb === 'string' && r.thumb.startsWith('https://')
-            ? r.thumb.slice(0, 500) : '',
-        }));
+      const results = cleanTracks(msg.results);
       const out = { type: 'results', query: String(msg.query || '').slice(0, 100), results };
       if (msg.error) out.error = String(msg.error).slice(0, 100);
       room.phones.forEach((p) => send(p, out));

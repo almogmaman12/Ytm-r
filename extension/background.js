@@ -67,6 +67,10 @@ chrome.runtime.onMessage.addListener((msg) => {
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: 'state', state: msg.state }));
     }
+  } else if (msg.type === 'queue') {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'queue', items: msg.items }));
+    }
   } else if (msg.type === 'status') {
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: 'status', message: msg.message }));

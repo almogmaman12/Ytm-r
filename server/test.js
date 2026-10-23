@@ -95,6 +95,36 @@ let port;
   await wait(100);
   assert.strictEqual(phone.msgs.filter((m) => m.type === 'results').length, 1, 'phone cannot spoof results');
 
+  // Let the per-second command window reset so the next group isn't rate limited
+  await wait(1100);
+
+  // Up next: valid ids forwarded, invalid dropped
+  phone.send(JSON.stringify({ type: 'cmd', cmd: 'play_next', value: 'dQw4w9WgXcQ' }));
+  phone.send(JSON.stringify({ type: 'cmd', cmd: 'play_next', value: 'nope' }));
+  phone.send(JSON.stringify({ type: 'cmd', cmd: 'queue_remove', value: 'dQw4w9WgXcQ' }));
+  phone.send(JSON.stringify({ type: 'cmd', cmd: 'queue_remove', value: '<script>' }));
+  await wait(100);
+  assert.strictEqual(pc.msgs.filter((m) => m.cmd === 'play_next').length, 1, 'only valid play_next forwarded');
+  assert.strictEqual(pc.msgs.filter((m) => m.cmd === 'queue_remove').length, 1, 'only valid queue_remove forwarded');
+
+  // Queue updates are sanitised and reach only the paired phone
+  pc.send(JSON.stringify({
+    type: 'queue',
+    items: [
+      { videoId: 'dQw4w9WgXcQ', title: 'Queued', subtitle: 'Artist', thumb: 'https://i.ytimg.com/x.jpg' },
+      { videoId: 'bad', title: 'Nope' },
+    ],
+  }));
+  await wait(100);
+  const q = phone.msgs.find((m) => m.type === 'queue');
+  assert(q, 'queue reached phone');
+  assert.strictEqual(q.items.length, 1, 'invalid queue item dropped');
+  assert.strictEqual(q.items[0].thumb, 'https://i.ytimg.com/x.jpg', 'https thumbnail kept');
+  assert(!other.msgs.some((m) => m.type === 'queue'), 'queue isolated to room');
+  phone.send(JSON.stringify({ type: 'queue', items: [{ videoId: 'dQw4w9WgXcQ', title: 'FAKE' }] }));
+  await wait(100);
+  assert.strictEqual(phone.msgs.filter((m) => m.type === 'queue').length, 1, 'phone cannot spoof queue');
+
   // Status messages relay from PC to phone, but not phone to phone
   pc.send(JSON.stringify({ type: 'status', message: 'Playing (via test)' }));
   await wait(100);

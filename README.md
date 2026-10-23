@@ -6,7 +6,7 @@ Control YouTube Music playing on a PC from your phone, with no shared Google acc
 Phone page  <--wss-->  Relay server  <--wss-->  Chrome extension  -->  music.youtube.com
 ```
 
-Both the phone and the extension connect **outbound** to the relay, so no port forwarding is needed. They are paired by a long secret token. The relay stores nothing on disk and only forwards a fixed list of commands (play, pause, toggle, next, previous, volume, seek, search, play a specific song by ID).
+Both the phone and the extension connect **outbound** to the relay, so no port forwarding is needed. They are paired by a long secret token. The relay stores nothing on disk and only forwards a fixed list of commands (play, pause, toggle, next, previous, volume, seek, search, play a specific song by ID, add or remove an "up next" song).
 
 ## Parts
 
@@ -43,11 +43,12 @@ Visit your relay URL on your phone, paste the same token, and tap Connect. Use "
 Check your workplace's IT policy before installing extensions or sending traffic to an external server. This project does not try to hide itself from IT or monitoring tools.
 
 ## Searching and picking songs
-Type in the search box on the phone page and tap a result to play it. The search runs inside the YT Music tab on the PC using your own signed-in session there, so it respects your region and account. Both the extension (v1.1.0 or newer) and the relay need updating for this to work.
+Type in the search box on the phone page and tap a result to play it. Tap the ⏭ button on a result to play it next; queued songs show in an "Up next" list with ✕ to remove. The search runs inside the YT Music tab on the PC using your own signed-in session there, so it respects your region and account. Both the extension (v1.2.0 or newer) and the relay need updating for this to work.
 
 ## Known limitations
 - YT Music's page structure changes occasionally. If a button stops working, the selectors in `extension/content.js` may need updating.
 - Search and tap-to-play rely on YT Music internals (its search API and page router), which Google can change without notice.
+- The "Up next" list is kept by this extension, not by YouTube Music itself, so it does not appear in YT Music's own queue and is cleared if the tab is reloaded. Queued songs start when the current song ends or when you press next on the phone (not when you press next on the PC itself).
 - Chrome may suspend the extension's service worker. It reconnects automatically within about a minute.
 - Run tests with `cd server && npm test`.
 

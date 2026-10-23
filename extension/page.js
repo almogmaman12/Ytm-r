@@ -139,17 +139,84 @@
     status(`Could not start song. Tried: ${tried.join(', ') || 'nothing'}. App nav functions: ${navLike.slice(0, 8).join(', ') || 'none'}`);
   }
 
+  // ---- "Up next" queue (kept by this extension, not by YT Music) ----
+  let upNext = [];          // [{ videoId, title, subtitle, thumb }], first item plays first
+  let advancing = false;
+  const known = new Map();  // videoId -> track info from recent searches
+
+  function publishQueue() {
+    post({ type: 'queue', items: upNext });
+  }
+
+  function remember(results) {
+    for (const r of results) {
+      known.delete(r.videoId);
+      known.set(r.videoId, r);
+    }
+    while (known.size > 200) known.delete(known.keys().next().value);
+  }
+
+  function enqueueNext(id) {
+    if (!ID_RE.test(String(id))) return;
+    const track = known.get(id) || { videoId: id, title: id, subtitle: '', thumb: '' };
+    // "Play next" goes to the front, like YT Music's own behaviour, and never duplicates.
+    upNext = [track, ...upNext.filter((q) => q.videoId !== id)];
+    publishQueue();
+    status(`Will play next: ${track.title}`);
+  }
+
+  function dequeue(id) {
+    upNext = upNext.filter((q) => q.videoId !== id);
+    publishQueue();
+  }
+
+  async function playQueued() {
+    const track = upNext.shift();
+    publishQueue();
+    if (track) await play(track.videoId);
+  }
+
+  function nextTrack() {
+    if (upNext.length) { playQueued(); return; }
+    document.querySelector('ytmusic-player-bar .next-button')?.click();
+  }
+
+  // Start the queued song just before the current one ends, so YT Music's own
+  // autoplay doesn't get to pick something else. timeupdate is driven by playback,
+  // so it keeps firing even when the tab is in the background.
+  document.addEventListener('timeupdate', (ev) => {
+    const v = ev.target;
+    if (!(v instanceof HTMLVideoElement) || advancing || !upNext.length) return;
+    if (!isFinite(v.duration) || v.duration < 5 || v.paused) return;
+    if (v.duration - v.currentTime < 1.0) {
+      advancing = true;
+      playQueued().finally(() => setTimeout(() => { advancing = false; }, 4000));
+    }
+  }, true);
+
   window.addEventListener('message', async (ev) => {
     if (ev.source !== window || !ev.data || ev.data.source !== 'ytmr-ext') return;
-    const d = ev.data;
-    if (d.cmd === 'search') {
+    const { cmd, value } = ev.data;
+    if (cmd === 'search') {
       try {
-        post({ type: 'results', query: d.query, results: await search(String(d.query)) });
+        const results = await search(String(value));
+        remember(results);
+        post({ type: 'results', query: value, results });
       } catch (e) {
-        post({ type: 'results', query: d.query, results: [], error: String(e.message || e) });
+        post({ type: 'results', query: value, results: [], error: String(e.message || e) });
       }
-    } else if (d.cmd === 'play_video') {
-      play(d.videoId);
+    } else if (cmd === 'play_video') {
+      play(value);
+    } else if (cmd === 'play_next') {
+      enqueueNext(value);
+    } else if (cmd === 'queue_remove') {
+      dequeue(value);
+    } else if (cmd === 'next') {
+      nextTrack();
+    } else if (cmd === 'get_state') {
+      publishQueue();
     }
   });
+
+  publishQueue();
 })();

@@ -35,10 +35,15 @@
   #results { list-style:none; margin:0; padding:0; }
   #results li { display:flex; align-items:center; gap:12px; padding:8px; border-radius:10px; cursor:pointer; }
   #results li:active { background:var(--card); }
-  #results img, #results .ph { width:48px; height:48px; border-radius:6px; background:var(--card); flex:none; object-fit:cover; }
-  #results .txt { min-width:0; }
-  #results .t { font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  #results .s { color:var(--muted); font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  #results img, #results .ph, #queue img, #queue .ph { width:48px; height:48px; border-radius:6px; background:var(--card); flex:none; object-fit:cover; }
+  #results .txt, #queue .txt { min-width:0; flex:1; }
+  #results .t, #queue .t { font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  #results .s, #queue .s { color:var(--muted); font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  #results button, #queue button { width:40px; height:40px; font-size:17px; flex:none; background:#2a2a2d; }
+  #queueBox { display:none; margin-top:24px; }
+  #queueBox h3 { margin:0 0 6px; font-size:14px; color:var(--muted); font-weight:600; text-transform:uppercase; letter-spacing:.04em; }
+  #queue { list-style:none; margin:0; padding:0; }
+  #queue li { display:flex; align-items:center; gap:12px; padding:6px 8px; }
   #setup { display:none; }
   #setup input[type=text] { width:100%; padding:12px; border-radius:10px; border:1px solid #333;
                             background:var(--card); color:var(--fg); font:inherit; margin:8px 0 12px; }
@@ -68,6 +73,11 @@
       <button id="next" aria-label="Next">⏭</button>
     </div>
     <div class="vol">🔈 <input type="range" id="vol" min="0" max="100" value="50"> 🔊</div>
+
+    <div id="queueBox">
+      <h3>Up next</h3>
+      <ul id="queue"></ul>
+    </div>
 
     <form id="searchForm">
       <input id="q" type="search" placeholder="Search songs" enterkeyhint="search"
@@ -112,6 +122,7 @@ function connect() {
     } else if (m.type === 'state') render(m.state);
     else if (m.type === 'results') renderResults(m);
     else if (m.type === 'status') $('searchMsg').textContent = m.message;
+    else if (m.type === 'queue') renderQueue(m.items);
   };
   ws.onclose = () => {
     $('dot').classList.remove('on');
@@ -132,6 +143,33 @@ function render(s) {
 
 let searchTimer = null;
 
+function trackRow(r, button) {
+  const li = document.createElement('li');
+  let img;
+  if (r.thumb) { img = document.createElement('img'); img.src = r.thumb; img.alt = ''; img.loading = 'lazy'; }
+  else { img = document.createElement('div'); img.className = 'ph'; }
+  const txt = document.createElement('div'); txt.className = 'txt';
+  const t = document.createElement('div'); t.className = 't'; t.textContent = r.title;
+  const s = document.createElement('div'); s.className = 's'; s.textContent = r.subtitle;
+  txt.append(t, s);
+  li.append(img, txt);
+  if (button) li.append(button);
+  return li;
+}
+
+function renderQueue(items) {
+  const list = $('queue');
+  list.textContent = '';
+  $('queueBox').style.display = items.length ? 'block' : 'none';
+  for (const r of items) {
+    const x = document.createElement('button');
+    x.textContent = '✕';
+    x.setAttribute('aria-label', 'Remove from Up next');
+    x.onclick = () => cmd('queue_remove', r.videoId);
+    list.append(trackRow(r, x));
+  }
+}
+
 function renderResults(m) {
   clearTimeout(searchTimer);
   const list = $('results');
@@ -140,15 +178,12 @@ function renderResults(m) {
   if (!m.results.length) { $('searchMsg').textContent = 'No results'; return; }
   $('searchMsg').textContent = '';
   for (const r of m.results) {
-    const li = document.createElement('li');
-    let img;
-    if (r.thumb) { img = document.createElement('img'); img.src = r.thumb; img.alt = ''; img.loading = 'lazy'; }
-    else { img = document.createElement('div'); img.className = 'ph'; }
-    const txt = document.createElement('div'); txt.className = 'txt';
-    const t = document.createElement('div'); t.className = 't'; t.textContent = r.title;
-    const s = document.createElement('div'); s.className = 's'; s.textContent = r.subtitle;
-    txt.append(t, s);
-    li.append(img, txt);
+    const nx = document.createElement('button');
+    nx.textContent = '⏭';
+    nx.title = 'Play next';
+    nx.setAttribute('aria-label', 'Play next');
+    nx.onclick = (e) => { e.stopPropagation(); cmd('play_next', r.videoId); };
+    const li = trackRow(r, nx);
     li.onclick = () => {
       cmd('play_video', r.videoId);
       $('searchMsg').textContent = 'Starting: ' + r.title + '…';

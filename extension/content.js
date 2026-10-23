@@ -36,7 +36,6 @@
       case 'play': if (v && v.paused) click('#play-pause-button'); break;
       case 'pause': if (v && !v.paused) click('#play-pause-button'); break;
       case 'toggle': click('#play-pause-button'); break;
-      case 'next': click('.next-button'); break;
       case 'previous': click('.previous-button'); break;
       case 'volume': {
         const slider = bar()?.querySelector('#volume-slider');
@@ -51,16 +50,17 @@
       case 'seek': if (v) v.currentTime = value; break;
       case 'search':
       case 'play_video':
-        // Handled by page.js, which runs in the page's own JS world.
+      case 'play_next':
+      case 'queue_remove':
+      case 'next':
+      case 'get_state':
+        // Handled by page.js, which runs in the page's own JS world and owns the queue.
         window.postMessage(
-          cmd === 'search'
-            ? { source: 'ytmr-ext', cmd, query: String(value) }
-            : { source: 'ytmr-ext', cmd, videoId: String(value) },
+          { source: 'ytmr-ext', cmd, value: value == null ? '' : String(value) },
           location.origin
         );
         if (cmd === 'search') return; // results come back asynchronously
         break;
-      case 'get_state': break;
       default: return;
     }
     // Give the page a moment to update, then report.
@@ -79,6 +79,12 @@
   // Search results coming back from page.js.
   window.addEventListener('message', (ev) => {
     if (ev.source !== window || !ev.data || ev.data.source !== 'ytmr-page') return;
+    if (ev.data.type === 'queue') {
+      chrome.runtime.sendMessage({
+        type: 'queue', items: Array.isArray(ev.data.items) ? ev.data.items : [],
+      }).catch(() => {});
+      return;
+    }
     if (ev.data.type === 'status') {
       chrome.runtime.sendMessage({ type: 'status', message: String(ev.data.message || '') }).catch(() => {});
       return;
