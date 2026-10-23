@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>YT Music Remote</title>
+<style>
+  body { font: 14px system-ui, sans-serif; width: 360px; margin: 16px; color: #222; }
+  h1 { font-size: 16px; margin: 0 0 12px; }
+  label { display: block; margin: 10px 0 4px; font-weight: 600; }
+  input { width: 100%; box-sizing: border-box; padding: 6px; font: inherit; }
+  button { margin: 10px 6px 0 0; padding: 6px 12px; font: inherit; cursor: pointer; }
+  #status { margin-top: 12px; font-weight: 600; }
+  .ok { color: #1a7f37; } .bad { color: #b42318; }
+  small { color: #666; display: block; margin-top: 4px; }
+</style>
+</head>
+<body>
+<h1>YT Music Remote</h1>
+<label for="url">Relay server URL</label>
+<input id="url" placeholder="https://your-relay.onrender.com">
+<label for="token">Secret token (20+ characters)</label>
+<input id="token" placeholder="paste or generate">
+<small>Enter this same token on your phone page.</small>
+<button id="gen">Generate token</button>
+<button id="save">Save &amp; connect</button>
+<div id="status"></div>
+<script src="options.js"></script>
+</body>
+</html>
