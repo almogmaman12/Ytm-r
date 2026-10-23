@@ -150,6 +150,9 @@ wss.on('connection', (ws, { token, role }) => {
         art: typeof s.art === 'string' && s.art.startsWith('https://') ? s.art.slice(0, 500) : '',
       };
       room.phones.forEach((p) => send(p, { type: 'state', state: room.lastState }));
+    } else if (role === 'pc' && msg.type === 'status' && typeof msg.message === 'string') {
+      const out = { type: 'status', message: msg.message.slice(0, 300) };
+      room.phones.forEach((p) => send(p, out));
     } else if (role === 'pc' && msg.type === 'results' && Array.isArray(msg.results)) {
       const results = msg.results
         .slice(0, 20)

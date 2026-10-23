@@ -111,6 +111,7 @@ function connect() {
       $('status').textContent = m.online ? 'PC connected' : 'PC offline';
     } else if (m.type === 'state') render(m.state);
     else if (m.type === 'results') renderResults(m);
+    else if (m.type === 'status') $('searchMsg').textContent = m.message;
   };
   ws.onclose = () => {
     $('dot').classList.remove('on');
@@ -150,7 +151,7 @@ function renderResults(m) {
     li.append(img, txt);
     li.onclick = () => {
       cmd('play_video', r.videoId);
-      $('searchMsg').textContent = 'Playing: ' + r.title;
+      $('searchMsg').textContent = 'Starting: ' + r.title + '…';
       window.scrollTo({ top: 0, behavior: 'smooth' });
     };
     list.append(li);

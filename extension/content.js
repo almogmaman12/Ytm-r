@@ -79,6 +79,10 @@
   // Search results coming back from page.js.
   window.addEventListener('message', (ev) => {
     if (ev.source !== window || !ev.data || ev.data.source !== 'ytmr-page') return;
+    if (ev.data.type === 'status') {
+      chrome.runtime.sendMessage({ type: 'status', message: String(ev.data.message || '') }).catch(() => {});
+      return;
+    }
     if (ev.data.type !== 'results') return;
     chrome.runtime.sendMessage({
       type: 'results',

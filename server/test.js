@@ -95,6 +95,15 @@ let port;
   await wait(100);
   assert.strictEqual(phone.msgs.filter((m) => m.type === 'results').length, 1, 'phone cannot spoof results');
 
+  // Status messages relay from PC to phone, but not phone to phone
+  pc.send(JSON.stringify({ type: 'status', message: 'Playing (via test)' }));
+  await wait(100);
+  assert(phone.msgs.some((m) => m.type === 'status' && m.message === 'Playing (via test)'), 'status reached phone');
+  assert(!other.msgs.some((m) => m.type === 'status'), 'status isolated to room');
+  phone.send(JSON.stringify({ type: 'status', message: 'FAKE' }));
+  await wait(100);
+  assert(!phone.msgs.some((m) => m.message === 'FAKE'), 'phone cannot spoof status');
+
   // Rate limit
   const before = pc.msgs.filter((m) => m.cmd === 'toggle').length;
   for (let i = 0; i < 30; i++) phone.send(JSON.stringify({ type: 'cmd', cmd: 'toggle' }));

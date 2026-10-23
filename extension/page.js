@@ -79,17 +79,64 @@
     return results;
   }
 
-  function play(videoId) {
+  const status = (message) => post({ type: 'status', message });
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const getPlayer = () => document.getElementById('movie_player');
+
+  function currentVideoId() {
+    try { return getPlayer()?.getVideoData?.()?.video_id || ''; } catch { return ''; }
+  }
+
+  async function waitForVideo(id, ms) {
+    const end = Date.now() + ms;
+    while (Date.now() < end) {
+      if (currentVideoId() === id) return true;
+      await sleep(150);
+    }
+    return false;
+  }
+
+  // Starts a song WITHOUT reloading the page (a reload triggers Chrome's
+  // "changes may not be saved" prompt). Tries several methods and checks which one worked.
+  async function play(videoId) {
     if (!ID_RE.test(String(videoId))) return;
-    // Use YT Music's own router so the page doesn't reload and playback continues smoothly.
-    try {
-      const app = document.querySelector('ytmusic-app');
-      if (app && typeof app.navigate === 'function') {
-        app.navigate({ watchEndpoint: { videoId } });
+    const endpoint = { watchEndpoint: { videoId } };
+    const app = document.querySelector('ytmusic-app');
+    const player = getPlayer();
+    const canVerify = typeof player?.getVideoData === 'function';
+    const attempts = [];
+
+    if (app) {
+      for (const name of ['navigate', 'navigate_']) {
+        if (typeof app[name] === 'function') attempts.push([name, () => app[name](endpoint)]);
+      }
+      attempts.push(['yt-navigate event', () => app.dispatchEvent(
+        new CustomEvent('yt-navigate', { detail: { endpoint }, bubbles: true, composed: true }))]);
+    }
+    if (player && typeof player.loadVideoById === 'function') {
+      attempts.push(['player.loadVideoById', () => player.loadVideoById(videoId)]);
+    }
+
+    const tried = [];
+    for (const [name, fn] of attempts) {
+      tried.push(name);
+      try { fn(); } catch { continue; }
+      // If we can't read the player's current video, trust the first call that didn't throw.
+      if (!canVerify || await waitForVideo(videoId, 2500)) {
+        status(`Playing (via ${name})`);
         return;
       }
-    } catch {}
-    location.href = `https://music.youtube.com/watch?v=${videoId}`;
+    }
+
+    // Nothing worked. Report what exists so it can be fixed, and do NOT reload the page.
+    const navLike = [];
+    for (let o = app; o && o !== Object.prototype; o = Object.getPrototypeOf(o)) {
+      for (const k of Object.getOwnPropertyNames(o)) {
+        if (/nav/i.test(k) && !navLike.includes(k)) navLike.push(k);
+      }
+    }
+    console.warn('[ytm-remote] could not start song', { tried, navLike });
+    status(`Could not start song. Tried: ${tried.join(', ') || 'nothing'}. App nav functions: ${navLike.slice(0, 8).join(', ') || 'none'}`);
   }
 
   window.addEventListener('message', async (ev) => {
