@@ -1,300 +1,113 @@
-// YT Music Remote - relay server
-// Extension (role=pc) and phone (role=phone) both connect OUTBOUND to /ws
-// with the same secret token. The server forwards whitelisted commands
-// phone -> pc and state updates pc -> phone. Nothing is stored on disk.
+(function () {
+  if (window.__ytmRemoteLoaded) return;
+  window.__ytmRemoteLoaded = true;
 
-const http = require('http');
-const fs = require('fs');
-const path = require('path');
-const { WebSocketServer } = require('ws');
+  console.log('[Ytm-r OTA Payload] Running dynamically from Server!');
 
-const PORT = process.env.PORT || 3000;
-const PUBLIC_DIR = path.resolve(__dirname, 'public');
-const MIN_TOKEN_LEN = 20;
-const ALLOWED_CMDS = new Set([
-  'play', 'pause', 'toggle', 'next', 'previous', 'volume', 'seek', 'get_state',
-  'search', 'play_video', 'play_next', 'queue_remove',
-]);
-const MAX_MSG_BYTES = 65536;        // PC -> server (search results can be a few KB)
-const MAX_PHONE_MSG_BYTES = 1024;   // phone -> server (commands are tiny)
-const VIDEO_ID_RE = /^[A-Za-z0-9_-]{11}$/;
-const MAX_CMDS_PER_SEC = 10;        // per phone
-const MAX_PC_MSGS_PER_SEC = 50;     // per PC connection
-const MAX_CLIENTS = Number(process.env.MAX_CLIENTS) || 200;
-const MAX_PHONES_PER_ROOM = 10;
+  // Derive WebSocket protocol and host dynamically from location or window context
+  const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const host = window.location.host;
+  let ws = null;
 
-const MIME = {
-  '.html': 'text/html; charset=utf-8',
-  '.js': 'text/javascript; charset=utf-8',
-  '.css': 'text/css; charset=utf-8',
-  '.json': 'application/json; charset=utf-8',
-  '.svg': 'image/svg+xml',
-  '.png': 'image/png',
-};
+  function connectWebSocket() {
+    ws = new WebSocket(`${wsProtocol}//${host}`);
 
-const SECURITY_HEADERS = {
-  'X-Content-Type-Options': 'nosniff',
-  'X-Frame-Options': 'DENY',
-  'Referrer-Policy': 'no-referrer',
-  'Content-Security-Policy': [
-    "default-src 'self'",
-    "script-src 'self' 'unsafe-inline'",
-    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-    'font-src https://fonts.gstatic.com',
-    "img-src 'self' https: data:",
-    "connect-src 'self' ws: wss:",
-    "manifest-src 'self'",
-    "worker-src 'self'",
-    "frame-ancestors 'none'",
-    "base-uri 'none'",
-    "form-action 'none'",
-  ].join('; '),
-};
+    ws.onopen = () => {
+      console.log('[Ytm-r Payload] WebSocket connected to server');
+      sendStateUpdate();
+    };
 
-// token -> { pc: ws|null, phones: Set<ws>, lastState: object|null }
-const rooms = new Map();
-
-function getRoom(token) {
-  let room = rooms.get(token);
-  if (!room) {
-    room = { pc: null, phones: new Set(), lastState: null };
-    rooms.set(token, room);
-  }
-  return room;
-}
-
-function cleanupRoom(token) {
-  const room = rooms.get(token);
-  if (room && !room.pc && room.phones.size === 0) rooms.delete(token);
-}
-
-// Returns a normalised https URL, or '' if it is not a plain https URL.
-// (Never truncates: a cut-off URL would be broken, so too-long ones are dropped.)
-function safeHttps(u, max = 500) {
-  if (typeof u !== 'string' || u.length > 2000) return '';
-  try {
-    const p = new URL(u);
-    if (p.protocol !== 'https:') return '';
-    return p.href.length <= max ? p.href : '';
-  } catch {
-    return '';
-  }
-}
-
-// Validates and trims a list of tracks coming from the PC before it reaches a phone.
-function cleanTracks(list) {
-  return list
-    .slice(0, 20)
-    .filter((r) => r && VIDEO_ID_RE.test(String(r.videoId)))
-    .map((r) => ({
-      videoId: String(r.videoId),
-      title: String(r.title || '').slice(0, 200),
-      subtitle: String(r.subtitle || '').slice(0, 200),
-      thumb: safeHttps(r.thumb),
-    }));
-}
-
-function send(ws, obj) {
-  if (ws && ws.readyState === 1) {
-    try { ws.send(JSON.stringify(obj)); } catch { /* socket is going away */ }
-  }
-}
-
-function plain(res, code, text, extra) {
-  res.writeHead(code, { 'Content-Type': 'text/plain; charset=utf-8', ...SECURITY_HEADERS, ...extra });
-  res.end(text);
-}
-
-function handleHttp(req, res) {
-  if (req.method !== 'GET' && req.method !== 'HEAD') return plain(res, 405, 'Method not allowed', { Allow: 'GET, HEAD' });
-
-  const pathname = String(req.url || '/').split('?')[0];
-  if (pathname === '/healthz') return plain(res, 200, 'ok');
-
-  let urlPath;
-  try { urlPath = decodeURIComponent(pathname); } catch { return plain(res, 400, 'Bad request'); }
-  if (urlPath.includes('\0')) return plain(res, 400, 'Bad request');
-  if (urlPath === '/') urlPath = '/index.html';
-
-  const filePath = path.resolve(PUBLIC_DIR, '.' + urlPath);
-  if (filePath !== PUBLIC_DIR && !filePath.startsWith(PUBLIC_DIR + path.sep)) return plain(res, 403, 'Forbidden');
-
-  fs.readFile(filePath, (err, data) => {
-    if (err) return plain(res, 404, 'Not found');
-    res.writeHead(200, {
-      'Content-Type': MIME[path.extname(filePath)] || 'application/octet-stream',
-      'Cache-Control': 'no-cache',
-      ...SECURITY_HEADERS,
-    });
-    res.end(req.method === 'HEAD' ? undefined : data);
-  });
-}
-
-const server = http.createServer((req, res) => {
-  try {
-    handleHttp(req, res);
-  } catch {
-    try { plain(res, 500, 'Server error'); } catch { /* already sent */ }
-  }
-});
-
-const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_MSG_BYTES });
-
-function rejectUpgrade(socket, code, text) {
-  try { socket.write(`HTTP/1.1 ${code} ${text}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`); } catch { /* ignore */ }
-  socket.destroy();
-}
-
-server.on('upgrade', (req, socket, head) => {
-  socket.on('error', () => {});
-  let url;
-  try { url = new URL(req.url, 'http://localhost'); } catch { return rejectUpgrade(socket, 400, 'Bad Request'); }
-  if (url.pathname !== '/ws') return rejectUpgrade(socket, 404, 'Not Found');
-
-  const token = url.searchParams.get('token') || '';
-  const role = url.searchParams.get('role');
-  if (token.length < MIN_TOKEN_LEN || token.length > 200 || !/^[A-Za-z0-9_-]+$/.test(token) ||
-      (role !== 'pc' && role !== 'phone')) {
-    return rejectUpgrade(socket, 400, 'Bad Request');
-  }
-  if (wss.clients.size >= MAX_CLIENTS) return rejectUpgrade(socket, 503, 'Service Unavailable');
-
-  wss.handleUpgrade(req, socket, head, (ws) => {
-    wss.emit('connection', ws, { token, role });
-  });
-});
-
-wss.on('connection', (ws, { token, role }) => {
-  // Without an error listener, a bad frame or an oversized message would crash the whole server.
-  ws.on('error', () => {});
-
-  if (role === 'phone') {
-    const existing = rooms.get(token);
-    if (existing && existing.phones.size >= MAX_PHONES_PER_ROOM) return ws.close(4001, 'too many phones');
-  }
-
-  const room = getRoom(token);
-  ws.isAlive = true;
-  ws.on('pong', () => { ws.isAlive = true; });
-
-  let windowStart = Date.now();
-  let count = 0;
-  const overLimit = (limit) => {
-    const now = Date.now();
-    if (now - windowStart > 1000) { windowStart = now; count = 0; }
-    return ++count > limit;
-  };
-
-  if (role === 'pc') {
-    if (room.pc && room.pc !== ws) room.pc.close(4000, 'replaced');
-    room.pc = ws;
-    room.phones.forEach((p) => send(p, { type: 'pc_status', online: true }));
-  } else {
-    room.phones.add(ws);
-    send(ws, { type: 'pc_status', online: !!room.pc });
-    if (room.lastState) send(ws, { type: 'state', state: room.lastState });
-    if (room.pc) send(room.pc, { type: 'cmd', cmd: 'get_state' });
-  }
-
-  ws.on('message', (raw) => {
-    let msg;
-    try { msg = JSON.parse(raw.toString()); } catch { return; }
-    if (!msg || typeof msg !== 'object') return;
-
-    // Lets either side notice a dead connection quickly.
-    if (msg.type === 'ping') return send(ws, { type: 'pong' });
-
-    if (role === 'phone') {
-      if (raw.length > MAX_PHONE_MSG_BYTES || msg.type !== 'cmd') return;
-      if (overLimit(MAX_CMDS_PER_SEC)) return;
-      if (!ALLOWED_CMDS.has(msg.cmd)) return;
-      const out = { type: 'cmd', cmd: msg.cmd };
-      if (msg.cmd === 'volume' || msg.cmd === 'seek') {
-        const v = Number(msg.value);
-        if (!Number.isFinite(v)) return;
-        out.value = msg.cmd === 'volume' ? Math.min(100, Math.max(0, v)) : Math.max(0, v);
-      } else if (msg.cmd === 'search') {
-        const q = String(msg.value || '').trim().slice(0, 100);
-        if (!q) return;
-        out.value = q;
-      } else if (msg.cmd === 'play_video' || msg.cmd === 'play_next' || msg.cmd === 'queue_remove') {
-        if (!VIDEO_ID_RE.test(String(msg.value))) return;
-        out.value = String(msg.value);
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        handleCommand(data);
+      } catch (err) {
+        console.error('[Ytm-r Payload] Error parsing incoming command:', err);
       }
-      send(room.pc, out);
-      return;
+    };
+
+    ws.onclose = () => {
+      console.warn('[Ytm-r Payload] WebSocket connection lost. Retrying in 3s...');
+      setTimeout(connectWebSocket, 3000);
+    };
+  }
+
+  // Handle Playback Commands Received from Relay Server
+  function handleCommand(data) {
+    const video = document.querySelector('video');
+
+    switch (data.action) {
+      case 'play-pause':
+      case 'toggle-play':
+        document.querySelector('#play-pause-button, .play-pause-button')?.click();
+        break;
+
+      case 'play':
+        if (video && video.paused) video.play();
+        break;
+
+      case 'pause':
+        if (video && !video.paused) video.pause();
+        break;
+
+      case 'next':
+        document.querySelector('.next-button, #next-button, tp-yt-paper-icon-button[title="Next song"]')?.click();
+        break;
+
+      case 'previous':
+        document.querySelector('.previous-button, #previous-button, tp-yt-paper-icon-button[title="Previous song"]')?.click();
+        break;
+
+      case 'volume':
+        if (video && typeof data.value === 'number') {
+          video.volume = Math.min(1, Math.max(0, data.value / 100));
+        }
+        break;
+
+      case 'seek':
+        if (video && typeof data.value === 'number') {
+          video.currentTime = data.value;
+        }
+        break;
+
+      case 'like':
+        document.querySelector('ytmusic-like-button-renderer .like-button, #like-button-renderer #button')?.click();
+        break;
+
+      case 'dislike':
+        document.querySelector('ytmusic-like-button-renderer .dislike-button')?.click();
+        break;
     }
 
-    // From here on the sender is the PC.
-    if (overLimit(MAX_PC_MSGS_PER_SEC)) return;
-    if (msg.type === 'state' && msg.state && typeof msg.state === 'object') {
-      const s = msg.state;
-      room.lastState = {
-        title: String(s.title || '').slice(0, 300),
-        artist: String(s.artist || '').slice(0, 300),
-        playing: !!s.playing,
-        volume: Number.isFinite(s.volume) ? s.volume : null,
-        position: Number.isFinite(s.position) ? s.position : null,
-        duration: Number.isFinite(s.duration) ? s.duration : null,
-        art: safeHttps(s.art),
-      };
-      room.phones.forEach((p) => send(p, { type: 'state', state: room.lastState }));
-    } else if (msg.type === 'status' && typeof msg.message === 'string') {
-      const out = { type: 'status', message: msg.message.slice(0, 300) };
-      room.phones.forEach((p) => send(p, out));
-    } else if (msg.type === 'queue' && Array.isArray(msg.items)) {
-      const out = { type: 'queue', items: cleanTracks(msg.items) };
-      room.phones.forEach((p) => send(p, out));
-    } else if (msg.type === 'results' && Array.isArray(msg.results)) {
-      const out = {
-        type: 'results',
-        query: String(msg.query || '').slice(0, 100),
-        results: cleanTracks(msg.results),
-      };
-      if (msg.error) out.error = String(msg.error).slice(0, 200);
-      room.phones.forEach((p) => send(p, out));
-    }
-  });
+    setTimeout(sendStateUpdate, 300);
+  }
 
-  ws.on('close', () => {
-    if (role === 'pc') {
-      if (room.pc === ws) {
-        room.pc = null;
-        room.phones.forEach((p) => send(p, { type: 'pc_status', online: false }));
-      }
-    } else {
-      room.phones.delete(ws);
-    }
-    cleanupRoom(token);
-  });
-});
+  // Scrape and Broadcast YouTube Music Media Info & State
+  function sendStateUpdate() {
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
 
-// Heartbeat: drop dead connections, keep proxies from idling us out.
-const heartbeat = setInterval(() => {
-  wss.clients.forEach((ws) => {
-    if (!ws.isAlive) return ws.terminate();
-    ws.isAlive = false;
-    try { ws.ping(); } catch { /* socket is going away */ }
-  });
-}, 25000);
-heartbeat.unref();
-wss.on('close', () => clearInterval(heartbeat));
+    const video = document.querySelector('video');
+    const titleEl = document.querySelector('ytmusic-player-bar .title, .ytmusic-player-bar.title');
+    const artistEl = document.querySelector('ytmusic-player-bar .byline, .ytmusic-player-bar.byline');
+    const thumbnailEl = document.querySelector('ytmusic-player-bar .thumbnail img, img.ytmusic-player-bar');
 
-if (require.main === module) {
-  // A bug or a bad client must never take the relay down.
-  process.on('uncaughtException', (e) => console.error('uncaughtException:', e));
-  process.on('unhandledRejection', (e) => console.error('unhandledRejection:', e));
+    const statePayload = {
+      type: 'state',
+      isPlaying: video ? !video.paused : false,
+      currentTime: video ? Math.floor(video.currentTime) : 0,
+      duration: video ? Math.floor(video.duration) : 0,
+      volume: video ? Math.round(video.volume * 100) : 100,
+      title: titleEl?.textContent?.trim() || '',
+      artist: artistEl?.textContent?.trim() || '',
+      artwork: thumbnailEl?.src || ''
+    };
 
-  // Hosts send SIGTERM on every deploy: close cleanly so clients reconnect right away.
-  const shutdown = () => {
-    wss.clients.forEach((c) => { try { c.close(1001, 'server restarting'); } catch { /* ignore */ } });
-    server.close(() => process.exit(0));
-    setTimeout(() => process.exit(0), 3000).unref();
-  };
-  process.on('SIGTERM', shutdown);
-  process.on('SIGINT', shutdown);
+    ws.send(JSON.stringify(statePayload));
+  }
 
-  server.listen(PORT, () => console.log(`YTM remote relay listening on :${PORT}`));
-}
+  // Continuously sync playback progress every second
+  setInterval(sendStateUpdate, 1000);
 
-module.exports = { server, wss };
+  // Initialize Connection
+  connectWebSocket();
+})();
