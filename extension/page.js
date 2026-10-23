@@ -7,6 +7,22 @@
   window.__ytmrPage = true;
 
   const ID_RE = /^[A-Za-z0-9_-]{11}$/;
+  // videoId -> YT Music's own "Play next" command, taken from the search results.
+  const playNextEndpoints = new Map();
+
+  function findPlayNext(node) {
+    if (!node || typeof node !== 'object') return null;
+    const item = node.menuServiceItemRenderer;
+    if (item && item.icon?.iconType === 'QUEUE_PLAY_NEXT' && item.serviceEndpoint) {
+      return item.serviceEndpoint;
+    }
+    if (node.queueAddEndpoint?.queueInsertPosition === 'INSERT_AFTER_CURRENT_VIDEO') return node;
+    for (const k in node) {
+      const v = findPlayNext(node[k]);
+      if (v) return v;
+    }
+    return null;
+  }
   // Search filter parameter that restricts results to "Songs".
   const SONGS_FILTER = 'EgWKAQIIAWoKEAkQBRAKEAMQBA==';
 
@@ -44,6 +60,12 @@
       const cols = r.flexColumns || [];
       const title = runsText(cols[0]?.musicResponsiveListItemFlexColumnRenderer?.text?.runs);
       if (!title) continue;
+      const ep = findPlayNext(r.menu);
+      if (ep) {
+        playNextEndpoints.delete(id);
+        playNextEndpoints.set(id, ep);
+        while (playNextEndpoints.size > 200) playNextEndpoints.delete(playNextEndpoints.keys().next().value);
+      }
       const subtitle = runsText(cols[1]?.musicResponsiveListItemFlexColumnRenderer?.text?.runs)
         .replace(/^(Song|Video)\s*•\s*/, '');
       const thumbs = r.thumbnail?.musicThumbnailRenderer?.thumbnail?.thumbnails || [];
@@ -156,13 +178,70 @@
     while (known.size > 200) known.delete(known.keys().next().value);
   }
 
-  function enqueueNext(id) {
+  // What YT Music's own queue currently shows, so we can tell whether an add worked.
+  function queueCount() {
+    return document.querySelectorAll('ytmusic-player-queue-item').length;
+  }
+
+  function protoNames(obj, re) {
+    const names = [];
+    for (let o = obj; o && o !== Object.prototype; o = Object.getPrototypeOf(o)) {
+      for (const k of Object.getOwnPropertyNames(o)) {
+        if (re.test(k) && !names.includes(k)) names.push(k);
+      }
+    }
+    return names;
+  }
+
+  // Sends YT Music's own "Play next" command and checks that its queue grew.
+  // Returns { ok: true, method } | { ok: false, reason }.
+  async function addToYtQueue(videoId) {
+    const ep = playNextEndpoints.get(videoId);
+    if (!ep) return { ok: false, reason: 'search result had no Play next command' };
+    const app = document.querySelector('ytmusic-app');
+    if (!app) return { ok: false, reason: 'YT Music app element not found' };
+
+    const shapes = [];
+    if (typeof app.resolveCommand === 'function') {
+      shapes.push(['resolveCommand', () => app.resolveCommand(ep)]);
+    }
+    shapes.push(['yt-service-request', () => app.dispatchEvent(new CustomEvent('yt-action', {
+      detail: { actionName: 'yt-service-request', args: [app, ep], returnValue: [] },
+      bubbles: true, composed: true,
+    }))]);
+
+    const tried = [];
+    for (const [name, fn] of shapes) {
+      const before = queueCount();
+      tried.push(name);
+      try { fn(); } catch { continue; }
+      for (let i = 0; i < 8; i++) {
+        await sleep(250);
+        if (queueCount() > before) return { ok: true, method: name };
+      }
+      // If the queue isn't readable at all we can't tell, so don't keep re-sending.
+      if (before === 0 && queueCount() === 0) {
+        return { ok: false, reason: `couldn't verify (queue list not readable) after ${name}` };
+      }
+    }
+    const names = protoNames(app, /command|queue|action|resolve|service/i).slice(0, 8).join(', ');
+    console.warn('[ytm-remote] YT Music queue add failed', { tried, names });
+    return { ok: false, reason: `no change after ${tried.join(', ')}; page functions: ${names || 'none'}` };
+  }
+
+  async function enqueueNext(id) {
     if (!ID_RE.test(String(id))) return;
     const track = known.get(id) || { videoId: id, title: id, subtitle: '', thumb: '' };
-    // "Play next" goes to the front, like YT Music's own behaviour, and never duplicates.
+    status(`Adding to YT Music queue: ${track.title}…`);
+    const r = await addToYtQueue(id);
+    if (r.ok) {
+      status(`Added to YT Music's queue (via ${r.method}): ${track.title}`);
+      return;
+    }
+    // Fall back to the remote's own queue. "Play next" goes to the front and never duplicates.
     upNext = [track, ...upNext.filter((q) => q.videoId !== id)];
     publishQueue();
-    status(`Will play next: ${track.title}`);
+    status(`Using the remote's own queue (${r.reason}): ${track.title}`);
   }
 
   function dequeue(id) {

@@ -43,12 +43,12 @@ Visit your relay URL on your phone, paste the same token, and tap Connect. Use "
 Check your workplace's IT policy before installing extensions or sending traffic to an external server. This project does not try to hide itself from IT or monitoring tools.
 
 ## Searching and picking songs
-Type in the search box on the phone page and tap a result to play it. Tap the ⏭ button on a result to play it next; queued songs show in an "Up next" list with ✕ to remove. The search runs inside the YT Music tab on the PC using your own signed-in session there, so it respects your region and account. Both the extension (v1.2.0 or newer) and the relay need updating for this to work.
+Type in the search box on the phone page and tap a result to play it. Tap the ⏭ button on a result to play it next; queued songs show in an "Up next" list with ✕ to remove. The search runs inside the YT Music tab on the PC using your own signed-in session there, so it respects your region and account. Both the extension (v1.3.0 or newer) and the relay need updating for this to work.
 
 ## Known limitations
 - YT Music's page structure changes occasionally. If a button stops working, the selectors in `extension/content.js` may need updating.
 - Search and tap-to-play rely on YT Music internals (its search API and page router), which Google can change without notice.
-- The "Up next" list is kept by this extension, not by YouTube Music itself, so it does not appear in YT Music's own queue and is cleared if the tab is reloaded. Queued songs start when the current song ends or when you press next on the phone (not when you press next on the PC itself).
+- "Play next" first tries YT Music's own queue (it sends the same command as the site's menu and checks that the queue grew). If that does not work, the song goes into a fallback "Up next" list kept by this extension; that list does not appear in YT Music's own queue, is cleared if the tab is reloaded, and plays when the current song ends or when you press next on the phone. The phone's status line says which one was used.
 - Chrome may suspend the extension's service worker. It reconnects automatically within about a minute.
 - Run tests with `cd server && npm test`.
 
