@@ -50,7 +50,9 @@ async function loadRemoteScriptForTab(tabId) {
     await chrome.userScripts.register([{
       id: 'ytm-remote-payload',
       matches: ['https://music.youtube.com/*'],
-      js: [{ code: codePayload }],
+      // Pass the configured relay URL into the same user-script execution context.
+      // The payload remains remotely updateable and cached for offline use.
+      js: [{ code: `window.__YTM_REMOTE_RELAY_URL__ = ${JSON.stringify(cleanBaseUrl)};\n${codePayload}` }],
       runAt: 'document_idle'
     }]);
 
