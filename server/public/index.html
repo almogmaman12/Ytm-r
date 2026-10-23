@@ -27,6 +27,18 @@
   #toggle { width:84px; height:84px; background:var(--accent); font-size:32px; }
   input[type=range] { width:100%; accent-color:var(--accent); }
   .vol { display:flex; align-items:center; gap:12px; }
+  #searchForm { display:flex; gap:8px; margin:28px 0 12px; }
+  #q { flex:1; min-width:0; padding:12px; border-radius:10px; border:1px solid #333;
+       background:var(--card); color:var(--fg); font:inherit; }
+  #go { width:auto; height:auto; border-radius:10px; padding:0 16px; font-size:16px; background:var(--accent); }
+  #searchMsg { color:var(--muted); font-size:14px; min-height:20px; margin-bottom:8px; }
+  #results { list-style:none; margin:0; padding:0; }
+  #results li { display:flex; align-items:center; gap:12px; padding:8px; border-radius:10px; cursor:pointer; }
+  #results li:active { background:var(--card); }
+  #results img, #results .ph { width:48px; height:48px; border-radius:6px; background:var(--card); flex:none; object-fit:cover; }
+  #results .txt { min-width:0; }
+  #results .t { font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  #results .s { color:var(--muted); font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   #setup { display:none; }
   #setup input[type=text] { width:100%; padding:12px; border-radius:10px; border:1px solid #333;
                             background:var(--card); color:var(--fg); font:inherit; margin:8px 0 12px; }
@@ -56,6 +68,15 @@
       <button id="next" aria-label="Next">⏭</button>
     </div>
     <div class="vol">🔈 <input type="range" id="vol" min="0" max="100" value="50"> 🔊</div>
+
+    <form id="searchForm">
+      <input id="q" type="search" placeholder="Search songs" enterkeyhint="search"
+             autocomplete="off" autocapitalize="off" maxlength="100">
+      <button id="go" type="submit">Search</button>
+    </form>
+    <div id="searchMsg"></div>
+    <ul id="results"></ul>
+
     <div style="text-align:center"><button id="forget">Change token</button></div>
   </div>
 </div>
@@ -89,6 +110,7 @@ function connect() {
       $('dot').classList.toggle('on', m.online);
       $('status').textContent = m.online ? 'PC connected' : 'PC offline';
     } else if (m.type === 'state') render(m.state);
+    else if (m.type === 'results') renderResults(m);
   };
   ws.onclose = () => {
     $('dot').classList.remove('on');
@@ -106,6 +128,48 @@ function render(s) {
   if (s.duration) $('fill').style.width = Math.min(100, (s.position / s.duration) * 100) + '%';
   if (s.volume != null && !volDragging) $('vol').value = s.volume;
 }
+
+let searchTimer = null;
+
+function renderResults(m) {
+  clearTimeout(searchTimer);
+  const list = $('results');
+  list.textContent = '';
+  if (m.error) { $('searchMsg').textContent = 'Search failed: ' + m.error; return; }
+  if (!m.results.length) { $('searchMsg').textContent = 'No results'; return; }
+  $('searchMsg').textContent = '';
+  for (const r of m.results) {
+    const li = document.createElement('li');
+    let img;
+    if (r.thumb) { img = document.createElement('img'); img.src = r.thumb; img.alt = ''; img.loading = 'lazy'; }
+    else { img = document.createElement('div'); img.className = 'ph'; }
+    const txt = document.createElement('div'); txt.className = 'txt';
+    const t = document.createElement('div'); t.className = 't'; t.textContent = r.title;
+    const s = document.createElement('div'); s.className = 's'; s.textContent = r.subtitle;
+    txt.append(t, s);
+    li.append(img, txt);
+    li.onclick = () => {
+      cmd('play_video', r.videoId);
+      $('searchMsg').textContent = 'Playing: ' + r.title;
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
+    list.append(li);
+  }
+}
+
+$('searchForm').onsubmit = (e) => {
+  e.preventDefault();
+  const q = $('q').value.trim();
+  if (!q) return;
+  $('q').blur();
+  $('results').textContent = '';
+  $('searchMsg').textContent = 'Searching…';
+  cmd('search', q);
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => {
+    $('searchMsg').textContent = 'No response. Is YouTube Music open on the PC?';
+  }, 10000);
+};
 
 function cmd(c, value) {
   if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'cmd', cmd: c, value }));

@@ -13,8 +13,11 @@ const PUBLIC_DIR = path.join(__dirname, 'public');
 const MIN_TOKEN_LEN = 20;
 const ALLOWED_CMDS = new Set([
   'play', 'pause', 'toggle', 'next', 'previous', 'volume', 'seek', 'get_state',
+  'search', 'play_video',
 ]);
-const MAX_MSG_BYTES = 4096;
+const MAX_MSG_BYTES = 65536;        // PC -> server (search results can be a few KB)
+const MAX_PHONE_MSG_BYTES = 1024;   // phone -> server (commands are tiny)
+const VIDEO_ID_RE = /^[A-Za-z0-9_-]{11}$/;
 const MAX_CMDS_PER_SEC = 10;
 
 const MIME = {
@@ -113,6 +116,7 @@ wss.on('connection', (ws, { token, role }) => {
     let msg;
     try { msg = JSON.parse(raw.toString()); } catch { return; }
     if (!msg || typeof msg !== 'object') return;
+    if (role === 'phone' && raw.length > MAX_PHONE_MSG_BYTES) return;
 
     if (role === 'phone' && msg.type === 'cmd') {
       const now = Date.now();
@@ -124,6 +128,13 @@ wss.on('connection', (ws, { token, role }) => {
         const v = Number(msg.value);
         if (!Number.isFinite(v)) return;
         out.value = msg.cmd === 'volume' ? Math.min(100, Math.max(0, v)) : Math.max(0, v);
+      } else if (msg.cmd === 'search') {
+        const q = String(msg.value || '').trim().slice(0, 100);
+        if (!q) return;
+        out.value = q;
+      } else if (msg.cmd === 'play_video') {
+        if (!VIDEO_ID_RE.test(String(msg.value))) return;
+        out.value = String(msg.value);
       }
       send(room.pc, out);
     } else if (role === 'pc' && msg.type === 'state' && msg.state &&
@@ -139,6 +150,20 @@ wss.on('connection', (ws, { token, role }) => {
         art: typeof s.art === 'string' && s.art.startsWith('https://') ? s.art.slice(0, 500) : '',
       };
       room.phones.forEach((p) => send(p, { type: 'state', state: room.lastState }));
+    } else if (role === 'pc' && msg.type === 'results' && Array.isArray(msg.results)) {
+      const results = msg.results
+        .slice(0, 20)
+        .filter((r) => r && VIDEO_ID_RE.test(String(r.videoId)))
+        .map((r) => ({
+          videoId: String(r.videoId),
+          title: String(r.title || '').slice(0, 200),
+          subtitle: String(r.subtitle || '').slice(0, 200),
+          thumb: typeof r.thumb === 'string' && r.thumb.startsWith('https://')
+            ? r.thumb.slice(0, 500) : '',
+        }));
+      const out = { type: 'results', query: String(msg.query || '').slice(0, 100), results };
+      if (msg.error) out.error = String(msg.error).slice(0, 100);
+      room.phones.forEach((p) => send(p, out));
     }
   });
 

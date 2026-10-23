@@ -59,6 +59,42 @@ let port;
   await wait(100);
   assert(!phone.msgs.some((m) => m.state && m.state.title === 'FAKE'), 'phone cannot spoof state');
 
+  // Search: query trimmed and forwarded; empty query dropped
+  phone.send(JSON.stringify({ type: 'cmd', cmd: 'search', value: '  daft punk  ' }));
+  phone.send(JSON.stringify({ type: 'cmd', cmd: 'search', value: '   ' }));
+  await wait(100);
+  const searches = pc.msgs.filter((m) => m.cmd === 'search');
+  assert.strictEqual(searches.length, 1, 'only the non-empty search forwarded');
+  assert.strictEqual(searches[0].value, 'daft punk', 'query trimmed');
+
+  // play_video: only valid 11-char ids pass
+  phone.send(JSON.stringify({ type: 'cmd', cmd: 'play_video', value: '../../etc' }));
+  phone.send(JSON.stringify({ type: 'cmd', cmd: 'play_video', value: 'dQw4w9WgXcQ' }));
+  await wait(100);
+  const plays = pc.msgs.filter((m) => m.cmd === 'play_video');
+  assert.strictEqual(plays.length, 1, 'invalid video id dropped');
+  assert.strictEqual(plays[0].value, 'dQw4w9WgXcQ');
+
+  // Results: sanitised and delivered only to the paired phone
+  pc.send(JSON.stringify({
+    type: 'results', query: 'daft punk',
+    results: [
+      { videoId: 'dQw4w9WgXcQ', title: 'Good', subtitle: 'Artist', thumb: 'http://insecure/x.jpg' },
+      { videoId: 'bad', title: 'Bad id' },
+    ],
+  }));
+  await wait(100);
+  const res = phone.msgs.find((m) => m.type === 'results');
+  assert(res, 'results reached phone');
+  assert.strictEqual(res.results.length, 1, 'invalid result dropped');
+  assert.strictEqual(res.results[0].thumb, '', 'non-https thumbnail removed');
+  assert(!other.msgs.some((m) => m.type === 'results'), 'results isolated to room');
+
+  // Phone cannot inject results
+  phone.send(JSON.stringify({ type: 'results', results: [{ videoId: 'dQw4w9WgXcQ', title: 'X' }] }));
+  await wait(100);
+  assert.strictEqual(phone.msgs.filter((m) => m.type === 'results').length, 1, 'phone cannot spoof results');
+
   // Rate limit
   const before = pc.msgs.filter((m) => m.cmd === 'toggle').length;
   for (let i = 0; i < 30; i++) phone.send(JSON.stringify({ type: 'cmd', cmd: 'toggle' }));
@@ -67,8 +103,8 @@ let port;
   assert(got <= 10, `rate limited (got ${got})`);
 
   // Path traversal blocked
-  const res = await fetch(`http://localhost:${port}/..%2f..%2fserver.js`);
-  assert.notStrictEqual(res.status, 200, 'path traversal blocked');
+  const trav = await fetch(`http://localhost:${port}/..%2f..%2fserver.js`);
+  assert.notStrictEqual(trav.status, 200, 'path traversal blocked');
   assert.strictEqual((await fetch(`http://localhost:${port}/`)).status, 200, 'index served');
 
   console.log('All relay tests passed');

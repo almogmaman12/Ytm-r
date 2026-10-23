@@ -67,6 +67,12 @@ chrome.runtime.onMessage.addListener((msg) => {
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: 'state', state: msg.state }));
     }
+  } else if (msg.type === 'results') {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({
+        type: 'results', query: msg.query, results: msg.results, error: msg.error,
+      }));
+    }
   } else if (msg.type === 'reconnect') {
     try { ws && ws.close(); } catch {}
     ws = null;

@@ -49,6 +49,17 @@
         break;
       }
       case 'seek': if (v) v.currentTime = value; break;
+      case 'search':
+      case 'play_video':
+        // Handled by page.js, which runs in the page's own JS world.
+        window.postMessage(
+          cmd === 'search'
+            ? { source: 'ytmr-ext', cmd, query: String(value) }
+            : { source: 'ytmr-ext', cmd, videoId: String(value) },
+          location.origin
+        );
+        if (cmd === 'search') return; // results come back asynchronously
+        break;
       case 'get_state': break;
       default: return;
     }
@@ -63,6 +74,18 @@
 
   chrome.runtime.onMessage.addListener((msg) => {
     if (msg && msg.type === 'cmd') run(msg.cmd, msg.value);
+  });
+
+  // Search results coming back from page.js.
+  window.addEventListener('message', (ev) => {
+    if (ev.source !== window || !ev.data || ev.data.source !== 'ytmr-page') return;
+    if (ev.data.type !== 'results') return;
+    chrome.runtime.sendMessage({
+      type: 'results',
+      query: ev.data.query,
+      results: Array.isArray(ev.data.results) ? ev.data.results : [],
+      error: ev.data.error,
+    }).catch(() => {});
   });
 
   // Periodic and change-driven reporting.
