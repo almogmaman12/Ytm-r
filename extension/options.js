@@ -1,57 +1,39 @@
-const $ = (id) => document.getElementById(id);
+document.addEventListener('DOMContentLoaded', async () => {
+  const urlInput = document.getElementById('serverUrl');
+  const saveBtn = document.getElementById('saveBtn');
+  const status = document.getElementById('status');
 
-const STATUS = {
-  connected: ['Connected to relay', 'ok'],
-  connecting: ['Connecting…', ''],
-  disconnected: ['Not connected. Retrying…', 'bad'],
-  replaced: ['Another computer connected with this token and took over. Click Save & connect to take it back.', 'bad'],
-  error: ['The relay URL looks wrong. Check it and save again.', 'bad'],
-};
-
-function randomToken() {
-  const bytes = crypto.getRandomValues(new Uint8Array(24));
-  return btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-}
-
-function showStatus(s) {
-  const [text, cls] = STATUS[s] || ['Not connected', 'bad'];
-  const el = $('status');
-  el.textContent = text;
-  el.className = cls;
-}
-
-function showError(msg) {
-  const el = $('status');
-  el.textContent = msg;
-  el.className = 'bad';
-}
-
-chrome.storage.local.get(['serverUrl', 'token', 'status']).then((c) => {
-  $('url').value = c.serverUrl || '';
-  $('token').value = c.token || '';
-  showStatus(c.status);
-});
-
-chrome.storage.onChanged.addListener((changes) => {
-  if (changes.status) showStatus(changes.status.newValue);
-});
-
-$('gen').onclick = () => { $('token').value = randomToken(); };
-
-$('save').onclick = async () => {
-  let serverUrl;
-  try {
-    const u = new URL($('url').value.trim());
-    if (u.protocol !== 'https:' && u.protocol !== 'http:') throw new Error('protocol');
-    serverUrl = u.origin; // drops any path, query or trailing slash that was pasted along
-  } catch {
-    return showError('Enter the relay address, for example https://your-relay.onrender.com');
+  // Load existing configuration from storage
+  const data = await chrome.storage.sync.get(['relayUrl']);
+  if (data.relayUrl) {
+    urlInput.value = data.relayUrl;
   }
-  const token = $('token').value.trim();
-  if (!/^[A-Za-z0-9_-]{20,}$/.test(token)) {
-    return showError('The token needs 20 or more characters: letters, numbers, - and _ only.');
-  }
-  $('url').value = serverUrl;
-  await chrome.storage.local.set({ serverUrl, token });
-  chrome.runtime.sendMessage({ type: 'reconnect' });
-};
+
+  saveBtn.addEventListener('click', async () => {
+    let url = urlInput.value.trim().replace(/\/+$/, '');
+
+    if (!url) {
+      status.style.color = '#ff4444';
+      status.textContent = 'Please enter a valid URL.';
+      return;
+    }
+
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      url = 'https://' + url;
+      urlInput.value = url;
+    }
+
+    // Save URL to Chrome Sync Storage across devices
+    await chrome.storage.sync.set({ relayUrl: url });
+
+    status.style.color = '#00e676';
+    status.textContent = 'Saved! Reloading active YouTube Music tabs...';
+
+    // Notify background script to inject payload into open tabs
+    chrome.runtime.sendMessage({ action: 'RELOAD_PAYLOAD' });
+
+    setTimeout(() => {
+      status.textContent = '';
+    }, 3000);
+  });
+});
