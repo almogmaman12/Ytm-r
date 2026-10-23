@@ -4,13 +4,22 @@
 
   console.log('[Ytm-r OTA Payload] Running dynamically from Server!');
 
-  // Derive WebSocket protocol and host dynamically from location or window context
-  const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const host = window.location.host;
+  // The extension supplies the configured relay URL before this payload runs.
+  // Fall back to the page origin only for manual/local testing.
+  const relayBase = window.__YTM_REMOTE_RELAY_URL__ || window.location.origin;
+  let relay;
+  try {
+    relay = new URL(relayBase);
+  } catch (err) {
+    console.error('[Ytm-r Payload] Invalid relay URL:', err);
+    return;
+  }
+  const wsProtocol = relay.protocol === 'https:' ? 'wss:' : 'ws:';
+  const wsUrl = `${wsProtocol}//${relay.host}`;
   let ws = null;
 
   function connectWebSocket() {
-    ws = new WebSocket(`${wsProtocol}//${host}`);
+    ws = new WebSocket(wsUrl);
 
     ws.onopen = () => {
       console.log('[Ytm-r Payload] WebSocket connected to server');
