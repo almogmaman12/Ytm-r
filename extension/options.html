@@ -9,7 +9,7 @@
   label { display: block; margin: 10px 0 4px; font-weight: 600; }
   input { width: 100%; box-sizing: border-box; padding: 6px; font: inherit; }
   button { margin: 10px 6px 0 0; padding: 6px 12px; font: inherit; cursor: pointer; }
-  #status { margin-top: 12px; font-weight: 600; }
+  #status { margin-top: 12px; font-weight: 600; line-height: 1.35; }
   .ok { color: #1a7f37; } .bad { color: #b42318; }
   small { color: #666; display: block; margin-top: 4px; }
 </style>
@@ -23,7 +23,7 @@
 <small>Enter this same token on your phone page.</small>
 <button id="gen">Generate token</button>
 <button id="save">Save &amp; connect</button>
-<div id="status"></div>
+<div id="status" aria-live="polite"></div>
 <script src="options.js"></script>
 </body>
 </html>

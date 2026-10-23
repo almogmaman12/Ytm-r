@@ -146,6 +146,64 @@ let port;
   assert.notStrictEqual(trav.status, 200, 'path traversal blocked');
   assert.strictEqual((await fetch(`http://localhost:${port}/`)).status, 200, 'index served');
 
+  // ---- Robustness ----
+  const http = require('http');
+  const rawGet = (p, method = 'GET') => new Promise((resolve, reject) => {
+    const r = http.request({ port, path: p, method }, (res) => {
+      let body = ''; res.on('data', (d) => (body += d)); res.on('end', () => resolve({ status: res.statusCode, headers: res.headers, body }));
+    });
+    r.on('error', reject); r.end();
+  });
+
+  // Malformed percent-encoding used to throw inside the request handler and kill the server
+  assert.strictEqual((await rawGet('/%E0%A4%A')).status, 400, 'malformed URL answered, not crashed');
+  assert.strictEqual((await rawGet('/healthz')).body, 'ok', 'server still alive after malformed URL');
+  assert.strictEqual((await rawGet('/', 'POST')).status, 405, 'POST rejected');
+  const head = await rawGet('/', 'HEAD');
+  assert.strictEqual(head.status, 200, 'HEAD works');
+  assert.strictEqual(head.body, '', 'HEAD has no body');
+  const home = await rawGet('/');
+  assert(home.headers['content-security-policy'], 'CSP header set');
+  assert.strictEqual(home.headers['x-frame-options'], 'DENY', 'framing denied');
+  assert.strictEqual((await rawGet('/..%2f..%2fpackage.json')).status, 403, 'encoded traversal blocked');
+  assert.strictEqual((await rawGet('/nope.txt')).status, 404, 'missing file 404');
+
+  // Ping gets a pong, from both roles
+  phone.send(JSON.stringify({ type: 'ping' }));
+  pc.send(JSON.stringify({ type: 'ping' }));
+  await wait(100);
+  assert(phone.msgs.some((m) => m.type === 'pong'), 'phone gets pong');
+  assert(pc.msgs.some((m) => m.type === 'pong'), 'pc gets pong');
+
+  // Non-https and junk image URLs are removed
+  pc.send(JSON.stringify({ type: 'state', state: { title: 'T', art: 'javascript:alert(1)' } }));
+  await wait(100);
+  const lastState = phone.msgs.filter((m) => m.type === 'state').pop();
+  assert.strictEqual(lastState.state.art, '', 'javascript: art removed');
+
+  // An oversized message used to crash the whole relay (unhandled socket error)
+  const big = await open('phone', 'bigbigbigbigbigbigbigbig_1');
+  const closed = new Promise((r) => big.on('close', r));
+  big.send('x'.repeat(100 * 1024));
+  await closed;
+  assert.strictEqual((await rawGet('/healthz')).body, 'ok', 'server survived oversized message');
+
+  // A second PC with the same token replaces the first one (close code 4000)
+  const pcA = await open('pc', 'replaceme_replaceme_1234');
+  const closeCode = new Promise((r) => pcA.on('close', (c) => r(c)));
+  const pcB = await open('pc', 'replaceme_replaceme_1234');
+  assert.strictEqual(await closeCode, 4000, 'old PC told it was replaced');
+  pcB.close();
+
+  // Phones per token are capped
+  const tok = 'capcapcapcapcapcapcap_99';
+  const phones = [];
+  for (let i = 0; i < 10; i++) phones.push(await open('phone', tok));
+  const eleventh = await open('phone', tok);
+  const code11 = await new Promise((r) => eleventh.on('close', (c) => r(c)));
+  assert.strictEqual(code11, 4001, '11th phone refused');
+  phones.forEach((p) => p.close());
+
   console.log('All relay tests passed');
   process.exit(0);
 })().catch((e) => { console.error('FAIL:', e.message); process.exit(1); });

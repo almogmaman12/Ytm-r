@@ -3,10 +3,25 @@
 // Talks to content.js only through window.postMessage.
 
 (() => {
-  if (window.__ytmrPage) return;
-  window.__ytmrPage = true;
+  // After an extension update an older copy of this script may still be running in the tab.
+  // Stop it, so exactly one copy (this one) answers.
+  try { window.__ytmrAbort && window.__ytmrAbort.abort(); } catch { /* ignore */ }
+  const ac = new AbortController();
+  window.__ytmrAbort = ac;
+  const sig = { signal: ac.signal };
 
   const ID_RE = /^[A-Za-z0-9_-]{11}$/;
+  // Search filter parameter that restricts results to "Songs".
+  const SONGS_FILTER = 'EgWKAQIIAWoKEAkQBRAKEAMQBA==';
+
+  const post = (m) => window.postMessage({ source: 'ytmr-page', ...m }, location.origin);
+  const status = (message) => post({ type: 'status', message });
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const runsText = (runs) => (runs || []).map((r) => r.text).join('');
+  const getPlayer = () => document.getElementById('movie_player');
+
+  // ---- Search ----
+
   // videoId -> YT Music's own "Play next" command, taken from the search results.
   const playNextEndpoints = new Map();
 
@@ -23,12 +38,6 @@
     }
     return null;
   }
-  // Search filter parameter that restricts results to "Songs".
-  const SONGS_FILTER = 'EgWKAQIIAWoKEAkQBRAKEAMQBA==';
-
-  const post = (m) => window.postMessage({ source: 'ytmr-page', ...m }, location.origin);
-
-  const runsText = (runs) => (runs || []).map((r) => r.text).join('');
 
   function collect(node, out) {
     if (!node || typeof node !== 'object') return;
@@ -81,19 +90,29 @@
     const cfg = window.ytcfg;
     const key = cfg?.get?.('INNERTUBE_API_KEY');
     const context = cfg?.get?.('INNERTUBE_CONTEXT');
-    if (!key || !context) throw new Error('YT Music config not ready');
+    if (!key || !context) throw new Error("YouTube Music isn't ready yet. Wait a moment and try again");
 
     async function call(params) {
       const body = { context, query };
       if (params) body.params = params;
-      const res = await fetch(`/youtubei/v1/search?key=${encodeURIComponent(key)}&prettyPrint=false`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      if (!res.ok) throw new Error(`search failed (${res.status})`);
-      return parse(await res.json());
+      const ctrl = new AbortController();
+      const timeout = setTimeout(() => ctrl.abort(), 8000);
+      try {
+        const res = await fetch(`/youtubei/v1/search?key=${encodeURIComponent(key)}&prettyPrint=false`, {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+          signal: ctrl.signal,
+        });
+        if (!res.ok) throw new Error(`Search failed (${res.status})`);
+        return parse(await res.json());
+      } catch (e) {
+        if (e && e.name === 'AbortError') throw new Error('Search timed out. Try again');
+        throw e;
+      } finally {
+        clearTimeout(timeout);
+      }
     }
 
     let results = await call(SONGS_FILTER);
@@ -101,9 +120,7 @@
     return results;
   }
 
-  const status = (message) => post({ type: 'status', message });
-  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-  const getPlayer = () => document.getElementById('movie_player');
+  // ---- Playing a song ----
 
   function currentVideoId() {
     try { return getPlayer()?.getVideoData?.()?.video_id || ''; } catch { return ''; }
@@ -120,8 +137,9 @@
 
   // Starts a song WITHOUT reloading the page (a reload triggers Chrome's
   // "changes may not be saved" prompt). Tries several methods and checks which one worked.
+  // Returns true if the song started.
   async function play(videoId) {
-    if (!ID_RE.test(String(videoId))) return;
+    if (!ID_RE.test(String(videoId))) return false;
     const endpoint = { watchEndpoint: { videoId } };
     const app = document.querySelector('ytmusic-app');
     const player = getPlayer();
@@ -145,12 +163,12 @@
       try { fn(); } catch { continue; }
       // If we can't read the player's current video, trust the first call that didn't throw.
       if (!canVerify || await waitForVideo(videoId, 2500)) {
-        status(`Playing (via ${name})`);
-        return;
+        console.debug('[ytm-remote] started song via', name);
+        return true;
       }
     }
 
-    // Nothing worked. Report what exists so it can be fixed, and do NOT reload the page.
+    // Nothing worked. Keep the details for debugging, and do NOT reload the page.
     const navLike = [];
     for (let o = app; o && o !== Object.prototype; o = Object.getPrototypeOf(o)) {
       for (const k of Object.getOwnPropertyNames(o)) {
@@ -158,17 +176,17 @@
       }
     }
     console.warn('[ytm-remote] could not start song', { tried, navLike });
-    status(`Could not start song. Tried: ${tried.join(', ') || 'nothing'}. App nav functions: ${navLike.slice(0, 8).join(', ') || 'none'}`);
+    status("Couldn't start that song. Reload the YouTube Music tab on the PC and try again.");
+    return false;
   }
 
-  // ---- "Up next" queue (kept by this extension, not by YT Music) ----
-  let upNext = [];          // [{ videoId, title, subtitle, thumb }], first item plays first
+  // ---- "Play next" ----
+
+  let upNext = [];          // fallback queue kept by this script: [{ videoId, title, subtitle, thumb }]
   let advancing = false;
   const known = new Map();  // videoId -> track info from recent searches
 
-  function publishQueue() {
-    post({ type: 'queue', items: upNext });
-  }
+  const publishQueue = () => post({ type: 'queue', items: upNext });
 
   function remember(results) {
     for (const r of results) {
@@ -179,9 +197,7 @@
   }
 
   // What YT Music's own queue currently shows, so we can tell whether an add worked.
-  function queueCount() {
-    return document.querySelectorAll('ytmusic-player-queue-item').length;
-  }
+  const queueCount = () => document.querySelectorAll('ytmusic-player-queue-item').length;
 
   function protoNames(obj, re) {
     const names = [];
@@ -225,23 +241,23 @@
       }
     }
     const names = protoNames(app, /command|queue|action|resolve|service/i).slice(0, 8).join(', ');
-    console.warn('[ytm-remote] YT Music queue add failed', { tried, names });
     return { ok: false, reason: `no change after ${tried.join(', ')}; page functions: ${names || 'none'}` };
   }
 
   async function enqueueNext(id) {
     if (!ID_RE.test(String(id))) return;
     const track = known.get(id) || { videoId: id, title: id, subtitle: '', thumb: '' };
-    status(`Adding to YT Music queue: ${track.title}…`);
     const r = await addToYtQueue(id);
     if (r.ok) {
-      status(`Added to YT Music's queue (via ${r.method}): ${track.title}`);
+      console.debug('[ytm-remote] added to YT Music queue via', r.method);
+      status(`Added to YouTube Music's queue: ${track.title}`);
       return;
     }
-    // Fall back to the remote's own queue. "Play next" goes to the front and never duplicates.
+    console.warn('[ytm-remote] using fallback queue:', r.reason);
+    // "Play next" goes to the front and never duplicates.
     upNext = [track, ...upNext.filter((q) => q.videoId !== id)];
     publishQueue();
-    status(`Using the remote's own queue (${r.reason}): ${track.title}`);
+    status(`Added to Up next: ${track.title}`);
   }
 
   function dequeue(id) {
@@ -252,7 +268,12 @@
   async function playQueued() {
     const track = upNext.shift();
     publishQueue();
-    if (track) await play(track.videoId);
+    if (!track) return;
+    // If it could not start, keep it in the list instead of losing it.
+    if (!(await play(track.videoId))) {
+      upNext.unshift(track);
+      publishQueue();
+    }
   }
 
   function nextTrack() {
@@ -271,23 +292,27 @@
       advancing = true;
       playQueued().finally(() => setTimeout(() => { advancing = false; }, 4000));
     }
-  }, true);
+  }, { capture: true, ...sig });
+
+  // ---- Messages from content.js ----
 
   window.addEventListener('message', async (ev) => {
     if (ev.source !== window || !ev.data || ev.data.source !== 'ytmr-ext') return;
     const { cmd, value } = ev.data;
-    if (cmd === 'search') {
+    if (cmd === 'ping') {
+      post({ type: 'hello' });
+    } else if (cmd === 'search') {
       try {
         const results = await search(String(value));
         remember(results);
         post({ type: 'results', query: value, results });
       } catch (e) {
-        post({ type: 'results', query: value, results: [], error: String(e.message || e) });
+        post({ type: 'results', query: value, results: [], error: String((e && e.message) || e) });
       }
     } else if (cmd === 'play_video') {
-      play(value);
+      await play(value);
     } else if (cmd === 'play_next') {
-      enqueueNext(value);
+      await enqueueNext(value);
     } else if (cmd === 'queue_remove') {
       dequeue(value);
     } else if (cmd === 'next') {
@@ -295,7 +320,8 @@
     } else if (cmd === 'get_state') {
       publishQueue();
     }
-  });
+  }, sig);
 
+  post({ type: 'hello' });
   publishQueue();
 })();

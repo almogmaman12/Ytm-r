@@ -43,9 +43,21 @@ Visit your relay URL on your phone, paste the same token, and tap Connect. Use "
 Check your workplace's IT policy before installing extensions or sending traffic to an external server. This project does not try to hide itself from IT or monitoring tools.
 
 ## Searching and picking songs
-Type in the search box on the phone page and tap a result to play it. Tap the ⏭ button on a result to play it next; queued songs show in an "Up next" list with ✕ to remove. The search runs inside the YT Music tab on the PC using your own signed-in session there, so it respects your region and account. Both the extension (v1.3.0 or newer) and the relay need updating for this to work.
+Type in the search box on the phone page and tap a result to play it. Tap the ⏭ button on a result to play it next; queued songs show in an "Up next" list with ✕ to remove. The search runs inside the YT Music tab on the PC using your own signed-in session there, so it respects your region and account. Both the extension (v1.4.0 or newer) and the relay need updating for this to work.
+
+## Updating
+1. The relay redeploys itself when you push to GitHub (Render). Update it first.
+2. Replace the `extension` folder with the new one and press the reload icon on the extension in `chrome://extensions`. It loads itself into any open YouTube Music tab, so you normally do not need to reload the tab. If something still does not respond, reload the tab once.
+3. The phone page updates the next time you open it.
+
+## If something goes wrong
+- **"PC offline" on the phone:** Chrome must be running on the PC with the extension enabled, and both sides must use the same token. The extension's settings page shows its connection status.
+- **"Another computer connected with this token":** two computers cannot share a token. Click Save & connect on the one you want to use, and give the other one its own token.
+- **"YouTube Music is not open on the PC":** open `music.youtube.com` in Chrome.
+- **Relay on a free plan:** it sleeps after about 15 minutes idle, so the first connection can take up to a minute. Both sides reconnect on their own.
 
 ## Known limitations
+- Needs Chrome 116 or newer on the PC.
 - YT Music's page structure changes occasionally. If a button stops working, the selectors in `extension/content.js` may need updating.
 - Search and tap-to-play rely on YT Music internals (its search API and page router), which Google can change without notice.
 - "Play next" first tries YT Music's own queue (it sends the same command as the site's menu and checks that the queue grew). If that does not work, the song goes into a fallback "Up next" list kept by this extension; that list does not appear in YT Music's own queue, is cleared if the tab is reloaded, and plays when the current song ends or when you press next on the phone. The phone's status line says which one was used.

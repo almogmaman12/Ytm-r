@@ -263,11 +263,22 @@
 <script>
 const $ = (id) => document.getElementById(id);
 const root = document.documentElement;
-let ws = null, token = null, retry = 1000, volTimer = null, volDragging = false;
-let last = null, lastAt = 0, artUrl = '', searchTimer = null, toastTimer = null, view = 'playing';
+let ws = null, token = null, retry = 1000, retryTimer = null, lastRx = 0;
+let volTimer = null, volDragging = false, volSentAt = 0;
+let last = null, lastAt = 0, artUrl = '', searchTimer = null, toastTimer = null, view = 'playing', lastQuery = '';
+const TOKEN_RE = /^[A-Za-z0-9_-]{20,}$/;
 
 /* ---------- helpers ---------- */
-function getToken() { try { return localStorage.getItem('token'); } catch { return null; } }
+function getToken() {
+  try {
+    const t = localStorage.getItem('token');
+    return t && TOKEN_RE.test(t) ? t : null;
+  } catch { return null; }
+}
+// Safe to put inside a CSS url("...") even if the address contains quotes or brackets.
+function cssUrl(u) {
+  return 'url("' + String(u).replace(/["\\\n\r()]/g, (c) => '%' + c.charCodeAt(0).toString(16).padStart(2, '0')) + '")';
+}
 function setToken(t) { try { t ? localStorage.setItem('token', t) : localStorage.removeItem('token'); } catch {} }
 function buzz() { try { navigator.vibrate && navigator.vibrate(8); } catch {} }
 function fmt(s) { s = Math.max(0, Math.floor(s || 0)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); }
@@ -279,7 +290,10 @@ function toast(msg) {
   toastTimer = setTimeout(() => t.classList.remove('show'), 3500);
 }
 function cmd(c, value) {
-  if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'cmd', cmd: c, value }));
+  if (!ws || ws.readyState !== 1) { toast('Not connected. Reconnecting…'); return false; }
+  if ($('app').dataset.pc !== 'on') { toast('Your PC is offline.'); return false; }
+  ws.send(JSON.stringify({ type: 'cmd', cmd: c, value }));
+  return true;
 }
 
 /* ---------- views ---------- */
@@ -307,14 +321,28 @@ function show() {
 function setPc(online) {
   $('app').dataset.pc = online ? 'on' : 'off';
   $('status').textContent = online ? 'PC connected' : 'PC offline';
+  if (!last) {
+    $('artist').textContent = online ? '' : 'Waiting for your PC. Check that Chrome is open and the token matches.';
+  }
 }
 
 function connect() {
+  clearTimeout(retryTimer);
+  if (!token) return;
   if (ws && ws.readyState <= 1) return;
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-  ws = new WebSocket(`${proto}://${location.host}/ws?role=phone&token=${encodeURIComponent(token)}`);
-  ws.onopen = () => { retry = 1000; $('status').textContent = 'Waiting for PC…'; };
-  ws.onmessage = (ev) => {
+  const sock = new WebSocket(`${proto}://${location.host}/ws?role=phone&token=${encodeURIComponent(token)}`);
+  ws = sock;
+  // Each handler ignores sockets we have already replaced, so an old connection can never
+  // restart a retry loop or overwrite the status of the current one.
+  sock.onopen = () => {
+    if (ws !== sock) return;
+    retry = 1000; lastRx = Date.now();
+    $('status').textContent = 'Waiting for PC…';
+  };
+  sock.onmessage = (ev) => {
+    if (ws !== sock) return;
+    lastRx = Date.now();
     let m; try { m = JSON.parse(ev.data); } catch { return; }
     if (m.type === 'pc_status') setPc(m.online);
     else if (m.type === 'state') render(m.state);
@@ -322,15 +350,42 @@ function connect() {
     else if (m.type === 'status') toast(m.message);
     else if (m.type === 'queue') renderQueue(m.items);
   };
-  ws.onclose = () => {
+  sock.onclose = () => {
+    if (ws !== sock) return;
+    ws = null;
     $('app').dataset.pc = 'off';
     $('status').textContent = 'Reconnecting…';
-    setTimeout(connect, retry);
+    retryTimer = setTimeout(connect, retry);
     retry = Math.min(retry * 2, 15000);
   };
+  sock.onerror = () => { try { sock.close(); } catch {} };
 }
-// Come back quickly when the phone wakes up.
-document.addEventListener('visibilitychange', () => { if (!document.hidden && token) connect(); });
+
+// Close the current connection without scheduling a retry.
+function drop() {
+  const s = ws;
+  ws = null;
+  clearTimeout(retryTimer);
+  try { s && s.close(); } catch {}
+}
+function reconnectNow() { drop(); retry = 1000; connect(); }
+
+// Detect a connection that looks open but is dead (switching Wi-Fi/mobile data, sleeping phone).
+setInterval(() => {
+  if (!ws || ws.readyState !== 1) return;
+  if (Date.now() - lastRx > 45000) { reconnectNow(); return; }
+  ws.send(JSON.stringify({ type: 'ping' }));
+}, 15000);
+function probe() {
+  if (!token) return;
+  if (!ws || ws.readyState > 1) { retry = 1000; connect(); return; }
+  if (ws.readyState !== 1) return;
+  const sock = ws, t0 = Date.now();
+  sock.send(JSON.stringify({ type: 'ping' }));
+  setTimeout(() => { if (ws === sock && lastRx < t0) reconnectNow(); }, 3000);
+}
+document.addEventListener('visibilitychange', () => { if (!document.hidden) probe(); });
+window.addEventListener('online', probe);
 
 /* ---------- colour from album art ---------- */
 function resetColour() {
@@ -386,7 +441,7 @@ function render(s) {
   $('toggleIcon').setAttribute('href', icon);
   $('miniToggleIcon').setAttribute('href', icon);
   $('toggle').setAttribute('aria-label', s.playing ? 'Pause' : 'Play');
-  const bg = s.art ? `url("${s.art}")` : '';
+  const bg = s.art ? cssUrl(s.art) : '';
   $('art').style.backgroundImage = bg;
   $('miniArt').style.backgroundImage = bg;
   applyColour(s.art || '');
@@ -397,7 +452,8 @@ function render(s) {
 function tick() {
   if (!last || !last.duration) { $('fill').style.width = '0'; $('cur').textContent = '0:00'; $('dur').textContent = '0:00'; return; }
   let pos = last.position || 0;
-  if (last.playing) pos += (Date.now() - lastAt) / 1000;   // glide between updates
+  // Glide between updates, but not while the PC is offline.
+  if (last.playing && $('app').dataset.pc === 'on') pos += (Date.now() - lastAt) / 1000;
   pos = Math.min(pos, last.duration);
   $('fill').style.width = (pos / last.duration * 100) + '%';
   $('cur').textContent = fmt(pos);
@@ -425,14 +481,19 @@ $('prev').onclick = () => { buzz(); cmd('previous'); };
 $('vol').oninput = (e) => {
   volDragging = true;
   clearTimeout(volTimer);
-  volTimer = setTimeout(() => { cmd('volume', Number(e.target.value)); volDragging = false; }, 80);
+  const value = Number(e.target.value);
+  const send = () => { volSentAt = Date.now(); cmd('volume', value); };
+  // At most about 8 updates a second while dragging, plus a final one when you stop.
+  if (Date.now() - volSentAt >= 120) send(); else volTimer = setTimeout(send, 120);
+  clearTimeout($('vol')._done);
+  $('vol')._done = setTimeout(() => { volDragging = false; }, 600);
 };
 
 /* ---------- lists ---------- */
 function trackRow(r, button, onTap) {
   const li = document.createElement('li');
   const th = document.createElement('div'); th.className = 'th';
-  if (r.thumb) th.style.backgroundImage = `url("${r.thumb}")`;
+  if (r.thumb) th.style.backgroundImage = cssUrl(r.thumb);
   const txt = document.createElement('div'); txt.className = 'txt';
   const t = document.createElement('div'); t.className = 't'; t.textContent = r.title;
   const s = document.createElement('div'); s.className = 's'; s.textContent = r.subtitle;
@@ -462,6 +523,7 @@ function renderQueue(items) {
 }
 
 function renderResults(m) {
+  if (m.query !== lastQuery) return;   // an answer to an older search
   clearTimeout(searchTimer);
   const list = $('results');
   list.textContent = '';
@@ -485,10 +547,11 @@ $('searchForm').onsubmit = (e) => {
   const q = $('q').value.trim();
   if (!q) return;
   $('q').blur();
+  lastQuery = q;
   $('results').textContent = '';
   $('searchEmpty').hidden = true;
   $('searchMsg').textContent = 'Searching…';
-  cmd('search', q);
+  if (!cmd('search', q)) { $('searchMsg').textContent = 'Not connected to your PC yet.'; return; }
   clearTimeout(searchTimer);
   searchTimer = setTimeout(() => {
     $('searchMsg').textContent = 'No response. Check that YouTube Music is open on the PC.';
@@ -498,7 +561,7 @@ $('searchForm').onsubmit = (e) => {
 /* ---------- setup + settings ---------- */
 $('saveToken').onclick = () => {
   const t = $('tokenInput').value.trim();
-  if (t.length < 20) return toast('The token needs at least 20 characters.');
+  if (!TOKEN_RE.test(t)) return toast('That token looks wrong. It has 20 or more letters, numbers, - or _ and no spaces.');
   setToken(t); show();
 };
 $('tokenInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('saveToken').click(); });
@@ -507,8 +570,8 @@ $('closeSettings').onclick = () => $('settings').close();
 $('forget').onclick = () => {
   $('settings').close();
   setToken(null);
-  try { ws && ws.close(); } catch {}
-  ws = null; last = null; artUrl = '';
+  drop();
+  token = null; last = null; artUrl = '';
   resetColour();
   show();
 };
