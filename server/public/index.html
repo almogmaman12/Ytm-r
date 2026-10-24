@@ -322,7 +322,7 @@ function setPc(online) {
   $('app').dataset.pc = online ? 'on' : 'off';
   $('status').textContent = online ? 'PC connected' : 'PC offline';
   if (!last) {
-    $('artist').textContent = online ? '' : 'Waiting for your PC. Check that Chrome is open and the token matches.';
+    $('artist').textContent = online ? '' : 'Waiting for your PC. Check that YouTube Music is open in Chrome and the token matches.';
   }
 }
 

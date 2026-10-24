@@ -2,13 +2,12 @@
   "name": "ytm-remote-server",
   "version": "1.0.0",
   "description": "Relay server for controlling YouTube Music from a phone",
-  "main": "index.js",
+  "main": "server.js",
   "scripts": {
-    "start": "node index.js",
+    "start": "node server.js",
     "test": "node test.js"
   },
   "dependencies": {
-    "express": "^4.21.2",
     "ws": "^8.18.0"
   },
   "engines": {

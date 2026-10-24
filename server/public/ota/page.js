@@ -1,3 +1,4 @@
+// ytmr-payload page.js
 // Runs in the PAGE's own JavaScript world on music.youtube.com (see manifest "world": "MAIN").
 // It can use YT Music's own config and router, which the isolated content script cannot reach.
 // Talks to content.js only through window.postMessage.

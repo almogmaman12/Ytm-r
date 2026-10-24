@@ -1,0 +1,13 @@
+{
+  "requiresShell": 1,
+  "files": [
+    {
+      "name": "page.js",
+      "world": "MAIN"
+    },
+    {
+      "name": "content.js",
+      "world": "USER_SCRIPT"
+    }
+  ]
+}
