@@ -262,6 +262,74 @@
   // What YT Music's own queue currently shows, so we can tell whether an add worked.
   const queueCount = () => document.querySelectorAll('ytmusic-player-queue-item').length;
 
+  // YT Music keeps its queue in a small store on the queue element. Reading it is more
+  // reliable than counting rows (rows may not exist while the side panel is closed).
+  function ytQueueEl() {
+    return document.querySelector('ytmusic-player-queue#queue') || document.getElementById('queue')
+      || document.querySelector('ytmusic-player-queue');
+  }
+  function queueStore() {
+    const q = ytQueueEl();
+    return q?.queue?.store?.store || q?.store?.store || null;
+  }
+  function storeItems() {
+    try {
+      const items = queueStore()?.getState?.()?.queue?.items;
+      return Array.isArray(items) ? items : null;
+    } catch { return null; }
+  }
+  const queueLen = () => { const it = storeItems(); return it ? it.length : queueCount(); };
+  const rendererOf = (item) => item?.playlistPanelVideoRenderer
+    || item?.playlistPanelVideoWrapperRenderer?.primaryRenderer?.playlistPanelVideoRenderer || null;
+
+  // Asks YT Music for the queue entry of a song (the same call the site makes when you add a song).
+  async function fetchQueueItems(videoId) {
+    const cfg = window.ytcfg;
+    const key = cfg?.get?.('INNERTUBE_API_KEY');
+    const context = cfg?.get?.('INNERTUBE_CONTEXT');
+    if (!key || !context) throw new Error('site config not ready');
+    const ctrl = new AbortController();
+    const timeout = setTimeout(() => ctrl.abort(), 8000);
+    try {
+      const res = await fetch(`/youtubei/v1/music/get_queue?key=${encodeURIComponent(key)}&prettyPrint=false`, {
+        method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ context, videoIds: [videoId] }), signal: ctrl.signal,
+      });
+      if (!res.ok) throw new Error(`get_queue ${res.status}`);
+      const json = await res.json();
+      const items = (json.queueDatas || []).map((d) => d && d.content).filter(Boolean);
+      if (!items.length) throw new Error('get_queue returned nothing');
+      return items;
+    } finally { clearTimeout(timeout); }
+  }
+
+  // Inserts the song straight into YT Music's own queue, right after the current song.
+  async function addViaQueueStore(videoId) {
+    const q = ytQueueEl();
+    const store = queueStore();
+    if (!q || !store) return { ok: false, reason: "queue element not found" };
+    const state = store.getState()?.queue;
+    const current = state?.items;
+    if (!Array.isArray(current)) return { ok: false, reason: 'queue state not readable' };
+    const nowId = currentVideoId();
+    let at = current.findIndex((it) => rendererOf(it)?.selected);
+    if (at < 0 && nowId) at = current.findIndex((it) => rendererOf(it)?.videoId === nowId);
+    const index = at < 0 ? 0 : at + 1;
+    let items;
+    try { items = await fetchQueueItems(videoId); } catch (e) { return { ok: false, reason: String(e.message || e) }; }
+    const before = queueLen();
+    const action = { type: 'ADD_ITEMS', payload: {
+      nextQueueItemId: state.nextQueueItemId, index, items, shuffleEnabled: false, shouldAssignIds: true } };
+    try {
+      if (typeof q.dispatch === 'function') q.dispatch(action); else store.dispatch(action);
+    } catch (e) { return { ok: false, reason: 'dispatch failed: ' + String(e.message || e) }; }
+    for (let i = 0; i < 8; i++) {
+      await sleep(250);
+      if (queueLen() > before) return { ok: true, method: 'queue store' };
+    }
+    return { ok: false, reason: 'queue did not grow after ADD_ITEMS' };
+  }
+
   function protoNames(obj, re) {
     const names = [];
     for (let o = obj; o && o !== Object.prototype; o = Object.getPrototypeOf(o)) {
@@ -274,7 +342,7 @@
 
   // Sends YT Music's own "Play next" command and checks that its queue grew.
   // Returns { ok: true, method } | { ok: false, reason }.
-  async function addToYtQueue(videoId) {
+  async function addViaCommand(videoId) {
     const ep = playNextEndpoints.get(videoId);
     if (!ep) return { ok: false, reason: 'search result had no Play next command' };
     const app = document.querySelector('ytmusic-app');
@@ -291,20 +359,30 @@
 
     const tried = [];
     for (const [name, fn] of shapes) {
-      const before = queueCount();
+      const before = queueLen();
       tried.push(name);
       try { fn(); } catch { continue; }
       for (let i = 0; i < 8; i++) {
         await sleep(250);
-        if (queueCount() > before) return { ok: true, method: name };
+        if (queueLen() > before) return { ok: true, method: name };
       }
       // If the queue isn't readable at all we can't tell, so don't keep re-sending.
-      if (before === 0 && queueCount() === 0) {
+      if (before === 0 && queueLen() === 0) {
         return { ok: false, reason: `couldn't verify (queue list not readable) after ${name}` };
       }
     }
     const names = protoNames(app, /command|queue|action|resolve|service/i).slice(0, 8).join(', ');
     return { ok: false, reason: `no change after ${tried.join(', ')}; page functions: ${names || 'none'}` };
+  }
+
+  // Adds a song to YT Music's own queue (after the current song). Tries the queue itself,
+  // then the site's own "Play next" command. Returns { ok: true, method } | { ok: false, reason }.
+  async function addToYtQueue(videoId) {
+    const a = await addViaQueueStore(videoId);
+    if (a.ok) return a;
+    const b = await addViaCommand(videoId);
+    if (b.ok) return b;
+    return { ok: false, reason: `queue: ${a.reason}; command: ${b.reason}` };
   }
 
   async function enqueueNext(id) {
