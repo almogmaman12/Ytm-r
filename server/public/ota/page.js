@@ -361,20 +361,27 @@
     status("Couldn't remove that song from YouTube Music's queue.");
   }
 
-  // Moves one song up or down by one place. The queue's own actions are used in pairs
-  // (remove, then insert at the new place), and the new order is checked afterwards.
-  async function moveInQueue(value) {
-    const dir = String(value).split(':')[2];
+  // Moves one song to another place in the queue ("from:videoId:to", positions counted from the
+  // first song after the current one). The queue's own actions are used in pairs (remove, then
+  // insert at the new place), and the result is checked.
+  async function reorderQueue(value) {
+    const to = Number(String(value).split(':')[2]);
     const hit = locateInQueue(value);
     const q = ytQueueEl();
     const store = queueStore();
-    if (!hit || !q || !store) { status('That song is no longer in the queue.'); publishYtQueue(true); return; }
-    const to = dir === 'u' ? hit.prevIndex : hit.nextIndex;
-    if (to < 0) return; // already first / last
+    if (!hit || !q || !store || !isFinite(to)) { status('That song is no longer in the queue.'); publishYtQueue(true); return; }
+    const items = storeItems();
+    const idxs = [];
+    items.forEach((it, i) => { const r = rendererOf(it); if (r && ID_RE.test(String(r.videoId))) idxs.push(i); });
+    const here = idxs.indexOf(hit.storeIndex);          // this song's place among real songs
+    const first = here - hit.steps + 1;                  // place of the first upcoming song
+    const dest = Math.min(idxs.length - 1, Math.max(first, first + to));
+    if (dest === here) { publishYtQueue(true); return; } // nothing to move
+    const target = idxs[dest];
     const run = (action) => { if (typeof q.dispatch === 'function') q.dispatch(action); else store.dispatch(action); };
-    const idsBefore = storeItems().map((it) => rendererOf(it)?.videoId);
-    const item = storeItems()[hit.storeIndex];
-    const len = idsBefore.length;
+    const item = items[hit.storeIndex];
+    const len = items.length;
+    queueBusy = true;
     try {
       run({ type: 'REMOVE_ITEM', payload: hit.storeIndex });
       if (!(await waitFor(() => (storeItems()?.length ?? len) < len, 1200))) {
@@ -383,17 +390,19 @@
       }
       const state = store.getState().queue;
       run({ type: 'ADD_ITEMS', payload: {
-        nextQueueItemId: state.nextQueueItemId, index: to, items: [item], shuffleEnabled: false, shouldAssignIds: true } });
+        nextQueueItemId: state.nextQueueItemId, index: target, items: [item], shuffleEnabled: false, shouldAssignIds: true } });
       if (!(await waitFor(() => (storeItems()?.length ?? 0) >= len, 1500))) throw new Error('re-insert failed');
     } catch (e) {
       console.warn("[ytm-remote] couldn't reorder the site queue", e);
       status("Couldn't reorder YouTube Music's queue.");
-    }
+    } finally { queueBusy = false; }
     publishYtQueue(true);
   }
 
   let lastQueueKey = null;
+  let queueBusy = false;   // true while a reorder is half-done, so the phone never sees the gap
   function publishYtQueue(force) {
+    if (queueBusy) return;
     const items = storeItems();
     if (!items) return;
     const rs = items.map(rendererOf).filter((r) => r && ID_RE.test(String(r.videoId)));
@@ -585,8 +594,8 @@
       await enqueueNext(value);
     } else if (cmd === 'yt_jump') {
       await jumpInQueue(value);
-    } else if (cmd === 'yt_move') {
-      await moveInQueue(value);
+    } else if (cmd === 'yt_reorder') {
+      await reorderQueue(value);
     } else if (cmd === 'yt_remove') {
       await removeFromQueue(value);
     } else if (cmd === 'queue_remove') {

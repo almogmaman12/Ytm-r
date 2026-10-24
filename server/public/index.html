@@ -116,9 +116,12 @@
   ul.tracks .t { font-weight: 600; font-size: 16.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   ul.tracks .s { color: var(--muted); font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px; }
   ul.tracks .act { width: 48px; height: 48px; display: grid; place-items: center; border-radius: 50%; color: var(--ink); flex: none; }
-  ul.tracks .acts { display: flex; align-items: center; flex: none; }
-  ul.tracks .acts .act { width: 40px; }
-  ul.tracks .act:disabled { opacity: .25; }
+  .head { display: flex; align-items: center; justify-content: space-between; }
+  .pill { padding: 8px 16px; border-radius: 999px; background: var(--surface); color: var(--ink); font-weight: 650; font-size: 15px; }
+  .pill[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink, #fff); }
+  ul.tracks .grip { width: 48px; height: 48px; display: grid; place-items: center; flex: none; color: var(--muted); touch-action: none; cursor: grab; }
+  ul.tracks li.dragging { position: relative; z-index: 3; background: var(--surface-2); box-shadow: 0 8px 24px rgba(0,0,0,.45); transition: none; }
+  ul.tracks.editing li { transition: transform .15s ease; user-select: none; -webkit-user-select: none; }
   ul.tracks .act:active { background: var(--surface-2); }
 
   /* ---- Mini player + tabs ---- */
@@ -177,8 +180,7 @@
     <symbol id="i-bars" viewBox="0 0 24 24"><path d="M6 14v5M12 5v14M18 10v9"/></symbol>
     <symbol id="i-queue" viewBox="0 0 24 24"><path d="M4 6h12M4 12h8M4 18h6"/><path fill="currentColor" d="M15 13.5v7l5.5-3.5z"/></symbol>
     <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 8h16M4 16h16"/><circle fill="currentColor" cx="9" cy="8" r="2.4"/><circle fill="currentColor" cx="15" cy="16" r="2.4"/></symbol>
-    <symbol id="i-up" viewBox="0 0 24 24"><path d="M6 14.5l6-6 6 6"/></symbol>
-    <symbol id="i-down" viewBox="0 0 24 24"><path d="M6 9.5l6 6 6-6"/></symbol>
+    <symbol id="i-grip" viewBox="0 0 24 24"><path d="M5 8h14M5 12h14M5 16h14"/></symbol>
     <symbol id="i-x" viewBox="0 0 24 24"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></symbol>
     <symbol id="i-vol-lo" viewBox="0 0 24 24"><path fill="currentColor" d="M4 9.5v5h3.5L12 18.5v-13L7.5 9.5z"/></symbol>
     <symbol id="i-vol-hi" viewBox="0 0 24 24"><path fill="currentColor" d="M4 9.5v5h3.5L12 18.5v-13L7.5 9.5z"/><path d="M15.5 9a4 4 0 010 6M18 6.5a7.5 7.5 0 010 11"/></symbol>
@@ -234,7 +236,7 @@
   </section>
 
   <section id="v-queue" class="view" aria-label="Up next" hidden>
-    <h2 class="section">Up next</h2>
+    <div class="head"><h2 class="section">Up next</h2><button id="editBtn" class="pill" hidden>Edit</button></div>
     <div id="queueEmpty" class="empty"><strong>Nothing queued</strong>The songs coming up in YouTube Music show here. Add more with the queue button on a search result.</div>
     <ul id="ytqueue" class="tracks"></ul>
     <h3 id="waitingHead" class="sub" hidden>Waiting to be queued</h3>
@@ -521,34 +523,103 @@ function actionButton(icon, label, handler) {
 }
 
 let waitingItems = [], siteItems = [];
+let editing = false, dragging = false, pendingSite = null;
 function renderQueue(items) { waitingItems = items; drawQueue(); }
-function renderYtQueue(items) { siteItems = items; drawQueue(); }
+function renderYtQueue(items) {
+  if (dragging) { pendingSite = items; return; }   // don't pull rows from under a finger
+  siteItems = items; drawQueue();
+}
 function drawQueue() {
   const site = $('ytqueue'), list = $('queue');
   site.textContent = '';
   list.textContent = '';
+  site.classList.toggle('editing', editing);
   const total = siteItems.length + waitingItems.length;
   $('queueEmpty').hidden = total > 0;
   $('waitingHead').hidden = waitingItems.length === 0 || siteItems.length === 0;
   $('badge').hidden = total === 0;
   $('badge').textContent = total > 99 ? '99+' : total;
+  if (siteItems.length === 0 && editing) { editing = false; site.classList.remove('editing'); }
+  $('editBtn').hidden = siteItems.length < 2;
+  $('editBtn').textContent = editing ? 'Done' : 'Edit';
+  $('editBtn').setAttribute('aria-pressed', editing);
   siteItems.forEach((r, k) => {
     const ref = `${k}:${r.videoId}`;
-    const box = document.createElement('div');
-    box.className = 'acts';
-    const up = actionButton('i-up', 'Move up', () => cmd('yt_move', ref + ':u'));
-    const down = actionButton('i-down', 'Move down', () => cmd('yt_move', ref + ':d'));
-    up.disabled = k === 0;
-    down.disabled = k === siteItems.length - 1;
-    box.append(up, down, actionButton('i-x', 'Remove from YouTube Music queue', () => cmd('yt_remove', ref)));
-    site.append(trackRow(r, box, () => {
-      buzz();
-      if (cmd('yt_jump', ref)) { toast('Jumping to ' + r.title); setView('playing'); }
-    }));
+    if (editing) {
+      const grip = document.createElement('div');
+      grip.className = 'grip'; grip.setAttribute('aria-label', 'Drag to reorder'); grip.title = 'Drag to reorder';
+      grip.innerHTML = '<svg class="i"><use href="#i-grip"/></svg>';
+      const box = document.createElement('div');
+      box.style.cssText = 'display:flex;align-items:center;flex:none';
+      box.append(actionButton('i-x', 'Remove from YouTube Music queue', () => cmd('yt_remove', ref)), grip);
+      const li = trackRow(r, box);
+      li.dataset.k = k;
+      attachDrag(li, grip, k);
+      site.append(li);
+    } else {
+      site.append(trackRow(r, actionButton('i-x', 'Remove from YouTube Music queue', () => cmd('yt_remove', ref)), () => {
+        buzz();
+        if (cmd('yt_jump', ref)) { toast('Jumping to ' + r.title); setView('playing'); }
+      }));
+    }
   });
   for (const r of waitingItems) {
     list.append(trackRow(r, actionButton('i-x', 'Remove from Up next', () => cmd('queue_remove', r.videoId))));
   }
+}
+$('editBtn').onclick = () => { buzz(); editing = !editing; drawQueue(); };
+
+// Drag a row by its handle. Other rows slide out of the way; on release the new place is sent.
+function attachDrag(li, grip, from) {
+  grip.onpointerdown = (e) => {
+    if (e.button != null && e.button !== 0) return;
+    e.preventDefault();
+    const rows = [...$('ytqueue').children];
+    const h = li.offsetHeight;
+    const startY = e.clientY;
+    const startScroll = window.scrollY;
+    let to = from, lastY = e.clientY;
+    dragging = true;
+    li.classList.add('dragging');
+    try { grip.setPointerCapture(e.pointerId); } catch { /* ignore */ }
+    buzz();
+
+    const place = () => {
+      const dy = lastY - startY + (window.scrollY - startScroll);
+      li.style.transform = `translateY(${dy}px)`;
+      to = Math.max(0, Math.min(rows.length - 1, from + Math.round(dy / h)));
+      rows.forEach((row, i) => {
+        if (row === li) return;
+        const shift = from < to && i > from && i <= to ? -h : from > to && i >= to && i < from ? h : 0;
+        row.style.transform = shift ? `translateY(${shift}px)` : '';
+      });
+    };
+    let raf = 0;
+    const edgeScroll = () => {
+      const m = 70;
+      const dy = lastY < m ? -12 : lastY > window.innerHeight - m ? 12 : 0;
+      if (dy) { window.scrollBy(0, dy); place(); }
+      raf = requestAnimationFrame(edgeScroll);
+    };
+    raf = requestAnimationFrame(edgeScroll);
+    grip.onpointermove = (ev) => { lastY = ev.clientY; place(); };
+    const finish = (ev, cancelled) => {
+      cancelAnimationFrame(raf);
+      grip.onpointermove = grip.onpointerup = grip.onpointercancel = null;
+      dragging = false;
+      if (!cancelled && to !== from) {
+        const moved = siteItems.splice(from, 1)[0];
+        siteItems.splice(to, 0, moved);
+        cmd('yt_reorder', `${from}:${moved.videoId}:${to}`);
+        pendingSite = null;                    // our own order is the newest truth for now
+      } else if (pendingSite) {
+        siteItems = pendingSite; pendingSite = null;
+      }
+      drawQueue();
+    };
+    grip.onpointerup = (ev) => finish(ev, false);
+    grip.onpointercancel = (ev) => finish(ev, true);
+  };
 }
 
 function renderResults(m) {
