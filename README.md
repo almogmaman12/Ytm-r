@@ -2,6 +2,8 @@
 
 Control YouTube Music playing on a PC from your phone, with no shared Google account.
 
+> **This is the self-updating version.** If you would rather install an extension once and update it by hand, use the simpler version on the [`main` branch](https://github.com/almogmaman12/Ytm-r/tree/main).
+
 **Everyone runs their own copy.** You fork or clone this repo, deploy your own relay server from it, and install the small Chrome extension once. From then on the extension downloads its working code from *your* relay, so a `git push` to your repo updates the PC by itself. There are no secrets in this repo: your relay address and token are typed into the extension and the phone page.
 
 ```
@@ -18,6 +20,12 @@ your git repo --push--> your relay server <--wss--> phone page
 | `server/` | Node relay (`ws`). Forwards commands by secret token, serves the phone page (`server/public/`) and serves the extension's code from `server/public/ota/`. |
 | `server/public/ota/` | **The part that updates over the air.** `page.js` and `content.js` (the code that runs on music.youtube.com) and `ota.json` (which files, and where they run). |
 | `extension/` | The **shell**, installed once. It stores your relay address and token, downloads the files listed by your relay, checks them, and runs them on `music.youtube.com` only. |
+
+## What you can do from the phone
+- Play, pause, next, previous, seek and volume (the volume is the site's own player volume, shown live).
+- Search for songs and tap one to play it. It starts the way a click on the site would, so the page, title and queue follow.
+- **Play next:** adds a song straight into YouTube Music's own queue, right after the current song. If the site refuses, it goes into a short "Waiting to be queued" list on the phone and plays when the current song ends.
+- **Up next:** shows YouTube Music's real queue. Tap a song to jump to it, press ✕ to remove it, or press **Edit** and drag the handles to reorder.
 
 ## Setup (about 10 minutes)
 
@@ -54,6 +62,14 @@ The extension runs code downloaded from your relay on `music.youtube.com`, where
 
 Because of this, an extension like this is not suitable for the Chrome Web Store (it forbids remotely hosted code), which is why it is installed unpacked from your own clone.
 
+## Protect your repo (it controls your PC's browser tab)
+Anything pushed to the branch your relay deploys becomes code that runs in your YouTube Music tab, so treat the repo like a password:
+- Turn on two-factor authentication (a passkey is best) on GitHub and on your hosting account.
+- Add a branch rule (Settings → Rules → Rulesets) on your deploy branch that blocks force-pushes and deletion. Requiring signed commits is stronger still, but then your own commits must be signed too.
+- Turn on Dependabot alerts and security updates, and keep secret scanning and push protection on.
+- Make sure Render (or your host) deploys only the branch you trust.
+- Git stores your email in every commit and the repo is public. Turn on "Keep my email addresses private" and "Block command line pushes that expose my email" in GitHub's email settings, and commit with your `…@users.noreply.github.com` address.
+
 ## Other security notes
 - The token is the only credential for the phone side. Use 20+ random characters and HTTPS. Anyone with it can control playback and see the current track title.
 - The relay accepts only a fixed list of commands, clamps values, rate-limits and caps message sizes. Its CORS headers are open only under `/ota/` (public code, no secrets).
@@ -71,8 +87,9 @@ Check your workplace's IT policy before installing extensions or sending traffic
 - **Relay on a free plan:** it sleeps when idle; both sides reconnect on their own.
 
 ## Known limitations
-- Search and tap-to-play rely on YT Music internals (its search API and page router), which Google can change without notice. Fix it in `server/public/ota/page.js` and push.
-- "Play next" first tries YT Music's own queue; if that fails, the song goes into a fallback "Up next" list kept by the extension (cleared when the tab reloads).
+- Search, tap-to-play and the queue features rely on YT Music internals (its search API, page router and queue store), which Google can change without notice. Fix it in `server/public/ota/page.js` and push; the extension picks it up by itself.
+- Reordering moves a song by removing and re-adding it in the site's queue, one drag at a time.
+- If the queue panel never shows your songs on the phone, open the PC's page console (F12): the script logs a warning there saying which step failed.
 - Run tests with `cd server && npm test`.
 
 ## License
