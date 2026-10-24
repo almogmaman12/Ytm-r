@@ -14,11 +14,12 @@ const PUBLIC_DIR = path.resolve(__dirname, 'public');
 const MIN_TOKEN_LEN = 20;
 const ALLOWED_CMDS = new Set([
   'play', 'pause', 'toggle', 'next', 'previous', 'volume', 'seek', 'get_state',
-  'search', 'play_video', 'play_next', 'queue_remove',
+  'search', 'play_video', 'play_next', 'queue_remove', 'yt_jump', 'yt_remove',
 ]);
 const MAX_MSG_BYTES = 65536;        // PC -> server (search results can be a few KB)
 const MAX_PHONE_MSG_BYTES = 1024;   // phone -> server (commands are tiny)
 const VIDEO_ID_RE = /^[A-Za-z0-9_-]{11}$/;
+const QUEUE_REF_RE = /^\d{1,2}:[A-Za-z0-9_-]{11}$/;   // position in the site queue : video id
 const MAX_CMDS_PER_SEC = 10;        // per phone
 const MAX_PC_MSGS_PER_SEC = 50;     // per PC connection
 const MAX_CLIENTS = Number(process.env.MAX_CLIENTS) || 200;
@@ -267,6 +268,9 @@ wss.on('connection', (ws, { token, role }) => {
         out.value = q;
       } else if (msg.cmd === 'play_video' || msg.cmd === 'play_next' || msg.cmd === 'queue_remove') {
         if (!VIDEO_ID_RE.test(String(msg.value))) return;
+        out.value = String(msg.value);
+      } else if (msg.cmd === 'yt_jump' || msg.cmd === 'yt_remove') {
+        if (!QUEUE_REF_RE.test(String(msg.value))) return;
         out.value = String(msg.value);
       }
       send(room.pc, out);

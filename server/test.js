@@ -229,6 +229,19 @@ let port;
   assert.strictEqual(yq.items[0].thumb, '', 'unsafe thumbnail removed');
   yqPc.close(); yqPhone.close();
 
+  // Jump/remove commands carry "position:videoId" and nothing else
+  const jmTok = 'jumpjumpjumpjumpjump_1234';
+  const jmPc = await open('pc', jmTok);
+  const jmPhone = await open('phone', jmTok);
+  jmPhone.send(JSON.stringify({ type: 'cmd', cmd: 'yt_jump', value: '3:AAAAAAAAAA1' }));
+  jmPhone.send(JSON.stringify({ type: 'cmd', cmd: 'yt_remove', value: '0:BBBBBBBBBB2' }));
+  jmPhone.send(JSON.stringify({ type: 'cmd', cmd: 'yt_jump', value: '3;rm -rf' }));
+  jmPhone.send(JSON.stringify({ type: 'cmd', cmd: 'yt_remove', value: 'BBBBBBBBBB2' }));
+  await wait(200);
+  const jm = jmPc.msgs.filter((m) => m.type === 'cmd' && m.cmd !== 'get_state');
+  assert.deepStrictEqual(jm.map((m) => m.cmd + ' ' + m.value), ['yt_jump 3:AAAAAAAAAA1', 'yt_remove 0:BBBBBBBBBB2'], 'only well-formed queue commands pass');
+  jmPc.close(); jmPhone.close();
+
   // An oversized message used to crash the whole relay (unhandled socket error)
   const big = await open('phone', 'bigbigbigbigbigbigbigbig_1');
   const closed = new Promise((r) => big.on('close', r));

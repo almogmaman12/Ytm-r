@@ -275,6 +275,8 @@
       case 'play_video':
       case 'play_next':
       case 'queue_remove':
+      case 'yt_jump':
+      case 'yt_remove':
         if (!(await pageReady())) {
           sendWs({ type: 'status', message: 'Reload the YouTube Music tab on the PC, then try again.' });
           if (cmd === 'search') {

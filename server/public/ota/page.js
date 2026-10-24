@@ -294,6 +294,72 @@
     };
   }
 
+  // Finds a song in YT Music's queue from "position:videoId" (position counts from the first
+  // song after the current one). The id is checked, so a queue that changed meanwhile is safe.
+  function locateInQueue(ref) {
+    const [ks, id] = String(ref).split(':');
+    const k = Number(ks);
+    const items = storeItems();
+    if (!items || !ID_RE.test(id || '') || !isFinite(k)) return null;
+    const idxs = [];
+    items.forEach((it, i) => { const r = rendererOf(it); if (r && ID_RE.test(String(r.videoId))) idxs.push(i); });
+    const rs = idxs.map((i) => rendererOf(items[i]));
+    let at = rs.findIndex((r) => r.selected);
+    if (at < 0) { const now = currentVideoId(); at = rs.findIndex((r) => r.videoId === now); }
+    let pos = at + 1 + k;
+    if (rs[pos]?.videoId !== id) {
+      pos = rs.findIndex((r, j) => j > at && r.videoId === id);
+      if (pos < 0) return null;
+    }
+    return { id, storeIndex: idxs[pos], steps: pos - at, rowIndex: pos };
+  }
+
+  async function jumpInQueue(ref) {
+    const hit = locateInQueue(ref);
+    if (!hit) { status('That song is no longer in the queue.'); publishYtQueue(true); return; }
+    const done = () => currentVideoId() === hit.id;
+    if (done()) return;
+    // 1. The site's own queue row, clicked the way you would on the PC.
+    const row = document.querySelectorAll('ytmusic-player-queue-item')[hit.storeIndex];
+    if (row) {
+      const attempts = [
+        () => row.querySelector('ytmusic-play-button-renderer')?.click(),
+        () => row.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, composed: true })),
+      ];
+      for (const go of attempts) {
+        try { go(); } catch { continue; }
+        if (await waitFor(done, 1500)) { publishYtQueue(true); return; }
+      }
+    }
+    // 2. Press the site's Next button once per song in between.
+    if (hit.steps < 1 || hit.steps > 15) { status("Couldn't jump to that song."); return; }
+    const btn = document.querySelector('ytmusic-player-bar .next-button');
+    for (let i = 0; i < hit.steps && !done(); i++) {
+      btn?.click();
+      await sleep(350);
+    }
+    if (!(await waitFor(done, 2500))) status("Couldn't jump to that song.");
+    publishYtQueue(true);
+  }
+
+  async function removeFromQueue(ref) {
+    const hit = locateInQueue(ref);
+    const q = ytQueueEl();
+    const store = queueStore();
+    if (!hit || !q || !store) { status('That song is no longer in the queue.'); publishYtQueue(true); return; }
+    const before = storeItems().length;
+    const shapes = [hit.storeIndex, { index: hit.storeIndex }];
+    for (const payload of shapes) {
+      try {
+        const action = { type: 'REMOVE_ITEM', payload };
+        if (typeof q.dispatch === 'function') q.dispatch(action); else store.dispatch(action);
+      } catch { continue; }
+      if (await waitFor(() => (storeItems()?.length ?? before) < before, 1200)) { publishYtQueue(true); return; }
+    }
+    console.warn("[ytm-remote] couldn't remove from the site queue", hit);
+    status("Couldn't remove that song from YouTube Music's queue.");
+  }
+
   let lastQueueKey = null;
   function publishYtQueue(force) {
     const items = storeItems();
@@ -485,6 +551,10 @@
       await play(value);
     } else if (cmd === 'play_next') {
       await enqueueNext(value);
+    } else if (cmd === 'yt_jump') {
+      await jumpInQueue(value);
+    } else if (cmd === 'yt_remove') {
+      await removeFromQueue(value);
     } else if (cmd === 'queue_remove') {
       dequeue(value);
     } else if (cmd === 'next') {

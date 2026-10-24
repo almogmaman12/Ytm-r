@@ -527,7 +527,13 @@ function drawQueue() {
   $('waitingHead').hidden = waitingItems.length === 0 || siteItems.length === 0;
   $('badge').hidden = total === 0;
   $('badge').textContent = total > 99 ? '99+' : total;
-  for (const r of siteItems) site.append(trackRow(r, null));
+  siteItems.forEach((r, k) => {
+    const ref = `${k}:${r.videoId}`;
+    site.append(trackRow(r, actionButton('i-x', 'Remove from YouTube Music queue', () => cmd('yt_remove', ref)), () => {
+      buzz();
+      if (cmd('yt_jump', ref)) { toast('Jumping to ' + r.title); setView('playing'); }
+    }));
+  });
   for (const r of waitingItems) {
     list.append(trackRow(r, actionButton('i-x', 'Remove from Up next', () => cmd('queue_remove', r.videoId))));
   }
