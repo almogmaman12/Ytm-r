@@ -15,10 +15,15 @@ const MIN_TOKEN_LEN = 20;
 const ALLOWED_CMDS = new Set([
   'play', 'pause', 'toggle', 'next', 'previous', 'volume', 'seek', 'get_state',
   'search', 'play_video', 'play_next', 'queue_remove', 'yt_jump', 'yt_remove', 'yt_reorder',
+  'queue_end', 'queue_clear', 'play_collection', 'collection_next', 'collection_end', 'open', 'library',
 ]);
 const MAX_MSG_BYTES = 65536;        // PC -> server (search results can be a few KB)
 const MAX_PHONE_MSG_BYTES = 1024;   // phone -> server (commands are tiny)
 const VIDEO_ID_RE = /^[A-Za-z0-9_-]{11}$/;
+const PLAYLIST_ID_RE = /^[A-Za-z0-9_-]{2,64}$/;      // albums, playlists, 'LM' (liked songs)
+const BROWSE_ID_RE = /^(UC|MPREb_|VL)[A-Za-z0-9_-]{4,60}$/;   // artist / album / playlist pages
+const SEARCH_KIND_RE = /^(song|album|artist|playlist)\|/;
+const LIBRARY_SECTIONS = new Set(['playlists', 'albums']);
 const QUEUE_REF_RE = /^\d{1,2}:[A-Za-z0-9_-]{11}$/;
 const QUEUE_MOVE_RE = /^\d{1,2}:[A-Za-z0-9_-]{11}:\d{1,2}$/;  // from position : video id : to position   // position in the site queue : video id
 const MAX_CMDS_PER_SEC = 10;        // per phone
@@ -130,15 +135,30 @@ function safeHttps(u, max = 500) {
 
 // Validates and trims a list of tracks coming from the PC before it reaches a phone.
 function cleanTracks(list, limit = 20) {
-  return list
-    .slice(0, limit)
-    .filter((r) => r && VIDEO_ID_RE.test(String(r.videoId)))
-    .map((r) => ({
-      videoId: String(r.videoId),
+  const out = [];
+  for (const r of list) {
+    if (out.length >= limit) break;
+    if (!r || typeof r !== 'object') continue;
+    const kind = ['song', 'album', 'artist', 'playlist'].includes(r.kind) ? r.kind : 'song';
+    const item = {
+      kind,
       title: String(r.title || '').slice(0, 200),
       subtitle: String(r.subtitle || '').slice(0, 200),
       thumb: safeHttps(r.thumb),
-    }));
+    };
+    if (kind === 'song') {
+      if (!VIDEO_ID_RE.test(String(r.videoId))) continue;
+      item.videoId = String(r.videoId);
+    } else if (kind === 'artist') {
+      if (!BROWSE_ID_RE.test(String(r.browseId))) continue;
+      item.browseId = String(r.browseId);
+    } else {
+      if (!PLAYLIST_ID_RE.test(String(r.playlistId))) continue;
+      item.playlistId = String(r.playlistId);
+    }
+    out.push(item);
+  }
+  return out;
 }
 
 function send(ws, obj) {
@@ -264,10 +284,19 @@ wss.on('connection', (ws, { token, role }) => {
         if (!Number.isFinite(v)) return;
         out.value = msg.cmd === 'volume' ? Math.min(100, Math.max(0, v)) : Math.max(0, v);
       } else if (msg.cmd === 'search') {
-        const q = String(msg.value || '').trim().slice(0, 100);
+        const q = String(msg.value || '').trim().slice(0, 110);
         if (!q) return;
         out.value = q;
-      } else if (msg.cmd === 'play_video' || msg.cmd === 'play_next' || msg.cmd === 'queue_remove') {
+      } else if (msg.cmd === 'play_collection' || msg.cmd === 'collection_next' || msg.cmd === 'collection_end') {
+        if (!PLAYLIST_ID_RE.test(String(msg.value))) return;
+        out.value = String(msg.value);
+      } else if (msg.cmd === 'open') {
+        if (!BROWSE_ID_RE.test(String(msg.value))) return;
+        out.value = String(msg.value);
+      } else if (msg.cmd === 'library') {
+        if (!LIBRARY_SECTIONS.has(String(msg.value))) return;
+        out.value = String(msg.value);
+      } else if (msg.cmd === 'play_video' || msg.cmd === 'play_next' || msg.cmd === 'queue_end' || msg.cmd === 'queue_remove') {
         if (!VIDEO_ID_RE.test(String(msg.value))) return;
         out.value = String(msg.value);
       } else if (msg.cmd === 'yt_jump' || msg.cmd === 'yt_remove') {
@@ -306,10 +335,14 @@ wss.on('connection', (ws, { token, role }) => {
       const out = { type: 'ytqueue', items: cleanTracks(msg.items, 50) };
       room.lastYtQueue = out;
       room.phones.forEach((p) => send(p, out));
+    } else if (msg.type === 'library' && Array.isArray(msg.items) && LIBRARY_SECTIONS.has(msg.section)) {
+      const out = { type: 'library', section: msg.section, items: cleanTracks(msg.items, 60) };
+      if (msg.error) out.error = String(msg.error).slice(0, 200);
+      room.phones.forEach((p) => send(p, out));
     } else if (msg.type === 'results' && Array.isArray(msg.results)) {
       const out = {
         type: 'results',
-        query: String(msg.query || '').slice(0, 100),
+        query: String(msg.query || '').slice(0, 120),
         results: cleanTracks(msg.results),
       };
       if (msg.error) out.error = String(msg.error).slice(0, 200);

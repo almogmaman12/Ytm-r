@@ -245,6 +245,48 @@ let port;
   assert.deepStrictEqual(jm.map((m) => m.cmd + ' ' + m.value), ['yt_jump 3:AAAAAAAAAA1', 'yt_remove 0:BBBBBBBBBB2', 'yt_reorder 2:CCCCCCCCCC3:0'], 'only well-formed queue commands pass');
   jmPc.close(); jmPhone.close();
 
+  // Albums, playlists, artists, library: only well-formed ids pass
+  const kTok = 'kindskindskindskindskind_12';
+  const kPc = await open('pc', kTok);
+  const kPhone = await open('phone', kTok);
+  const sendCmd = (cmd, value) => kPhone.send(JSON.stringify({ type: 'cmd', cmd, value }));
+  sendCmd('play_collection', 'OLAK5uy_albumAAAA');
+  sendCmd('collection_next', 'LM');
+  sendCmd('collection_end', 'PL abc; drop');       // bad
+  sendCmd('collection_end', 'x');                  // too short
+  sendCmd('open', 'UCartistAAAAAAAAAAAAAAAA');
+  sendCmd('open', 'https://evil.example');         // bad
+  sendCmd('library', 'playlists');
+  sendCmd('library', 'history');                   // not offered
+  await wait(1100);                                // (the relay allows 10 commands a second per phone)
+  sendCmd('queue_end', 'AAAAAAAAAA1');
+  sendCmd('queue_end', 'short');                   // bad
+  sendCmd('queue_clear');
+  sendCmd('search', 'album|neon harbor');
+  await wait(250);
+  const gotK = kPc.msgs.filter((m) => m.type === 'cmd' && m.cmd !== 'get_state').map((m) => m.cmd + ' ' + (m.value ?? ''));
+  assert.deepStrictEqual(gotK, [
+    'play_collection OLAK5uy_albumAAAA', 'collection_next LM', 'open UCartistAAAAAAAAAAAAAAAA',
+    'library playlists', 'queue_end AAAAAAAAAA1', 'queue_clear ', 'search album|neon harbor',
+  ], 'only well-formed new commands pass');
+  // Results of every kind are cleaned; library is forwarded
+  kPc.send(JSON.stringify({ type: 'results', query: 'album|neon', results: [
+    { kind: 'album', playlistId: 'OLAK5uy_albumAAAA', title: 'A', subtitle: 'B', thumb: 'https://x.test/a.png' },
+    { kind: 'artist', browseId: 'UCartistAAAAAAAAAAAAAAAA', title: 'Art' },
+    { kind: 'playlist', playlistId: 'bad id!', title: 'Nope' },
+    { kind: 'song', videoId: 'AAAAAAAAAA1', title: 'S', thumb: 'javascript:1' },
+    { kind: 'weird', videoId: 'AAAAAAAAAA2', title: 'Defaults to song' } ] }));
+  kPc.send(JSON.stringify({ type: 'library', section: 'albums', items: [{ kind: 'album', playlistId: 'OLAK5uy_savedAAAA', title: 'Saved' }] }));
+  kPc.send(JSON.stringify({ type: 'library', section: 'secrets', items: [] }));
+  await wait(250);
+  const kr = kPhone.msgs.find((m) => m.type === 'results');
+  assert.deepStrictEqual(kr.results.map((r) => r.kind), ['album', 'artist', 'song', 'song'], 'bad ids dropped, unknown kind treated as song');
+  assert.strictEqual(kr.results[3].thumb, '', 'unsafe thumbnail removed');
+  const kl = kPhone.msgs.filter((m) => m.type === 'library');
+  assert.strictEqual(kl.length, 1, 'only known library sections forwarded');
+  assert.strictEqual(kl[0].items[0].playlistId, 'OLAK5uy_savedAAAA');
+  kPc.close(); kPhone.close();
+
   // An oversized message used to crash the whole relay (unhandled socket error)
   const big = await open('phone', 'bigbigbigbigbigbigbigbig_1');
   const closed = new Promise((r) => big.on('close', r));

@@ -23,28 +23,56 @@
 
   // ---- Search ----
 
-  // videoId -> YT Music's own "Play next" command, taken from the search results.
-  const playNextEndpoints = new Map();
+  // Search "filter" parameter per kind of result. If one is refused, the unfiltered search is
+  // used and the results are sorted by kind afterwards.
+  const SEARCH_FILTERS = {
+    song: SONGS_FILTER,
+    album: 'EgWKAQIYAWoMEA4QChADEAQQCRAF',
+    artist: 'EgWKAQIgAWoMEA4QChADEAQQCRAF',
+    playlist: 'Eg-KAQwIABAAGAAgACgBMABqChAEEAMQCRAFEAo=',
+  };
+  const PLAYLIST_ID_RE = /^[A-Za-z0-9_-]{2,64}$/;
+  const BROWSE_ID_RE = /^(UC|MPREb_|VL)[A-Za-z0-9_-]{4,60}$/;
 
-  function findPlayNext(node) {
+  // videoId -> YT Music's own "Play next" / "Add to queue" commands, taken from search results.
+  const playNextEndpoints = new Map();
+  const addEndEndpoints = new Map();
+
+  function findQueueCommand(node, position) {
     if (!node || typeof node !== 'object') return null;
     const item = node.menuServiceItemRenderer;
-    if (item && item.icon?.iconType === 'QUEUE_PLAY_NEXT' && item.serviceEndpoint) {
-      return item.serviceEndpoint;
-    }
-    if (node.queueAddEndpoint?.queueInsertPosition === 'INSERT_AFTER_CURRENT_VIDEO') return node;
+    if (item?.serviceEndpoint?.queueAddEndpoint?.queueInsertPosition === position) return item.serviceEndpoint;
+    if (node.queueAddEndpoint?.queueInsertPosition === position) return node;
     for (const k in node) {
-      const v = findPlayNext(node[k]);
+      const v = findQueueCommand(node[k], position);
       if (v) return v;
     }
     return null;
   }
 
+  function remember_(map, id, ep) {
+    map.delete(id);
+    map.set(id, ep);
+    while (map.size > 200) map.delete(map.keys().next().value);
+  }
+
+  // Every song row and every album / playlist / artist card in a response.
   function collect(node, out) {
     if (!node || typeof node !== 'object') return;
     if (Array.isArray(node)) { node.forEach((n) => collect(n, out)); return; }
-    if (node.musicResponsiveListItemRenderer) out.push(node.musicResponsiveListItemRenderer);
+    if (node.musicResponsiveListItemRenderer) out.push({ r: node.musicResponsiveListItemRenderer, two: false });
+    if (node.musicTwoRowItemRenderer) out.push({ r: node.musicTwoRowItemRenderer, two: true });
     for (const k in node) collect(node[k], out);
+  }
+
+  function findKey(node, key) {
+    if (!node || typeof node !== 'object') return null;
+    if (node[key]) return node[key];
+    for (const k in node) {
+      const v = findKey(node[k], key);
+      if (v) return v;
+    }
+    return null;
   }
 
   function findVideoId(node) {
@@ -57,68 +85,148 @@
     return null;
   }
 
-  function parse(json) {
-    const items = [];
-    collect(json, items);
-    const seen = new Set();
-    const results = [];
-    for (const r of items) {
-      // Songs/videos carry a videoId; albums and artists have a browse endpoint instead.
-      const id = r.playlistItemData?.videoId ||
-        (!r.navigationEndpoint?.browseEndpoint ? findVideoId(r.overlay) : null);
-      if (!id || !ID_RE.test(id) || seen.has(id)) continue;
-      const cols = r.flexColumns || [];
-      const title = runsText(cols[0]?.musicResponsiveListItemFlexColumnRenderer?.text?.runs);
-      if (!title) continue;
-      const ep = findPlayNext(r.menu);
-      if (ep) {
-        playNextEndpoints.delete(id);
-        playNextEndpoints.set(id, ep);
-        while (playNextEndpoints.size > 200) playNextEndpoints.delete(playNextEndpoints.keys().next().value);
-      }
-      const subtitle = runsText(cols[1]?.musicResponsiveListItemFlexColumnRenderer?.text?.runs)
-        .replace(/^(Song|Video)\s*•\s*/, '');
-      const thumbs = r.thumbnail?.musicThumbnailRenderer?.thumbnail?.thumbnails || [];
-      const thumb = thumbs.length ? thumbs[thumbs.length - 1].url : '';
-      seen.add(id);
-      results.push({ videoId: id, title, subtitle, thumb: String(thumb).startsWith('https://') ? thumb : '' });
-      if (results.length >= 15) break;
-    }
-    return results;
+  // What kind of thing is this? Decided from ids, so it works in any language.
+  function kindOf(browseId, playlistId) {
+    if (/^MPREb/.test(browseId)) return 'album';
+    if (/^UC/.test(browseId)) return 'artist';
+    if (/^VL/.test(browseId)) return /^OLAK5uy/.test(playlistId || browseId.slice(2)) ? 'album' : 'playlist';
+    if (/^OLAK5uy/.test(playlistId || '')) return 'album';
+    return playlistId ? 'playlist' : '';
   }
 
-  async function search(query) {
+  // Songs: { kind:'song', videoId, title, subtitle, thumb }
+  // Albums / playlists: { kind, playlistId, title, subtitle, thumb }   (playable as a whole)
+  // Artists: { kind:'artist', browseId, title, subtitle, thumb }       (can be opened)
+  function parseAll(json, limit) {
+    const found = [];
+    collect(json, found);
+    const seen = new Set();
+    const out = [];
+    for (const { r, two } of found) {
+      let title; let subtitle; let thumbs; let videoId = ''; let browseId = ''; let playlistId = '';
+      if (two) {
+        title = runsText(r.title?.runs);
+        subtitle = runsText(r.subtitle?.runs);
+        thumbs = r.thumbnailRenderer?.musicThumbnailRenderer?.thumbnail?.thumbnails;
+        browseId = r.navigationEndpoint?.browseEndpoint?.browseId || '';
+        videoId = r.navigationEndpoint?.watchEndpoint?.videoId || '';
+        playlistId = findKey(r.thumbnailOverlay, 'watchPlaylistEndpoint')?.playlistId || '';
+      } else {
+        const cols = r.flexColumns || [];
+        title = runsText(cols[0]?.musicResponsiveListItemFlexColumnRenderer?.text?.runs);
+        subtitle = runsText(cols[1]?.musicResponsiveListItemFlexColumnRenderer?.text?.runs);
+        thumbs = r.thumbnail?.musicThumbnailRenderer?.thumbnail?.thumbnails;
+        browseId = r.navigationEndpoint?.browseEndpoint?.browseId || '';
+        videoId = r.playlistItemData?.videoId || (!browseId ? findVideoId(r.overlay) || '' : '');
+        playlistId = findKey(r.overlay, 'watchPlaylistEndpoint')?.playlistId || '';
+      }
+      if (!title) continue;
+      if (!playlistId && /^VL/.test(browseId)) playlistId = browseId.slice(2);
+      const arr = thumbs || [];
+      const t = arr.length ? arr[arr.length - 1].url : '';
+      const thumb = String(t).startsWith('https://') ? t : '';
+      let item = null;
+      if (videoId && ID_RE.test(videoId) && !/^(MPREb|UC)/.test(browseId)) {
+        item = { kind: 'song', videoId, title, subtitle: subtitle.replace(/^(Song|Video)\s*•\s*/, ''), thumb };
+        const next = findQueueCommand(r.menu, 'INSERT_AFTER_CURRENT_VIDEO');
+        if (next) remember_(playNextEndpoints, videoId, next);
+        const end = findQueueCommand(r.menu, 'INSERT_AT_END');
+        if (end) remember_(addEndEndpoints, videoId, end);
+      } else {
+        const kind = kindOf(browseId, playlistId);
+        if ((kind === 'album' || kind === 'playlist') && PLAYLIST_ID_RE.test(playlistId)) {
+          item = { kind, playlistId, title, subtitle, thumb };
+        } else if (kind === 'artist' && BROWSE_ID_RE.test(browseId)) {
+          item = { kind, browseId, title, subtitle, thumb };
+        }
+      }
+      if (!item) continue;
+      const key = item.videoId || item.playlistId || item.browseId;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(item);
+      if (out.length >= limit) break;
+    }
+    return out;
+  }
+
+  // The site proves who you are on personal requests with a signature made from one of your
+  // own cookies (SAPISID). Returns the headers for it, or {} if the cookie isn't readable.
+  async function authHeaders() {
+    try {
+      const jar = Object.fromEntries(document.cookie.split('; ').map((c) => { const i = c.indexOf('='); return [c.slice(0, i), c.slice(i + 1)]; }));
+      const sapisid = jar['SAPISID'] || jar['__Secure-3PAPISID'];
+      if (!sapisid || !crypto?.subtle) return {};
+      const ts = Math.floor(Date.now() / 1000);
+      const origin = location.origin;
+      const buf = await crypto.subtle.digest('SHA-1', new TextEncoder().encode(`${ts} ${sapisid} ${origin}`));
+      const hash = [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
+      return { Authorization: `SAPISIDHASH ${ts}_${hash}`, 'X-Goog-AuthUser': '0', 'X-Origin': origin };
+    } catch { return {}; }
+  }
+
+  // One call to YT Music's own API, signed in as you (the same way the site does it).
+  // signed: also send the signature, needed for personal data such as your library.
+  async function innertube(path, body, ms = 8000, signed = false) {
     const cfg = window.ytcfg;
     const key = cfg?.get?.('INNERTUBE_API_KEY');
     const context = cfg?.get?.('INNERTUBE_CONTEXT');
     if (!key || !context) throw new Error("YouTube Music isn't ready yet. Wait a moment and try again");
+    const headers = { 'Content-Type': 'application/json', ...(signed ? await authHeaders() : {}) };
+    const ctrl = new AbortController();
+    const timeout = setTimeout(() => ctrl.abort(), ms);
+    try {
+      const res = await fetch(`/youtubei/v1/${path}?key=${encodeURIComponent(key)}&prettyPrint=false`, {
+        method: 'POST', credentials: 'include', headers,
+        body: JSON.stringify({ context, ...body }), signal: ctrl.signal,
+      });
+      if (!res.ok) throw new Error(`${path} failed (${res.status})`);
+      return await res.json();
+    } catch (e) {
+      if (e && e.name === 'AbortError') throw new Error('YouTube Music took too long. Try again');
+      throw e;
+    } finally { clearTimeout(timeout); }
+  }
 
-    async function call(params) {
-      const body = { context, query };
+  async function search(query, kind = 'song') {
+    if (!SEARCH_FILTERS[kind]) kind = 'song';
+    const call = async (params) => {
+      const body = { query };
       if (params) body.params = params;
-      const ctrl = new AbortController();
-      const timeout = setTimeout(() => ctrl.abort(), 8000);
-      try {
-        const res = await fetch(`/youtubei/v1/search?key=${encodeURIComponent(key)}&prettyPrint=false`, {
-          method: 'POST',
-          credentials: 'include',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
-          signal: ctrl.signal,
-        });
-        if (!res.ok) throw new Error(`Search failed (${res.status})`);
-        return parse(await res.json());
-      } catch (e) {
-        if (e && e.name === 'AbortError') throw new Error('Search timed out. Try again');
-        throw e;
-      } finally {
-        clearTimeout(timeout);
-      }
-    }
-
-    let results = await call(SONGS_FILTER);
+      return parseAll(await innertube('search', body), 40).filter((i) => i.kind === kind);
+    };
+    let results = await call(SEARCH_FILTERS[kind]);
     if (!results.length) results = await call(null); // fall back to unfiltered search
-    return results;
+    return results.slice(0, kind === 'song' ? 15 : 20);
+  }
+
+  // Phone-side library and artist pages.
+  const LIBRARY_BROWSE = { playlists: 'FEmusic_liked_playlists', albums: 'FEmusic_liked_albums' };
+
+  async function loadLibrary(section) {
+    const browseId = LIBRARY_BROWSE[section];
+    if (!browseId) return;
+    try {
+      const json = await innertube('browse', { browseId }, 12000, true);
+      let items = parseAll(json, 60).filter((i) => i.kind === 'album' || i.kind === 'playlist');
+      if (section === 'playlists') {
+        items = items.filter((i) => i.playlistId !== 'LM');
+        items.unshift({ kind: 'playlist', playlistId: 'LM', title: 'Liked songs', subtitle: 'Playlist', thumb: '' });
+      }
+      post({ type: 'library', section, items });
+    } catch (e) {
+      post({ type: 'library', section, items: [], error: String((e && e.message) || e) });
+    }
+  }
+
+  async function openBrowse(browseId) {
+    const query = `open:${browseId}`;
+    try {
+      const json = await innertube('browse', { browseId }, 12000);
+      post({ type: 'results', query, results: parseAll(json, 40) });
+    } catch (e) {
+      post({ type: 'results', query, results: [], error: String((e && e.message) || e) });
+    }
   }
 
   // ---- Playing a song ----
@@ -154,6 +262,27 @@
   //  2. add the song as "play next" in YT Music's own queue, then press Next;
   //  3. last resort: switch the audio only (the page and queue will NOT follow).
   // Returns true if the song started.
+  // Starts something with YT Music's own navigation (the same thing a click on the site does).
+  // Counts only if `followed()` becomes true, i.e. the page address really changed.
+  async function tryNavigate(endpoint, followed) {
+    const app = document.querySelector('ytmusic-app');
+    if (!app) return '';
+    const nav = [];
+    for (const name of ['navigate', 'navigate_']) {
+      if (typeof app[name] === 'function') nav.push([name, () => app[name](endpoint)]);
+    }
+    nav.push(['yt-navigate event', () => app.dispatchEvent(
+      new CustomEvent('yt-navigate', { detail: { endpoint }, bubbles: true, composed: true }))]);
+    for (const [name, fn] of nav) {
+      try { fn(); } catch { continue; }
+      if (await waitFor(followed, 2000)) {
+        console.debug('[ytm-remote] navigated via', name);
+        return name;
+      }
+    }
+    return '';
+  }
+
   async function play(videoId) {
     if (!ID_RE.test(String(videoId))) return false;
     const endpoint = { watchEndpoint: { videoId } };
@@ -162,22 +291,9 @@
     const tried = [];
     const followed = () => urlVideo() === videoId;
 
-    if (app) {
-      const nav = [];
-      for (const name of ['navigate', 'navigate_']) {
-        if (typeof app[name] === 'function') nav.push([name, () => app[name](endpoint)]);
-      }
-      nav.push(['yt-navigate event', () => app.dispatchEvent(
-        new CustomEvent('yt-navigate', { detail: { endpoint }, bubbles: true, composed: true }))]);
-      for (const [name, fn] of nav) {
-        tried.push(name);
-        try { fn(); } catch { continue; }
-        if (await waitFor(followed, 2000)) {
-          await waitForVideo(videoId, 2500);
-          console.debug('[ytm-remote] started song via', name);
-          return true;
-        }
-      }
+    if (app && (await tryNavigate(endpoint, followed))) {
+      await waitForVideo(videoId, 2500);
+      return true;
     }
 
     // YT Music's own queue: insert after the current song, then go to it.
@@ -253,6 +369,7 @@
 
   function remember(results) {
     for (const r of results) {
+      if (r.kind !== 'song') continue;
       known.delete(r.videoId);
       known.set(r.videoId, r);
     }
@@ -417,41 +534,68 @@
   const ytqTimer = setInterval(() => publishYtQueue(false), 1500);
   ac.signal.addEventListener('abort', () => clearInterval(ytqTimer));
 
-  // Asks YT Music for the queue entry of a song (the same call the site makes when you add a song).
-  async function fetchQueueItems(videoId) {
-    const cfg = window.ytcfg;
-    const key = cfg?.get?.('INNERTUBE_API_KEY');
-    const context = cfg?.get?.('INNERTUBE_CONTEXT');
-    if (!key || !context) throw new Error('site config not ready');
-    const ctrl = new AbortController();
-    const timeout = setTimeout(() => ctrl.abort(), 8000);
-    try {
-      const res = await fetch(`/youtubei/v1/music/get_queue?key=${encodeURIComponent(key)}&prettyPrint=false`, {
-        method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ context, videoIds: [videoId] }), signal: ctrl.signal,
-      });
-      if (!res.ok) throw new Error(`get_queue ${res.status}`);
-      const json = await res.json();
-      const items = (json.queueDatas || []).map((d) => d && d.content).filter(Boolean);
-      if (!items.length) throw new Error('get_queue returned nothing');
-      return items;
-    } finally { clearTimeout(timeout); }
+  // Without "selected": a song added to the queue must never look like the one playing.
+  function unselect(item) {
+    const r = item?.playlistPanelVideoRenderer;
+    if (r) return { ...item, playlistPanelVideoRenderer: { ...r, selected: false } };
+    const w = item?.playlistPanelVideoWrapperRenderer?.primaryRenderer?.playlistPanelVideoRenderer;
+    if (w) {
+      const wr = item.playlistPanelVideoWrapperRenderer;
+      return { ...item, playlistPanelVideoWrapperRenderer: { ...wr, primaryRenderer: {
+        ...wr.primaryRenderer, playlistPanelVideoRenderer: { ...w, selected: false } } } };
+    }
+    return item;
   }
 
-  // Inserts the song straight into YT Music's own queue, right after the current song.
-  async function addViaQueueStore(videoId) {
+  // Asks YT Music for the queue entries of songs (videoIds) or of a whole album / playlist
+  // (playlistId): the same call the site makes when you add something to the queue.
+  async function fetchQueueItems(body) {
+    const json = await innertube('music/get_queue', body);
+    const items = (json.queueDatas || []).map((d) => d && d.content).filter(Boolean);
+    if (!items.length) throw new Error('get_queue returned nothing');
+    return items.map(unselect);
+  }
+
+  // Fallback for lists: the "next" endpoint lists a playlist as queue entries too.
+  async function nextItems(playlistId) {
+    const json = await innertube('next', { playlistId, enablePersistentPlaylistPanel: true, isAudioOnly: true }, 12000);
+    const out = [];
+    const walk = (n) => {
+      if (!n || typeof n !== 'object') return;
+      if (Array.isArray(n)) { n.forEach(walk); return; }
+      if (n.playlistPanelVideoWrapperRenderer) {
+        const p = n.playlistPanelVideoWrapperRenderer.primaryRenderer?.playlistPanelVideoRenderer;
+        if (p) out.push(unselect({ playlistPanelVideoRenderer: p }));
+        return;
+      }
+      if (n.playlistPanelVideoRenderer) { out.push(unselect({ playlistPanelVideoRenderer: n.playlistPanelVideoRenderer })); return; }
+      for (const k in n) walk(n[k]);
+    };
+    walk(json);
+    if (!out.length) throw new Error('next returned nothing');
+    return out;
+  }
+
+  async function collectionItems(playlistId) {
+    try { return await fetchQueueItems({ playlistId }); } catch { return nextItems(playlistId); }
+  }
+
+  // Inserts queue entries straight into YT Music's own queue: right after the current song
+  // ('next') or at the very end ('end'). Checks that the queue actually grew.
+  async function insertViaStore(items, where) {
     const q = ytQueueEl();
     const store = queueStore();
-    if (!q || !store) return { ok: false, reason: "queue element not found" };
+    if (!q || !store) return { ok: false, reason: 'queue element not found' };
     const state = store.getState()?.queue;
     const current = state?.items;
     if (!Array.isArray(current)) return { ok: false, reason: 'queue state not readable' };
-    const nowId = currentVideoId();
-    let at = current.findIndex((it) => rendererOf(it)?.selected);
-    if (at < 0 && nowId) at = current.findIndex((it) => rendererOf(it)?.videoId === nowId);
-    const index = at < 0 ? 0 : at + 1;
-    let items;
-    try { items = await fetchQueueItems(videoId); } catch (e) { return { ok: false, reason: String(e.message || e) }; }
+    let index = current.length;
+    if (where !== 'end') {
+      const nowId = currentVideoId();
+      let at = current.findIndex((it) => rendererOf(it)?.selected);
+      if (at < 0 && nowId) at = current.findIndex((it) => rendererOf(it)?.videoId === nowId);
+      index = at < 0 ? 0 : at + 1;
+    }
     const before = queueLen();
     const action = { type: 'ADD_ITEMS', payload: {
       nextQueueItemId: state.nextQueueItemId, index, items, shuffleEnabled: false, shouldAssignIds: true } };
@@ -463,6 +607,13 @@
       if (queueLen() > before) return { ok: true, method: 'queue store' };
     }
     return { ok: false, reason: 'queue did not grow after ADD_ITEMS' };
+  }
+
+  async function addViaQueueStore(videoId, where) {
+    if (!ytQueueEl() || !queueStore()) return { ok: false, reason: 'queue element not found' };
+    let items;
+    try { items = await fetchQueueItems({ videoIds: [videoId] }); } catch (e) { return { ok: false, reason: String(e.message || e) }; }
+    return insertViaStore(items, where);
   }
 
   function protoNames(obj, re) {
@@ -477,9 +628,9 @@
 
   // Sends YT Music's own "Play next" command and checks that its queue grew.
   // Returns { ok: true, method } | { ok: false, reason }.
-  async function addViaCommand(videoId) {
-    const ep = playNextEndpoints.get(videoId);
-    if (!ep) return { ok: false, reason: 'search result had no Play next command' };
+  async function addViaCommand(videoId, where) {
+    const ep = (where === 'end' ? addEndEndpoints : playNextEndpoints).get(videoId);
+    if (!ep) return { ok: false, reason: 'search result had no queue command' };
     const app = document.querySelector('ytmusic-app');
     if (!app) return { ok: false, reason: 'YT Music app element not found' };
 
@@ -510,31 +661,101 @@
     return { ok: false, reason: `no change after ${tried.join(', ')}; page functions: ${names || 'none'}` };
   }
 
-  // Adds a song to YT Music's own queue (after the current song). Tries the queue itself,
-  // then the site's own "Play next" command. Returns { ok: true, method } | { ok: false, reason }.
-  async function addToYtQueue(videoId) {
-    const a = await addViaQueueStore(videoId);
+  // Adds a song to YT Music's own queue ('next' = after the current song, 'end' = last).
+  // Tries the queue itself, then the site's own command.
+  // Returns { ok: true, method } | { ok: false, reason }.
+  async function addToYtQueue(videoId, where = 'next') {
+    const a = await addViaQueueStore(videoId, where);
     if (a.ok) return a;
-    const b = await addViaCommand(videoId);
+    const b = await addViaCommand(videoId, where);
     if (b.ok) return b;
     return { ok: false, reason: `queue: ${a.reason}; command: ${b.reason}` };
   }
 
-  async function enqueueNext(id) {
+  async function enqueue(id, where = 'next') {
     if (!ID_RE.test(String(id))) return;
     const track = known.get(id) || { videoId: id, title: id, subtitle: '', thumb: '' };
-    const r = await addToYtQueue(id);
+    const r = await addToYtQueue(id, where);
     if (r.ok) {
       console.debug('[ytm-remote] added to YT Music queue via', r.method);
       publishYtQueue(true);
-      status(`Added to YouTube Music's queue: ${track.title}`);
+      status(`Added to YouTube Music's queue${where === 'end' ? ' (at the end)' : ''}: ${track.title}`);
       return;
     }
     console.warn('[ytm-remote] using fallback queue:', r.reason);
-    // "Play next" goes to the front and never duplicates.
-    upNext = [track, ...upNext.filter((q) => q.videoId !== id)];
+    // Never duplicates: "play next" goes to the front of the waiting list, "add to end" to the back.
+    const rest = upNext.filter((q) => q.videoId !== id);
+    upNext = where === 'end' ? [...rest, track] : [track, ...rest];
     publishQueue();
     status(`Added to Up next: ${track.title}`);
+  }
+  const enqueueNext = (id) => enqueue(id, 'next');
+
+  // A whole album or playlist, after the current song or at the end of the queue.
+  async function addCollection(playlistId, where) {
+    if (!PLAYLIST_ID_RE.test(String(playlistId))) return;
+    let items;
+    try { items = await collectionItems(playlistId); } catch (e) {
+      console.warn("[ytm-remote] couldn't load the list", e);
+      status("Couldn't load that list from YouTube Music.");
+      return;
+    }
+    const r = await insertViaStore(items, where);
+    if (r.ok) {
+      publishYtQueue(true);
+      status(where === 'end'
+        ? `Added ${items.length} songs to the end of the queue`
+        : `Added ${items.length} songs after the current one`);
+    } else {
+      console.warn("[ytm-remote] couldn't add the list:", r.reason);
+      status("Couldn't add that to YouTube Music's queue.");
+    }
+  }
+
+  // Starts an album / playlist as the new queue, the way clicking Play on the site does.
+  async function playCollection(playlistId) {
+    if (!PLAYLIST_ID_RE.test(String(playlistId))) return;
+    const endpoint = { watchPlaylistEndpoint: { playlistId } };
+    const followed = () => new URLSearchParams(location.search).get('list') === playlistId;
+    if (await tryNavigate(endpoint, followed)) return;
+    // Fallback: start its first song, then put the rest right after it.
+    let items;
+    try { items = await collectionItems(playlistId); } catch { items = []; }
+    const first = rendererOf(items[0])?.videoId;
+    if (first && (await play(first))) {
+      if (items.length > 1) await insertViaStore(items.slice(1), 'next');
+      publishYtQueue(true);
+      return;
+    }
+    status("Couldn't start that. Reload the YouTube Music tab on the PC and try again.");
+  }
+
+  // Removes everything coming up (the current song stays), plus the phone-side waiting list.
+  async function clearQueue() {
+    upNext = [];
+    publishQueue();
+    const q = ytQueueEl();
+    const store = queueStore();
+    const items = storeItems();
+    if (!q || !store || !items) { publishYtQueue(true); return; }
+    const rs = items.map(rendererOf);
+    let at = rs.findIndex((r) => r?.selected);
+    if (at < 0) { const now = currentVideoId(); at = rs.findIndex((r) => r?.videoId === now); }
+    const keep = at < 0 ? 0 : at + 1;
+    if (items.length <= keep) { publishYtQueue(true); return; }
+    queueBusy = true;
+    try {
+      // Highest position first, so the positions still to remove don't move.
+      for (let i = items.length - 1; i >= keep; i--) {
+        if (typeof q.dispatch === 'function') q.dispatch({ type: 'REMOVE_ITEM', payload: i });
+        else store.dispatch({ type: 'REMOVE_ITEM', payload: i });
+      }
+      if (!(await waitFor(() => (storeItems()?.length ?? 0) <= keep, 2500))) status("Couldn't clear all of YouTube Music's queue.");
+    } catch (e) {
+      console.warn("[ytm-remote] couldn't clear the queue", e);
+      status("Couldn't clear YouTube Music's queue.");
+    } finally { queueBusy = false; }
+    publishYtQueue(true);
   }
 
   function dequeue(id) {
@@ -580,7 +801,9 @@
       post({ type: 'hello' });
     } else if (cmd === 'search') {
       try {
-        const results = await search(String(value));
+        // "kind|words" (kind = song, album, artist or playlist); plain words mean songs.
+        const m = /^(song|album|artist|playlist)\|([\s\S]*)$/.exec(String(value));
+        const results = await search(m ? m[2] : String(value), m ? m[1] : 'song');
         remember(results);
         post({ type: 'results', query: value, results });
       } catch (e) {
@@ -592,6 +815,20 @@
       await play(value);
     } else if (cmd === 'play_next') {
       await enqueueNext(value);
+    } else if (cmd === 'queue_end') {
+      await enqueue(value, 'end');
+    } else if (cmd === 'queue_clear') {
+      await clearQueue();
+    } else if (cmd === 'play_collection') {
+      await playCollection(value);
+    } else if (cmd === 'collection_next') {
+      await addCollection(value, 'next');
+    } else if (cmd === 'collection_end') {
+      await addCollection(value, 'end');
+    } else if (cmd === 'open') {
+      if (BROWSE_ID_RE.test(String(value))) await openBrowse(String(value));
+    } else if (cmd === 'library') {
+      await loadLibrary(String(value));
     } else if (cmd === 'yt_jump') {
       await jumpInQueue(value);
     } else if (cmd === 'yt_reorder') {

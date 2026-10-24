@@ -228,6 +228,7 @@
     if (d.type === 'hello') pageIsReady = true;
     else if (d.type === 'volume') { if (isFinite(d.value)) { pageVolume = Number(d.value); reportSoon(); } }
     else if (d.type === 'queue') sendWs({ type: 'queue', items: Array.isArray(d.items) ? d.items : [] });
+    else if (d.type === 'library') sendWs({ type: 'library', section: d.section, items: Array.isArray(d.items) ? d.items : [], error: d.error });
     else if (d.type === 'ytqueue') sendWs({ type: 'ytqueue', items: Array.isArray(d.items) ? d.items : [] });
     else if (d.type === 'status') sendWs({ type: 'status', message: String(d.message || '') });
     else if (d.type === 'results') {
@@ -278,15 +279,26 @@
       case 'yt_jump':
       case 'yt_remove':
       case 'yt_reorder':
+      case 'queue_end':
+      case 'queue_clear':
+      case 'play_collection':
+      case 'collection_next':
+      case 'collection_end':
+      case 'open':
+      case 'library':
         if (!(await pageReady())) {
           sendWs({ type: 'status', message: 'Reload the YouTube Music tab on the PC, then try again.' });
           if (cmd === 'search') {
             sendWs({ type: 'results', query: value, results: [], error: 'Reload the YouTube Music tab on the PC' });
+          } else if (cmd === 'open') {
+            sendWs({ type: 'results', query: `open:${value}`, results: [], error: 'Reload the YouTube Music tab on the PC' });
+          } else if (cmd === 'library') {
+            sendWs({ type: 'library', section: value, items: [], error: 'Reload the YouTube Music tab on the PC' });
           }
           return;
         }
         toPage(cmd, value);
-        if (cmd === 'search') return; // results come back asynchronously
+        if (cmd === 'search' || cmd === 'open' || cmd === 'library') return; // answers come back asynchronously
         break;
       case 'get_state':
         if (await pageReady()) toPage('get_state');

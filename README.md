@@ -23,9 +23,10 @@ your git repo --push--> your relay server <--wss--> phone page
 
 ## What you can do from the phone
 - Play, pause, next, previous, seek and volume (the volume is the site's own player volume, shown live).
-- Search for songs and tap one to play it. It starts the way a click on the site would, so the page, title and queue follow.
-- **Play next:** adds a song straight into YouTube Music's own queue, right after the current song. If the site refuses, it goes into a short "Waiting to be queued" list on the phone and plays when the current song ends.
-- **Up next:** shows YouTube Music's real queue. Tap a song to jump to it, press ✕ to remove it, or press **Edit** and drag the handles to reorder.
+- **Search** songs, albums, artists or playlists (chips under the search box). Tap a song, album or playlist to play it; it starts the way a click on the site would, so the page, title and queue follow. Tap an artist to see their songs and albums, with a **Back** button.
+- **Play next / add to end:** every song, album and playlist has two buttons. They put a song, or a whole album or playlist, into YouTube Music's own queue right after the current song, or at the very end. If the site refuses a single song, it goes into a short "Waiting to be queued" list on the phone and plays when the current song ends.
+- **Library:** your playlists (with Liked songs first) and saved albums, from your own signed-in YouTube Music. Same tap and buttons as search results.
+- **Up next:** shows YouTube Music's real queue. Tap a song to jump to it, press ✕ to remove it, press **Edit** to drag the handles and reorder, or **Clear** to remove everything coming up (the song playing stays).
 
 ## Setup (about 10 minutes)
 
@@ -87,7 +88,7 @@ Check your workplace's IT policy before installing extensions or sending traffic
 - **Relay on a free plan:** it sleeps when idle; both sides reconnect on their own.
 
 ## Known limitations
-- Search, tap-to-play and the queue features rely on YT Music internals (its search API, page router and queue store), which Google can change without notice. Fix it in `server/public/ota/page.js` and push; the extension picks it up by itself.
+- Search, library, tap-to-play and the queue features rely on YT Music internals (its search and browse APIs, page router and queue store), which Google can change without notice. Fix it in `server/public/ota/page.js` and push; the extension picks it up by itself.
 - Reordering moves a song by removing and re-adding it in the site's queue, one drag at a time.
 - If the queue panel never shows your songs on the phone, open the PC's page console (F12): the script logs a warning there saying which step failed.
 - Run tests with `cd server && npm test`.
