@@ -136,50 +136,112 @@
     return false;
   }
 
+  const urlVideo = () => { try { return new URLSearchParams(location.search).get('v') || ''; } catch { return ''; } };
+
+  async function waitFor(fn, ms) {
+    const end = Date.now() + ms;
+    while (Date.now() < end) {
+      if (fn()) return true;
+      await sleep(120);
+    }
+    return !!fn();
+  }
+
   // Starts a song WITHOUT reloading the page (a reload triggers Chrome's
-  // "changes may not be saved" prompt). Tries several methods and checks which one worked.
+  // "changes may not be saved" prompt). The song has to start the way a click on the site
+  // would start it, so the page, the title and the queue all follow. Methods, in order:
+  //  1. YT Music's own navigation (counts only if the page address really changes);
+  //  2. add the song as "play next" in YT Music's own queue, then press Next;
+  //  3. last resort: switch the audio only (the page and queue will NOT follow).
   // Returns true if the song started.
   async function play(videoId) {
     if (!ID_RE.test(String(videoId))) return false;
     const endpoint = { watchEndpoint: { videoId } };
     const app = document.querySelector('ytmusic-app');
     const player = getPlayer();
-    const canVerify = typeof player?.getVideoData === 'function';
-    const attempts = [];
+    const tried = [];
+    const followed = () => urlVideo() === videoId;
 
     if (app) {
+      const nav = [];
       for (const name of ['navigate', 'navigate_']) {
-        if (typeof app[name] === 'function') attempts.push([name, () => app[name](endpoint)]);
+        if (typeof app[name] === 'function') nav.push([name, () => app[name](endpoint)]);
       }
-      attempts.push(['yt-navigate event', () => app.dispatchEvent(
+      nav.push(['yt-navigate event', () => app.dispatchEvent(
         new CustomEvent('yt-navigate', { detail: { endpoint }, bubbles: true, composed: true }))]);
-    }
-    if (player && typeof player.loadVideoById === 'function') {
-      attempts.push(['player.loadVideoById', () => player.loadVideoById(videoId)]);
+      for (const [name, fn] of nav) {
+        tried.push(name);
+        try { fn(); } catch { continue; }
+        if (await waitFor(followed, 2000)) {
+          await waitForVideo(videoId, 2500);
+          console.debug('[ytm-remote] started song via', name);
+          return true;
+        }
+      }
     }
 
-    const tried = [];
-    for (const [name, fn] of attempts) {
-      tried.push(name);
-      try { fn(); } catch { continue; }
-      // If we can't read the player's current video, trust the first call that didn't throw.
-      if (!canVerify || await waitForVideo(videoId, 2500)) {
-        console.debug('[ytm-remote] started song via', name);
+    // YT Music's own queue: insert after the current song, then go to it.
+    const added = await addToYtQueue(videoId);
+    tried.push('queue+next');
+    if (added.ok) {
+      document.querySelector('ytmusic-player-bar .next-button')?.click();
+      if (await waitForVideo(videoId, 3500)) {
+        console.debug('[ytm-remote] started song via queue+next');
         return true;
       }
     }
 
-    // Nothing worked. Keep the details for debugging, and do NOT reload the page.
-    const navLike = [];
-    for (let o = app; o && o !== Object.prototype; o = Object.getPrototypeOf(o)) {
-      for (const k of Object.getOwnPropertyNames(o)) {
-        if (/nav/i.test(k) && !navLike.includes(k)) navLike.push(k);
+    if (player && typeof player.loadVideoById === 'function') {
+      tried.push('player.loadVideoById');
+      try { player.loadVideoById(videoId); } catch { /* fall through */ }
+      if (await waitForVideo(videoId, 2500)) {
+        console.warn('[ytm-remote] started song with audio only; the page may not follow', { tried });
+        return true;
       }
     }
-    console.warn('[ytm-remote] could not start song', { tried, navLike });
+
+    console.warn('[ytm-remote] could not start song', { tried, addFailed: added.ok ? '' : added.reason });
     status("Couldn't start that song. Reload the YouTube Music tab on the PC and try again.");
     return false;
   }
+
+  // ---- Volume ----
+
+  // The player's own volume (0-100). Setting it the way the site's slider does keeps the
+  // slider, the saved volume and the audio in step.
+  function setVolume(value) {
+    const n = Math.round(Number(value));
+    if (!isFinite(n)) return;
+    const vol = Math.min(100, Math.max(0, n));
+    const player = getPlayer();
+    try { if (vol > 0 && player?.isMuted?.()) player.unMute(); } catch { /* ignore */ }
+    try { player?.setVolume?.(vol); } catch { /* ignore */ }
+    const v = document.querySelector('video');
+    if (v && !player?.setVolume) v.volume = vol / 100;
+    // Move the site's own slider too, so what the PC shows matches.
+    const slider = document.querySelector('ytmusic-player-bar #volume-slider');
+    if (slider) {
+      try {
+        slider.value = vol;
+        slider.dispatchEvent(new Event('change', { bubbles: true }));
+      } catch { /* ignore */ }
+    }
+    reportVolume(true);
+  }
+
+  let lastVol = null;
+  function reportVolume(force) {
+    let vol = null;
+    try { vol = getPlayer()?.getVolume?.(); } catch { /* ignore */ }
+    if (typeof vol !== 'number' || !isFinite(vol)) return;
+    vol = Math.round(vol);
+    if (!force && vol === lastVol) return;
+    lastVol = vol;
+    post({ type: 'volume', value: vol });
+  }
+  const volTimer = setInterval(() => reportVolume(false), 1000);
+  ac.signal.addEventListener('abort', () => clearInterval(volTimer));
+  document.addEventListener('volumechange', () => reportVolume(false), { capture: true, ...sig });
 
   // ---- "Play next" ----
 
@@ -310,6 +372,8 @@
       } catch (e) {
         post({ type: 'results', query: value, results: [], error: String((e && e.message) || e) });
       }
+    } else if (cmd === 'volume') {
+      setVolume(value);
     } else if (cmd === 'play_video') {
       await play(value);
     } else if (cmd === 'play_next') {
@@ -325,4 +389,5 @@
 
   post({ type: 'hello' });
   publishQueue();
+  reportVolume(true);
 })();

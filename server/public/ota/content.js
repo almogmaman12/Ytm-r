@@ -152,12 +152,12 @@
     const title = b.querySelector('.title')?.textContent?.trim() || '';
     const byline = b.querySelector('.byline')?.textContent?.trim() || '';
     const art = b.querySelector('img#img')?.src || b.querySelector('.image')?.src || '';
-    const slider = b.querySelector('#volume-slider');
     return {
       title,
       artist: byline.split('•')[0].trim(),
       playing: v ? !v.paused : false,
-      volume: slider ? Number(slider.value) : v ? Math.round(v.volume * 100) : null,
+      // The player's own volume comes from page.js; the site's slider can't be read from here.
+      volume: pageVolume != null ? pageVolume : v ? Math.round(v.volume * 100) : null,
       position: v && isFinite(v.currentTime) ? Math.floor(v.currentTime) : null,
       duration: v && isFinite(v.duration) ? Math.floor(v.duration) : null,
       art: art.startsWith('https://') ? art : '',
@@ -206,6 +206,7 @@
 
   // ---- Talking to page.js (runs in the page's own JS world) ----
   let pageIsReady = false;
+  let pageVolume = null;
   const toPage = (cmd, value) => window.postMessage(
     { source: 'ytmr-ext', cmd, value: value == null ? '' : String(value) }, location.origin);
 
@@ -225,6 +226,7 @@
     if (ev.source !== window || !ev.data || ev.data.source !== 'ytmr-page') return;
     const d = ev.data;
     if (d.type === 'hello') pageIsReady = true;
+    else if (d.type === 'volume') { if (isFinite(d.value)) { pageVolume = Number(d.value); reportSoon(); } }
     else if (d.type === 'queue') sendWs({ type: 'queue', items: Array.isArray(d.items) ? d.items : [] });
     else if (d.type === 'status') sendWs({ type: 'status', message: String(d.message || '') });
     else if (d.type === 'results') {
@@ -254,13 +256,9 @@
       case 'volume': {
         const n = Number(value);
         if (!isFinite(n)) return;
-        const slider = bar()?.querySelector('#volume-slider');
-        if (slider) {
-          slider.value = n;
-          slider.dispatchEvent(new Event('change', { bubbles: true }));
-        } else if (v) {
-          v.volume = Math.min(1, Math.max(0, n / 100));
-        }
+        // Only the page's own player can change the volume the way the site does.
+        if (await pageReady()) toPage('volume', n);
+        else if (v) v.volume = Math.min(1, Math.max(0, n / 100));
         break;
       }
       case 'seek': {
