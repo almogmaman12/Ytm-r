@@ -297,7 +297,7 @@
   // Finds a song in YT Music's queue from "position:videoId" (position counts from the first
   // song after the current one). The id is checked, so a queue that changed meanwhile is safe.
   function locateInQueue(ref) {
-    const [ks, id] = String(ref).split(':');
+    const [ks, id] = String(ref).split(':'); // (a trailing :u / :d direction is ignored here)
     const k = Number(ks);
     const items = storeItems();
     if (!items || !ID_RE.test(id || '') || !isFinite(k)) return null;
@@ -311,7 +311,8 @@
       pos = rs.findIndex((r, j) => j > at && r.videoId === id);
       if (pos < 0) return null;
     }
-    return { id, storeIndex: idxs[pos], steps: pos - at, rowIndex: pos };
+    return { id, storeIndex: idxs[pos], steps: pos - at, rowIndex: pos,
+      prevIndex: pos - 1 > at ? idxs[pos - 1] : -1, nextIndex: pos + 1 < idxs.length ? idxs[pos + 1] : -1 };
   }
 
   async function jumpInQueue(ref) {
@@ -358,6 +359,37 @@
     }
     console.warn("[ytm-remote] couldn't remove from the site queue", hit);
     status("Couldn't remove that song from YouTube Music's queue.");
+  }
+
+  // Moves one song up or down by one place. The queue's own actions are used in pairs
+  // (remove, then insert at the new place), and the new order is checked afterwards.
+  async function moveInQueue(value) {
+    const dir = String(value).split(':')[2];
+    const hit = locateInQueue(value);
+    const q = ytQueueEl();
+    const store = queueStore();
+    if (!hit || !q || !store) { status('That song is no longer in the queue.'); publishYtQueue(true); return; }
+    const to = dir === 'u' ? hit.prevIndex : hit.nextIndex;
+    if (to < 0) return; // already first / last
+    const run = (action) => { if (typeof q.dispatch === 'function') q.dispatch(action); else store.dispatch(action); };
+    const idsBefore = storeItems().map((it) => rendererOf(it)?.videoId);
+    const item = storeItems()[hit.storeIndex];
+    const len = idsBefore.length;
+    try {
+      run({ type: 'REMOVE_ITEM', payload: hit.storeIndex });
+      if (!(await waitFor(() => (storeItems()?.length ?? len) < len, 1200))) {
+        run({ type: 'REMOVE_ITEM', payload: { index: hit.storeIndex } });
+        if (!(await waitFor(() => (storeItems()?.length ?? len) < len, 1200))) throw new Error('remove failed');
+      }
+      const state = store.getState().queue;
+      run({ type: 'ADD_ITEMS', payload: {
+        nextQueueItemId: state.nextQueueItemId, index: to, items: [item], shuffleEnabled: false, shouldAssignIds: true } });
+      if (!(await waitFor(() => (storeItems()?.length ?? 0) >= len, 1500))) throw new Error('re-insert failed');
+    } catch (e) {
+      console.warn("[ytm-remote] couldn't reorder the site queue", e);
+      status("Couldn't reorder YouTube Music's queue.");
+    }
+    publishYtQueue(true);
   }
 
   let lastQueueKey = null;
@@ -553,6 +585,8 @@
       await enqueueNext(value);
     } else if (cmd === 'yt_jump') {
       await jumpInQueue(value);
+    } else if (cmd === 'yt_move') {
+      await moveInQueue(value);
     } else if (cmd === 'yt_remove') {
       await removeFromQueue(value);
     } else if (cmd === 'queue_remove') {

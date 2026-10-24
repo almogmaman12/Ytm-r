@@ -237,9 +237,12 @@ let port;
   jmPhone.send(JSON.stringify({ type: 'cmd', cmd: 'yt_remove', value: '0:BBBBBBBBBB2' }));
   jmPhone.send(JSON.stringify({ type: 'cmd', cmd: 'yt_jump', value: '3;rm -rf' }));
   jmPhone.send(JSON.stringify({ type: 'cmd', cmd: 'yt_remove', value: 'BBBBBBBBBB2' }));
+  jmPhone.send(JSON.stringify({ type: 'cmd', cmd: 'yt_move', value: '2:CCCCCCCCCC3:u' }));
+  jmPhone.send(JSON.stringify({ type: 'cmd', cmd: 'yt_move', value: '2:CCCCCCCCCC3:x' }));
+  jmPhone.send(JSON.stringify({ type: 'cmd', cmd: 'yt_move', value: '2:CCCCCCCCCC3' }));
   await wait(200);
   const jm = jmPc.msgs.filter((m) => m.type === 'cmd' && m.cmd !== 'get_state');
-  assert.deepStrictEqual(jm.map((m) => m.cmd + ' ' + m.value), ['yt_jump 3:AAAAAAAAAA1', 'yt_remove 0:BBBBBBBBBB2'], 'only well-formed queue commands pass');
+  assert.deepStrictEqual(jm.map((m) => m.cmd + ' ' + m.value), ['yt_jump 3:AAAAAAAAAA1', 'yt_remove 0:BBBBBBBBBB2', 'yt_move 2:CCCCCCCCCC3:u'], 'only well-formed queue commands pass');
   jmPc.close(); jmPhone.close();
 
   // An oversized message used to crash the whole relay (unhandled socket error)
