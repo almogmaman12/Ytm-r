@@ -40,7 +40,7 @@ Local test: `cd server && npm install && npm start`, then open http://localhost:
 Needs Chrome 135 or newer.
 1. Clone or download your fork. Open `chrome://extensions`, turn on **Developer mode**, press **Load unpacked** and pick the `extension/` folder.
 2. Open the extension's **Details** page and turn on **Allow User Scripts** (Chrome 138+; on older versions Developer mode is enough). The settings page tells you if this is still off.
-3. The extension has no toolbar button on purpose, so it stays out of sight. Open its settings from `chrome://extensions` → **Details** → **Extension options** (it also opens by itself right after install). On that page enter your relay address (for example `https://my-relay.onrender.com`), press **Generate token**, then **Save & connect**. It should say the remote code is loaded.
+3. The extension is named "Tab Helper" in Chrome (a deliberately plain name, so it doesn't stand out on your own machine). Click its icon, or open `chrome://extensions` → **Details** → **Extension options**; the settings page also opens by itself right after install. On that page enter your relay address (for example `https://my-relay.onrender.com`), press **Generate token**, then **Save & connect**. It should say the remote code is loaded.
 4. Open `music.youtube.com`. The settings page shows the tab as connected.
 
 ### 3. Open the phone page
