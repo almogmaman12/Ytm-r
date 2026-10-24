@@ -256,6 +256,7 @@
     <div id="libTabs" class="chips" role="group" aria-label="Library section">
       <button class="chip" data-section="playlists" aria-pressed="true">Playlists</button>
       <button class="chip" data-section="albums" aria-pressed="false">Albums</button>
+      <button class="chip" data-section="history" aria-pressed="false">Recently played</button>
     </div>
     <div id="libMsg" class="hint"></div>
     <ul id="libList" class="tracks"></ul>
@@ -744,7 +745,7 @@ let libSection = 'playlists';
 const libCache = {};
 let libTimer = null;
 function loadLibrary(force) {
-  if (!force && libCache[libSection]) { drawLibrary(libCache[libSection]); return; }
+  if (!force && libCache[libSection] && libSection !== 'history') { drawLibrary(libCache[libSection]); return; }  // history changes as you listen
   $('libList').textContent = '';
   $('libMsg').textContent = 'Loading…';
   if (!cmd('library', libSection)) { $('libMsg').textContent = 'Not connected to your PC yet.'; return; }

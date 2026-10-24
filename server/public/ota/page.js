@@ -201,14 +201,15 @@
   }
 
   // Phone-side library and artist pages.
-  const LIBRARY_BROWSE = { playlists: 'FEmusic_liked_playlists', albums: 'FEmusic_liked_albums' };
+  const LIBRARY_BROWSE = { playlists: 'FEmusic_liked_playlists', albums: 'FEmusic_liked_albums', history: 'FEmusic_history' };
 
   async function loadLibrary(section) {
     const browseId = LIBRARY_BROWSE[section];
     if (!browseId) return;
     try {
       const json = await innertube('browse', { browseId }, 12000, true);
-      let items = parseAll(json, 60).filter((i) => i.kind === 'album' || i.kind === 'playlist');
+      // Recently played is a list of songs (each song once, newest first); the rest are albums and playlists.
+      let items = parseAll(json, 60).filter((i) => (section === 'history' ? i.kind === 'song' : i.kind === 'album' || i.kind === 'playlist'));
       if (section === 'playlists') {
         items = items.filter((i) => i.playlistId !== 'LM');
         items.unshift({ kind: 'playlist', playlistId: 'LM', title: 'Liked songs', subtitle: 'Playlist', thumb: '' });

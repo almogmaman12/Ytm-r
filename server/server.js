@@ -23,7 +23,7 @@ const VIDEO_ID_RE = /^[A-Za-z0-9_-]{11}$/;
 const PLAYLIST_ID_RE = /^[A-Za-z0-9_-]{2,64}$/;      // albums, playlists, 'LM' (liked songs)
 const BROWSE_ID_RE = /^(UC|MPREb_|VL)[A-Za-z0-9_-]{4,60}$/;   // artist / album / playlist pages
 const SEARCH_KIND_RE = /^(song|album|artist|playlist)\|/;
-const LIBRARY_SECTIONS = new Set(['playlists', 'albums']);
+const LIBRARY_SECTIONS = new Set(['playlists', 'albums', 'history']);
 const QUEUE_REF_RE = /^\d{1,2}:[A-Za-z0-9_-]{11}$/;
 const QUEUE_MOVE_RE = /^\d{1,2}:[A-Za-z0-9_-]{11}:\d{1,2}$/;  // from position : video id : to position   // position in the site queue : video id
 const MAX_CMDS_PER_SEC = 10;        // per phone
@@ -101,6 +101,36 @@ function serveOtaManifest(req, res) {
     console.error('OTA manifest error:', e.message);
     plain(res, 500, 'OTA payload is misconfigured', OTA_CORS);
   }
+}
+
+// ---- Logging: who connected and who sent what ----
+// Goes to the server's normal output (Render: the Logs tab). The token itself is never logged,
+// only a short fingerprint of it ("room"), so lines from one setup can be matched up.
+const LOG_COMMANDS = process.env.LOG_COMMANDS !== '0';           // LOG_COMMANDS=0 turns command lines off
+const QUIET_CMDS = new Set(['volume', 'seek', 'get_state']);    // fire constantly; shown only with LOG_ALL=1
+const clean = (v, n = 60) => String(v == null ? '' : v).replace(/[^\x20-\x7e]/g, '?').slice(0, n);
+const roomId = (token) => crypto.createHash('sha256').update(token).digest('hex').slice(0, 6);
+
+function log(room, text) {
+  console.log(`${new Date().toISOString()} [room ${room}] ${text}`);
+}
+
+// "Android Chrome", "iOS Safari", "Windows Chrome", ...: enough to tell your devices apart.
+function deviceLabel(ua = '') {
+  const os = /iPhone|iPad|iPod/.test(ua) ? 'iOS' : /Android/.test(ua) ? 'Android' : /Windows/.test(ua) ? 'Windows'
+    : /Macintosh|Mac OS X/.test(ua) ? 'Mac' : /CrOS/.test(ua) ? 'ChromeOS' : /Linux/.test(ua) ? 'Linux' : 'Unknown OS';
+  const br = /Edg\//.test(ua) ? 'Edge' : /OPR\//.test(ua) ? 'Opera' : /Firefox\/|FxiOS/.test(ua) ? 'Firefox'
+    : /SamsungBrowser/.test(ua) ? 'Samsung Internet' : /Chrome\/|CriOS/.test(ua) ? 'Chrome'
+    : /Safari\//.test(ua) ? 'Safari' : ua ? 'other browser' : 'no user-agent';
+  return `${os} ${br}`;
+}
+
+// The caller's address. Behind a host's proxy (Render, Fly...) it arrives in X-Forwarded-For.
+// Only for the log: it can be faked by a client talking to the server directly.
+function clientIp(req) {
+  const xff = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
+  const ip = xff || req.socket.remoteAddress || '';
+  return /^[0-9a-fA-F:.]{3,45}$/.test(ip) ? ip.replace(/^::ffff:/, '') : 'unknown';
 }
 
 // token -> { pc: ws|null, phones: Set<ws>, lastState: object|null }
@@ -224,22 +254,27 @@ server.on('upgrade', (req, socket, head) => {
   const role = url.searchParams.get('role');
   if (token.length < MIN_TOKEN_LEN || token.length > 200 || !/^[A-Za-z0-9_-]+$/.test(token) ||
       (role !== 'pc' && role !== 'phone')) {
+    if (LOG_COMMANDS) console.log(`${new Date().toISOString()} [rejected] bad connection request from ${clientIp(req)} (${deviceLabel(String(req.headers['user-agent'] || ''))})`);
     return rejectUpgrade(socket, 400, 'Bad Request');
   }
   if (wss.clients.size >= MAX_CLIENTS) return rejectUpgrade(socket, 503, 'Service Unavailable');
 
   wss.handleUpgrade(req, socket, head, (ws) => {
-    wss.emit('connection', ws, { token, role });
+    wss.emit('connection', ws, {
+      token, role, ip: clientIp(req), device: deviceLabel(String(req.headers['user-agent'] || '')),
+    });
   });
 });
 
-wss.on('connection', (ws, { token, role }) => {
+wss.on('connection', (ws, { token, role, ip, device }) => {
+  const rid = roomId(token);
+  const who = `${device}, ${ip}`;
   // Without an error listener, a bad frame or an oversized message would crash the whole server.
   ws.on('error', () => {});
 
   if (role === 'phone') {
     const existing = rooms.get(token);
-    if (existing && existing.phones.size >= MAX_PHONES_PER_ROOM) return ws.close(4001, 'too many phones');
+    if (existing && existing.phones.size >= MAX_PHONES_PER_ROOM) { log(rid, `phone refused (too many phones): ${who}`); return ws.close(4001, 'too many phones'); }
   }
 
   const room = getRoom(token);
@@ -255,11 +290,15 @@ wss.on('connection', (ws, { token, role }) => {
   };
 
   if (role === 'pc') {
-    if (room.pc && room.pc !== ws) room.pc.close(4000, 'replaced');
+    if (room.pc && room.pc !== ws) { log(rid, `PC replaced: ${room.pc.who} is out, ${who} is in`); room.pc.close(4000, 'replaced'); }
     room.pc = ws;
+    ws.who = who;
+    log(rid, `PC connected: ${who}`);
     room.phones.forEach((p) => send(p, { type: 'pc_status', online: true }));
   } else {
     room.phones.add(ws);
+    ws.who = who;
+    log(rid, `phone connected: ${who}  (${room.phones.size} phone${room.phones.size === 1 ? '' : 's'})`);
     send(ws, { type: 'pc_status', online: !!room.pc });
     if (room.lastState) send(ws, { type: 'state', state: room.lastState });
     if (room.lastYtQueue) send(ws, room.lastYtQueue);
@@ -277,7 +316,7 @@ wss.on('connection', (ws, { token, role }) => {
     if (role === 'phone') {
       if (raw.length > MAX_PHONE_MSG_BYTES || msg.type !== 'cmd') return;
       if (overLimit(MAX_CMDS_PER_SEC)) return;
-      if (!ALLOWED_CMDS.has(msg.cmd)) return;
+      if (!ALLOWED_CMDS.has(msg.cmd)) { if (LOG_COMMANDS) log(rid, `unknown command ${clean(msg.cmd, 30)} refused  from ${who}`); return; }
       const out = { type: 'cmd', cmd: msg.cmd };
       if (msg.cmd === 'volume' || msg.cmd === 'seek') {
         const v = Number(msg.value);
@@ -305,6 +344,9 @@ wss.on('connection', (ws, { token, role }) => {
       } else if (msg.cmd === 'yt_reorder') {
         if (!QUEUE_MOVE_RE.test(String(msg.value))) return;
         out.value = String(msg.value);
+      }
+      if (LOG_COMMANDS && (process.env.LOG_ALL === '1' || !QUIET_CMDS.has(out.cmd))) {
+        log(rid, `command ${out.cmd}${out.value != null && out.value !== '' ? ' ' + clean(out.value) : ''}  from ${who}${room.pc ? '' : '  (PC offline, not delivered)'}`);
       }
       send(room.pc, out);
       return;
@@ -350,7 +392,8 @@ wss.on('connection', (ws, { token, role }) => {
     }
   });
 
-  ws.on('close', () => {
+  ws.on('close', (code) => {
+    log(rid, `${role === 'pc' ? 'PC' : 'phone'} disconnected: ${who}${code === 4000 ? ' (replaced by another PC)' : ''}`);
     if (role === 'pc') {
       if (room.pc === ws) {
         room.pc = null;

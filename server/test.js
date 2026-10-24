@@ -1,6 +1,10 @@
 // Integration test: fake PC + fake phone against the relay.
 const assert = require('assert');
 const WebSocket = require('ws');
+// The relay's log lines are collected (and checked) instead of flooding the test output.
+const logLines = [];
+const realLog = console.log;
+console.log = (...a) => { logLines.push(a.join(' ')); };
 const { server } = require('./server');
 
 const TOKEN = 'abcdefghijklmnopqrstuvwx_1234';
@@ -257,7 +261,7 @@ let port;
   sendCmd('open', 'UCartistAAAAAAAAAAAAAAAA');
   sendCmd('open', 'https://evil.example');         // bad
   sendCmd('library', 'playlists');
-  sendCmd('library', 'history');                   // not offered
+  sendCmd('library', 'secrets');                   // not offered
   await wait(1100);                                // (the relay allows 10 commands a second per phone)
   sendCmd('queue_end', 'AAAAAAAAAA1');
   sendCmd('queue_end', 'short');                   // bad
@@ -287,6 +291,30 @@ let port;
   assert.strictEqual(kl[0].items[0].playlistId, 'OLAK5uy_savedAAAA');
   kPc.close(); kPhone.close();
 
+  // The log says which device did what, and never contains the token
+  logLines.length = 0;
+  const lgTok = 'logginglogginglogging_001';
+  const lgPc = await open('pc', lgTok);
+  const lgPhone = await new Promise((resolve, reject) => {
+    const w = new WebSocket(`ws://localhost:${port}/ws?role=phone&token=${lgTok}`, { headers: {
+      'user-agent': 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 Chrome/120.0 Mobile Safari/537.36',
+      'x-forwarded-for': '203.0.113.7, 10.0.0.1' } });
+    w.on('open', () => resolve(w)); w.on('error', reject);
+  });
+  lgPhone.send(JSON.stringify({ type: 'cmd', cmd: 'play_video', value: 'AAAAAAAAAA1' }));
+  lgPhone.send(JSON.stringify({ type: 'cmd', cmd: 'volume', value: 30 }));
+  lgPhone.send(JSON.stringify({ type: 'cmd', cmd: 'rm_rf', value: 'x' }));
+  await wait(200);
+  lgPhone.close(); lgPc.close();
+  await wait(150);
+  const logText = logLines.join('\n');
+  assert.ok(/phone connected: Android Chrome, 203\.0\.113\.7/.test(logText), 'phone connection logged with device and address');
+  assert.ok(/command play_video AAAAAAAAAA1\s+from Android Chrome, 203\.0\.113\.7/.test(logText), 'command logged with device');
+  assert.ok(!/command volume/.test(logText), 'noisy commands stay out of the log');
+  assert.ok(/unknown command rm_rf refused/.test(logText), 'refused commands logged');
+  assert.ok(/PC connected/.test(logText) && /phone disconnected/.test(logText), 'PC connection and disconnection logged');
+  assert.ok(!logText.includes(lgTok), 'token never appears in the log');
+
   // An oversized message used to crash the whole relay (unhandled socket error)
   const big = await open('phone', 'bigbigbigbigbigbigbigbig_1');
   const closed = new Promise((r) => big.on('close', r));
@@ -310,6 +338,7 @@ let port;
   assert.strictEqual(code11, 4001, '11th phone refused');
   phones.forEach((p) => p.close());
 
+  console.log = realLog;
   console.log('All relay tests passed');
   process.exit(0);
-})().catch((e) => { console.error('FAIL:', e.message); process.exit(1); });
+})().catch((e) => { console.log = realLog; console.error('FAIL:', e.message); process.exit(1); });

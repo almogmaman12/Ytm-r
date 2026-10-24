@@ -25,7 +25,7 @@ your git repo --push--> your relay server <--wss--> phone page
 - Play, pause, next, previous, seek and volume (the volume is the site's own player volume, shown live).
 - **Search** songs, albums, artists or playlists (chips under the search box). Tap a song, album or playlist to play it; it starts the way a click on the site would, so the page, title and queue follow. Tap an artist to see their songs and albums, with a **Back** button.
 - **Play next / add to end:** every song, album and playlist has two buttons. They put a song, or a whole album or playlist, into YouTube Music's own queue right after the current song, or at the very end. If the site refuses a single song, it goes into a short "Waiting to be queued" list on the phone and plays when the current song ends.
-- **Library:** your playlists (with Liked songs first) and saved albums, from your own signed-in YouTube Music. Same tap and buttons as search results.
+- **Library:** your playlists (with Liked songs first), saved albums and **Recently played** songs, from your own signed-in YouTube Music. Same tap and buttons as search results, so you can go back to a song from earlier.
 - **Up next:** shows YouTube Music's real queue. Tap a song to jump to it, press ✕ to remove it, press **Edit** to drag the handles and reorder, or **Clear** to remove everything coming up (the song playing stays).
 
 ## Setup (about 10 minutes)
@@ -70,6 +70,17 @@ Anything pushed to the branch your relay deploys becomes code that runs in your 
 - Turn on Dependabot alerts and security updates, and keep secret scanning and push protection on.
 - Make sure Render (or your host) deploys only the branch you trust.
 - Git stores your email in every commit and the repo is public. Turn on "Keep my email addresses private" and "Block command line pushes that expose my email" in GitHub's email settings, and commit with your `…@users.noreply.github.com` address.
+
+## Who is using it (relay logs)
+The relay prints one line per event to its normal output (on Render: the service's **Logs** tab), for example:
+```
+2026-10-24T19:39:06Z [room 6b353d] phone connected: Android Chrome, 203.0.113.7  (1 phone)
+2026-10-24T19:39:08Z [room 6b353d] command play_video AAAAAAAAAA1  from Android Chrome, 203.0.113.7
+```
+- Each line shows the device (system and browser, from its User-Agent) and the network address it connected from. Connections, disconnections, a PC being replaced, refused commands and rejected connection attempts are logged too.
+- The token is never logged; `room` is a short fingerprint of it, so lines from one setup can be matched up. An address you don't recognise next to a `command` line means someone has your token: generate a new one.
+- Volume, seek and state requests fire constantly, so they are left out. Set `LOG_ALL=1` to include them, or `LOG_COMMANDS=0` to log only connections.
+- The address comes from your host's proxy header, so it is the real client address on Render, Fly and similar hosts. It can be faked by someone talking to the server directly, so treat it as a clue.
 
 ## Other security notes
 - The token is the only credential for the phone side. Use 20+ random characters and HTTPS. Anyone with it can control playback and see the current track title.
