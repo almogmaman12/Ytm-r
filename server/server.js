@@ -102,7 +102,7 @@ const rooms = new Map();
 function getRoom(token) {
   let room = rooms.get(token);
   if (!room) {
-    room = { pc: null, phones: new Set(), lastState: null };
+    room = { pc: null, phones: new Set(), lastState: null, lastYtQueue: null };
     rooms.set(token, room);
   }
   return room;
@@ -127,9 +127,9 @@ function safeHttps(u, max = 500) {
 }
 
 // Validates and trims a list of tracks coming from the PC before it reaches a phone.
-function cleanTracks(list) {
+function cleanTracks(list, limit = 20) {
   return list
-    .slice(0, 20)
+    .slice(0, limit)
     .filter((r) => r && VIDEO_ID_RE.test(String(r.videoId)))
     .map((r) => ({
       videoId: String(r.videoId),
@@ -240,6 +240,7 @@ wss.on('connection', (ws, { token, role }) => {
     room.phones.add(ws);
     send(ws, { type: 'pc_status', online: !!room.pc });
     if (room.lastState) send(ws, { type: 'state', state: room.lastState });
+    if (room.lastYtQueue) send(ws, room.lastYtQueue);
     if (room.pc) send(room.pc, { type: 'cmd', cmd: 'get_state' });
   }
 
@@ -291,6 +292,11 @@ wss.on('connection', (ws, { token, role }) => {
       room.phones.forEach((p) => send(p, out));
     } else if (msg.type === 'queue' && Array.isArray(msg.items)) {
       const out = { type: 'queue', items: cleanTracks(msg.items) };
+      room.phones.forEach((p) => send(p, out));
+    } else if (msg.type === 'ytqueue' && Array.isArray(msg.items)) {
+      // YouTube Music's own queue (the songs after the current one).
+      const out = { type: 'ytqueue', items: cleanTracks(msg.items, 50) };
+      room.lastYtQueue = out;
       room.phones.forEach((p) => send(p, out));
     } else if (msg.type === 'results' && Array.isArray(msg.results)) {
       const out = {

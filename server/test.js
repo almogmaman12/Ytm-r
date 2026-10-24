@@ -214,6 +214,21 @@ let port;
   const lastState = phone.msgs.filter((m) => m.type === 'state').pop();
   assert.strictEqual(lastState.state.art, '', 'javascript: art removed');
 
+  // The site's own queue is forwarded, cleaned, and replayed to a phone that joins later
+  const yqTok = 'ytqueueytqueueytqueue_1';
+  const yqPc = await open('pc', yqTok);
+  yqPc.send(JSON.stringify({ type: 'ytqueue', items: [
+    { videoId: 'AAAAAAAAAA1', title: 'One', subtitle: 'Band', thumb: 'javascript:alert(1)' },
+    { videoId: 'bad id', title: 'Nope' } ] }));
+  await wait(100);
+  const yqPhone = await open('phone', yqTok);
+  await wait(150);
+  const yq = yqPhone.msgs.find((m) => m.type === 'ytqueue');
+  assert.ok(yq, 'late phone gets the cached site queue');
+  assert.strictEqual(yq.items.length, 1, 'invalid ids dropped');
+  assert.strictEqual(yq.items[0].thumb, '', 'unsafe thumbnail removed');
+  yqPc.close(); yqPhone.close();
+
   // An oversized message used to crash the whole relay (unhandled socket error)
   const big = await open('phone', 'bigbigbigbigbigbigbigbig_1');
   const closed = new Promise((r) => big.on('close', r));

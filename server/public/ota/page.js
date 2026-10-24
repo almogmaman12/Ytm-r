@@ -282,6 +282,34 @@
   const rendererOf = (item) => item?.playlistPanelVideoRenderer
     || item?.playlistPanelVideoWrapperRenderer?.primaryRenderer?.playlistPanelVideoRenderer || null;
 
+  // ---- Show YT Music's own queue on the phone ----
+  function trackOf(renderer) {
+    const thumbs = renderer.thumbnail?.thumbnails || [];
+    const thumb = (thumbs[thumbs.length - 1]?.url) || '';
+    return {
+      videoId: renderer.videoId,
+      title: runsText(renderer.title?.runs) || String(renderer.title?.simpleText || ''),
+      subtitle: runsText((renderer.shortBylineText || renderer.longBylineText)?.runs),
+      thumb,
+    };
+  }
+
+  let lastQueueKey = null;
+  function publishYtQueue(force) {
+    const items = storeItems();
+    if (!items) return;
+    const rs = items.map(rendererOf).filter((r) => r && ID_RE.test(String(r.videoId)));
+    let at = rs.findIndex((r) => r.selected);
+    if (at < 0) { const now = currentVideoId(); at = rs.findIndex((r) => r.videoId === now); }
+    const upcoming = rs.slice(at + 1, at + 51);
+    const key = upcoming.map((r) => r.videoId).join(',');
+    if (!force && key === lastQueueKey) return;
+    lastQueueKey = key;
+    post({ type: 'ytqueue', items: upcoming.map(trackOf) });
+  }
+  const ytqTimer = setInterval(() => publishYtQueue(false), 1500);
+  ac.signal.addEventListener('abort', () => clearInterval(ytqTimer));
+
   // Asks YT Music for the queue entry of a song (the same call the site makes when you add a song).
   async function fetchQueueItems(videoId) {
     const cfg = window.ytcfg;
@@ -391,6 +419,7 @@
     const r = await addToYtQueue(id);
     if (r.ok) {
       console.debug('[ytm-remote] added to YT Music queue via', r.method);
+      publishYtQueue(true);
       status(`Added to YouTube Music's queue: ${track.title}`);
       return;
     }
@@ -462,6 +491,7 @@
       nextTrack();
     } else if (cmd === 'get_state') {
       publishQueue();
+      publishYtQueue(true);
     }
   }, sig);
 

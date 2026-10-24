@@ -104,6 +104,7 @@
   .hint:empty { display: none; }
   .empty { margin: 48px 12px; text-align: center; color: var(--muted); font-size: 16px; line-height: 1.45; }
   .empty strong { display: block; color: var(--ink); font-size: 19px; margin-bottom: 6px; font-weight: 650; }
+  h3.sub { margin: 18px 4px 6px; font-size: 14px; font-weight: 650; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
   h2.section { margin: 6px 4px 10px; font-size: 26px; font-weight: 750; letter-spacing: -.02em; }
 
   ul.tracks { list-style: none; margin: 0; padding: 0; }
@@ -229,7 +230,9 @@
 
   <section id="v-queue" class="view" aria-label="Up next" hidden>
     <h2 class="section">Up next</h2>
-    <div id="queueEmpty" class="empty"><strong>Nothing queued</strong>Songs you add with the queue button on a search result show up here.</div>
+    <div id="queueEmpty" class="empty"><strong>Nothing queued</strong>The songs coming up in YouTube Music show here. Add more with the queue button on a search result.</div>
+    <ul id="ytqueue" class="tracks"></ul>
+    <h3 id="waitingHead" class="sub" hidden>Waiting to be queued</h3>
     <ul id="queue" class="tracks"></ul>
   </section>
 
@@ -349,6 +352,7 @@ function connect() {
     else if (m.type === 'results') renderResults(m);
     else if (m.type === 'status') toast(m.message);
     else if (m.type === 'queue') renderQueue(m.items);
+    else if (m.type === 'ytqueue') renderYtQueue(m.items);
   };
   sock.onclose = () => {
     if (ws !== sock) return;
@@ -511,13 +515,20 @@ function actionButton(icon, label, handler) {
   return b;
 }
 
-function renderQueue(items) {
-  const list = $('queue');
+let waitingItems = [], siteItems = [];
+function renderQueue(items) { waitingItems = items; drawQueue(); }
+function renderYtQueue(items) { siteItems = items; drawQueue(); }
+function drawQueue() {
+  const site = $('ytqueue'), list = $('queue');
+  site.textContent = '';
   list.textContent = '';
-  $('queueEmpty').hidden = items.length > 0;
-  $('badge').hidden = items.length === 0;
-  $('badge').textContent = items.length;
-  for (const r of items) {
+  const total = siteItems.length + waitingItems.length;
+  $('queueEmpty').hidden = total > 0;
+  $('waitingHead').hidden = waitingItems.length === 0 || siteItems.length === 0;
+  $('badge').hidden = total === 0;
+  $('badge').textContent = total > 99 ? '99+' : total;
+  for (const r of siteItems) site.append(trackRow(r, null));
+  for (const r of waitingItems) {
     list.append(trackRow(r, actionButton('i-x', 'Remove from Up next', () => cmd('queue_remove', r.videoId))));
   }
 }

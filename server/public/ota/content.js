@@ -228,6 +228,7 @@
     if (d.type === 'hello') pageIsReady = true;
     else if (d.type === 'volume') { if (isFinite(d.value)) { pageVolume = Number(d.value); reportSoon(); } }
     else if (d.type === 'queue') sendWs({ type: 'queue', items: Array.isArray(d.items) ? d.items : [] });
+    else if (d.type === 'ytqueue') sendWs({ type: 'ytqueue', items: Array.isArray(d.items) ? d.items : [] });
     else if (d.type === 'status') sendWs({ type: 'status', message: String(d.message || '') });
     else if (d.type === 'results') {
       sendWs({
