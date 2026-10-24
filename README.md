@@ -2,6 +2,8 @@
 
 Control YouTube Music playing on a PC from your phone, with no shared Google account.
 
+> **Two versions.** This branch (`main`) is the simple one: you install the extension and update it by hand. The [`feature/ota-remote-loader` branch](https://github.com/almogmaman12/Ytm-r/tree/feature/ota-remote-loader) is the self-updating version, where the extension downloads its code from your own relay, and it also shows and edits YouTube Music's queue from the phone. Pick one; they don't work together.
+
 ```
 Phone page  <--wss-->  Relay server  <--wss-->  Chrome extension  -->  music.youtube.com
 ```
@@ -37,7 +39,7 @@ Visit your relay URL on your phone, paste the same token, and tap Connect. Use "
 - The token is the only credential. Treat it like a password and use at least 20 random characters. Use HTTPS only.
 - Anyone with the token can control playback and see the current track title. Nothing else is exposed.
 - The server rejects unknown commands, clamps values, rate-limits commands, and caps message size.
-- The extension only requests access to `music.youtube.com` plus `storage`, `tabs` (to find the YT Music tab) and `alarms` (reconnect).
+- The extension only requests access to `music.youtube.com` plus `storage`, `tabs` (to find the YT Music tab), `alarms` (reconnect) and `scripting` (to start itself in a YouTube Music tab that was already open).
 
 ## Work computers
 Check your workplace's IT policy before installing extensions or sending traffic to an external server. This project does not try to hide itself from IT or monitoring tools.
@@ -46,6 +48,7 @@ Check your workplace's IT policy before installing extensions or sending traffic
 Type in the search box on the phone page and tap a result to play it. Tap the ⏭ button on a result to play it next; queued songs show in an "Up next" list with ✕ to remove. The search runs inside the YT Music tab on the PC using your own signed-in session there, so it respects your region and account. Both the extension (v1.4.0 or newer) and the relay need updating for this to work.
 
 ## Updating
+After the first install, updates are manual:
 1. The relay redeploys itself when you push to GitHub (Render). Update it first.
 2. Replace the `extension` folder with the new one and press the reload icon on the extension in `chrome://extensions`. It loads itself into any open YouTube Music tab, so you normally do not need to reload the tab. If something still does not respond, reload the tab once.
 3. The phone page updates the next time you open it.
@@ -58,6 +61,7 @@ Type in the search box on the phone page and tap a result to play it. Tap the �
 
 ## Known limitations
 - Needs Chrome 116 or newer on the PC.
+- Updating the extension is manual (replace the folder, then reload it). For automatic updates from your own server, see the `feature/ota-remote-loader` branch.
 - YT Music's page structure changes occasionally. If a button stops working, the selectors in `extension/content.js` may need updating.
 - Search and tap-to-play rely on YT Music internals (its search API and page router), which Google can change without notice.
 - "Play next" first tries YT Music's own queue (it sends the same command as the site's menu and checks that the queue grew). If that does not work, the song goes into a fallback "Up next" list kept by this extension; that list does not appear in YT Music's own queue, is cleared if the tab is reloaded, and plays when the current song ends or when you press next on the phone. The phone's status line says which one was used.
