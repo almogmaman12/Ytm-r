@@ -7,6 +7,8 @@
 (() => {
   const CFG = globalThis.__YTMR_CONFIG__ || {};
   if (!CFG.relay || !CFG.token) return;
+  // Regular YouTube (only if the owner turned it on in the extension's settings). YouTube Music is the main target.
+  const IS_YT = location.hostname === 'www.youtube.com';
 
   // ---- Lifecycle: exactly one live copy per tab ----
   // A newer copy (an update applied to an open tab) tells the older one to stop.
@@ -169,7 +171,25 @@
   const bar = () => q('ytmusic-player-bar');
   const video = () => q('video');
 
+  // Regular YouTube: the video page's own title and channel.
+  function getYtState() {
+    const v = video();
+    const id = new URLSearchParams(location.search).get('v') || '';
+    if (!v || !/^[A-Za-z0-9_-]{11}$/.test(id) || !isFinite(v.duration)) return null;
+    const title = q('h1.ytd-watch-metadata')?.textContent?.trim() || document.title.replace(/\s*-\s*YouTube\s*$/, '').replace(/^\(\d+\)\s*/, '');
+    const channel = q('ytd-watch-metadata ytd-channel-name a, #owner ytd-channel-name a')?.textContent?.trim() || '';
+    return {
+      site: 'yt', title, artist: channel,
+      playing: !v.paused,
+      volume: pageVolume != null ? pageVolume : Math.round(v.volume * 100),
+      position: isFinite(v.currentTime) ? Math.floor(v.currentTime) : null,
+      duration: Math.floor(v.duration),
+      art: `https://i.ytimg.com/vi/${id}/hqdefault.jpg`,
+    };
+  }
+
   function getState() {
+    if (IS_YT) return getYtState();
     const b = bar();
     const v = video();
     if (!b) return null;
@@ -177,6 +197,7 @@
     const byline = b.querySelector('.byline')?.textContent?.trim() || '';
     const art = b.querySelector('img#img')?.src || b.querySelector('.image')?.src || '';
     return {
+      site: 'ytm',
       title,
       artist: byline.split('•')[0].trim(),
       playing: v ? !v.paused : false,
@@ -254,6 +275,7 @@
     else if (d.type === 'queue') sendWs({ type: 'queue', items: Array.isArray(d.items) ? d.items : [] });
     else if (d.type === 'health') sendWs({ type: 'health', checks: Array.isArray(d.checks) ? d.checks : [] });
     else if (d.type === 'library') sendWs({ type: 'library', section: d.section, items: Array.isArray(d.items) ? d.items : [], shelves: Array.isArray(d.shelves) ? d.shelves : undefined, error: d.error });
+    else if (d.type === 'blocklist') sendWs({ type: 'blocklist', items: Array.isArray(d.items) ? d.items : [] });
     else if (d.type === 'suggest') sendWs({ type: 'suggest', query: String(d.query || ''), items: Array.isArray(d.items) ? d.items : [] });
     else if (d.type === 'ytqueue') sendWs({ type: 'ytqueue', items: Array.isArray(d.items) ? d.items : [] });
     else if (d.type === 'status') sendWs({ type: 'status', message: String(d.message || '') });
@@ -274,7 +296,42 @@
     if (el) el.click();
   }
 
+  // Regular YouTube has no bar like YouTube Music: control the video itself.
+  async function runYt(cmd, value) {
+    const v = video();
+    const ytBtn = (sel) => { const el = q('#movie_player ' + sel); if (el && el.offsetParent !== null) { el.click(); return true; } return false; };
+    switch (cmd) {
+      case 'play': if (v && v.paused) v.play().catch(() => {}); break;
+      case 'pause': if (v && !v.paused) v.pause(); break;
+      case 'toggle': if (v) { v.paused ? v.play().catch(() => {}) : v.pause(); } break;
+      case 'previous': if (!ytBtn('.ytp-prev-button') && v) v.currentTime = 0; break;
+      case 'next': ytBtn('.ytp-next-button'); break;
+      case 'seek': { const n = Number(value); if (v && isFinite(n)) v.currentTime = n; break; }
+      case 'volume': {
+        const n = Number(value);
+        if (!isFinite(n)) return;
+        if (await pageReady()) toPage('volume', n); else if (v) v.volume = Math.min(1, Math.max(0, n / 100));
+        break;
+      }
+      case 'play_video': if (/^[A-Za-z0-9_-]{11}$/.test(String(value))) location.assign('/watch?v=' + value); return;
+      case 'search': case 'health': case 'suggest':
+        if (!(await pageReady())) { sendWs({ type: 'status', message: 'Reload the YouTube tab on the PC, then try again.' }); return; }
+        toPage(cmd, value);
+        return;
+      case 'library': sendWs({ type: 'library', section: value, items: [], error: 'The library is only available on YouTube Music' }); return;
+      case 'open': sendWs({ type: 'results', query: `open:${value}`, results: [], error: 'Only available on YouTube Music' }); return;
+      case 'related': sendWs({ type: 'results', query: `related:${value}`, results: [], error: 'Only available on YouTube Music' }); return;
+      case 'get_state': break;
+      default:
+        sendWs({ type: 'status', message: 'That only works on YouTube Music. This tab is regular YouTube.' });
+        return;
+    }
+    report(true);
+    setTimeout(() => report(true), 250);
+  }
+
   async function run(cmd, value, by) {
+    if (IS_YT) return runYt(cmd, value);
     const v = video();
     switch (cmd) {
       case 'play': if (v && v.paused) click('#play-pause-button'); break;
@@ -316,6 +373,9 @@
       case 'health':
       case 'related':
       case 'suggest':
+      case 'block_current':
+      case 'block_remove':
+      case 'block_list':
         if (!(await pageReady())) {
           sendWs({ type: 'status', message: 'Reload the YouTube Music tab on the PC, then try again.' });
           if (cmd === 'search') {
@@ -343,5 +403,10 @@
     setTimeout(() => report(true), 250);
   }
 
-  connect();
+  if (IS_YT) {
+    // Don't take the connection from a YouTube Music tab just by being open: wait until a video plays here.
+    replaced = true;
+  } else {
+    connect();
+  }
 })();

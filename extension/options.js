@@ -70,6 +70,7 @@ async function refresh() {
 async function load() {
   const c = await chrome.storage.local.get(['relayUrl', 'token', 'allowHttp', 'pcCode', 'agent']);
   $('agent').checked = c.agent !== false;
+  $('youtube').checked = !!c.youtube && await chrome.permissions.contains({ origins: ['https://www.youtube.com/*'] }).catch(() => false);
   $('pccode').value = c.pcCode || '';
   if (c.pcCode) $('pcdetails').open = true;
   $('url').value = c.relayUrl || '';
@@ -78,6 +79,19 @@ async function load() {
   refresh();
 }
 
+$('youtube').onchange = async () => {
+  const origins = ['https://www.youtube.com/*'];
+  if ($('youtube').checked) {
+    const ok = await chrome.permissions.request({ origins }).catch(() => false);
+    $('youtube').checked = ok;
+    await chrome.storage.local.set({ youtube: ok });
+    say(ok ? 'Regular YouTube is on. Reload any open YouTube tab once.' : 'Chrome did not give the permission, so YouTube stays off.', ok ? 'ok' : 'warn');
+  } else {
+    await chrome.storage.local.set({ youtube: false });
+    await chrome.permissions.remove({ origins }).catch(() => {});
+    say('Regular YouTube is off.', 'ok');
+  }
+};
 $('gen').onclick = () => { $('token').value = randomToken(); say('New token. Save it, then enter the same token on your phone.'); };
 $('copy').onclick = async () => {
   try { await navigator.clipboard.writeText($('token').value.trim()); say('Token copied.', 'ok'); } catch { say('Could not copy. Select the token and copy it by hand.', 'bad'); }

@@ -10,12 +10,16 @@
 //   - redirects to other addresses are refused;
 //   - every file must match the SHA-256 fingerprint in the relay's manifest and start with the
 //     payload marker, so an error page or a half-written file is never run;
-//   - it only runs on https://music.youtube.com/*, and the extension has no other site access;
+//   - it only runs on https://music.youtube.com/*, plus https://www.youtube.com/* if (and only if) you
+//     switch that on in the settings and approve Chrome's permission prompt; no other site access;
 //   - a bad or unreachable download never replaces the copy that already works.
 
 const SHELL_API = 1;            // payloads that need a newer shell are not installed
 const SCRIPT_PREFIX = 'ytmr-';
 const YTM = 'https://music.youtube.com/*';
+const YT = 'https://www.youtube.com/*';          // optional: regular YouTube, off unless enabled in the settings
+let ytOn = false;
+const siteMatches = () => (ytOn ? [YTM, YT] : [YTM]);
 const CHECK_EVERY_MINUTES = 10;
 const MAX_FILE_BYTES = 400000;
 const MARKER = '// ytmr-payload';
@@ -35,8 +39,9 @@ function relayOrigin(raw, allowHttp) {
 }
 
 async function getConfig() {
-  const c = await chrome.storage.local.get(['relayUrl', 'token', 'allowHttp', 'pcCode']);
+  const c = await chrome.storage.local.get(['relayUrl', 'token', 'allowHttp', 'pcCode', 'youtube']);
   pcCodeNow = c.pcCode || '';
+  ytOn = !!c.youtube && await chrome.permissions.contains({ origins: [YT] }).catch(() => false);
   return { relayUrl: c.relayUrl || '', token: c.token || '', allowHttp: !!c.allowHttp };
 }
 
@@ -76,7 +81,7 @@ function validateManifest(m) {
 
 // The optional PC code (see the README) travels to the page script together with the token.
 let pcCodeNow = '';
-const cfgKey = (origin, token) => `${origin}|${token}|${pcCodeNow}`;
+const cfgKey = (origin, token) => `${origin}|${token}|${pcCodeNow}|${ytOn ? 'yt' : ''}`;
 
 async function saveStatus(patch) {
   const { ota = {} } = await chrome.storage.local.get('ota');
@@ -101,7 +106,7 @@ async function registerFiles(origin, token, version, files) {
   if (existing.length) await chrome.userScripts.unregister({ ids: existing });
   await chrome.userScripts.register(ordered(files).map(([name, f]) => ({
     id: SCRIPT_PREFIX + name,
-    matches: [YTM],
+    matches: siteMatches(),
     js: [{ code: codeFor(f, origin, token, version) }],
     runAt: 'document_idle',
     world: f.world,
@@ -111,7 +116,7 @@ async function registerFiles(origin, token, version, files) {
 // Tabs that are already open get the new code straight away. The new copy tells the old one
 // to stop, so nothing runs twice and the page does not need to be reloaded.
 async function applyToOpenTabs(origin, token, version, files) {
-  const tabs = await chrome.tabs.query({ url: YTM });
+  const tabs = await chrome.tabs.query({ url: siteMatches() });
   if (!tabs.length) return true;
   if (typeof chrome.userScripts.execute !== 'function') return false;
   let ok = true;
@@ -337,7 +342,11 @@ chrome.tabs.onUpdated.addListener(async (tabId, info, tab) => {
   if (Date.now() - (ota.checkedAt || 0) > 120000) checkForUpdate();
 });
 
+chrome.permissions.onAdded.addListener(() => { ensureRegistered().catch(() => {}); });
+chrome.permissions.onRemoved.addListener(() => { ensureRegistered().catch(() => {}); });
+
 chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === 'local' && changes.youtube) checkForUpdate({ force: true });
   if (area === 'local' && (changes.relayUrl || changes.token || changes.allowHttp || changes.pcCode)) checkForUpdate({ force: true });
   if (area === 'local' && (changes.relayUrl || changes.token || changes.allowHttp || changes.pcCode || changes.agent)) { stopAgent(); ensureAgent().catch(() => {}); }
 });

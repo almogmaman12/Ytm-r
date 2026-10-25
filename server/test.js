@@ -366,6 +366,25 @@ let port;
   assert(hPhone.msgs.some((m) => m.type === 'pc_status' && m.online && m.version === '2026.10.25-abc'), 'phones are told the PC code version');
   [hPc, hPhone].forEach((w) => w.close());
 
+  // ---- Do-not-play list commands ----
+  const bTok = 'blockblockblockblock_88888';
+  const bPc = await open('pc', bTok);
+  const bPhone = await open('phone', bTok);
+  await wait(100);
+  for (const [c, v] of [['block_current', 'artist'], ['block_current', 'bogus'], ['block_remove', 'song:AAAAAAAAAA1'], ['block_remove', 'artist:Daft Punk'], ['block_remove', 'song:../x'], ['block_remove', 'other:x'], ['block_list', undefined]]) {
+    bPhone.send(JSON.stringify({ type: 'cmd', cmd: c, value: v }));
+  }
+  await wait(150);
+  const blockGot = bPc.msgs.filter((m) => m.type === 'cmd' && m.cmd !== 'get_state').map((m) => `${m.cmd} ${m.value}`);
+  assert.deepStrictEqual(blockGot, ['block_current artist', 'block_current song', 'block_remove song:AAAAAAAAAA1', 'block_remove artist:Daft Punk', 'block_list undefined'], 'block commands are validated');
+  bPc.send(JSON.stringify({ type: 'blocklist', items: [{ kind: 'song', id: 'AAAAAAAAAA1', title: 'T' }, { kind: 'artist', id: 'שלום', title: 'שלום' }, { kind: 'bad', id: 'x' }, 7] }));
+  bPc.send(JSON.stringify({ type: 'state', state: { title: 'x', artist: 'y', playing: true, site: 'yt' } }));
+  await wait(150);
+  const bl = bPhone.msgs.find((m) => m.type === 'blocklist');
+  assert(bl && bl.items.length === 2 && bl.items[1].id === 'שלום', 'block list is cleaned and keeps any language');
+  assert(bPhone.msgs.some((m) => m.type === 'state' && m.state.site === 'yt'), 'phone is told which site is playing');
+  [bPc, bPhone].forEach((w) => w.close());
+
   process.env.ACCESS_CODE = 'open-sesame-123';
   process.env.PC_CODE = 'pc-secret-456';
   const cTok = 'codecodecodecodecodecode_77';

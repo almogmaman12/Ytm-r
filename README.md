@@ -19,7 +19,7 @@ your git repo --push--> your relay server <--wss--> phone page
 |---|---|
 | `server/` | Node relay (`ws`). Forwards commands by secret token, serves the phone page (`server/public/`) and serves the extension's code from `server/public/ota/`. |
 | `server/public/ota/` | **The part that updates over the air.** `page.js` and `content.js` (the code that runs on music.youtube.com) and `ota.json` (which files, and where they run). |
-| `extension/` | The **shell**, installed once. It stores your relay address and token, downloads the files listed by your relay, checks them, and runs them on `music.youtube.com` only. |
+| `extension/` | The **shell**, installed once. It stores your relay address and token, downloads the files listed by your relay, checks them, and runs them on `music.youtube.com` (and on `www.youtube.com` only if you switch that on). |
 
 ## What you can do from the phone
 - Play, pause, next, previous, seek and volume (the volume is the site's own player volume, shown live).
@@ -34,6 +34,8 @@ your git repo --push--> your relay server <--wss--> phone page
 - **Search suggestions and history:** suggestions appear as you type, and an empty search box lists your recent searches (kept on the phone only, with a clear button).
 - **Update notice:** when the code on your PC changes after a push, the phone says so ("The PC picked up an update: version …"), and Settings shows the version running on the PC.
 - **Repair note:** shortly after the PC connects (and when the version changes, or every 30 minutes), the phone quietly runs the quick connection check. If something fails it shows a plain-language note, for example that queue changes may not work while playback still does.
+- **Do-not-play list:** **Never play…** on the Playing screen blocks the current song or its artist. Blocked songs are skipped automatically on the PC, even from autoplay or radio (if everything coming up is blocked it pauses instead of skipping forever). The list is in Settings, where each entry has **Allow again**. Songs you pick yourself on the phone still play. The list is kept in the PC's browser, not on the relay.
+- **Regular YouTube (optional):** tick **Also control regular YouTube** in the extension's Advanced settings and approve Chrome's prompt. Then play, pause, seek, volume, next/previous, search for videos and tap-to-play work on `www.youtube.com`, and the phone shows what is playing there. The queue, library, home, radio and block list stay YouTube Music only. A YouTube tab only takes over the connection once a video plays in it, so it doesn't push out your YouTube Music tab.
 - **Reopen YouTube Music:** if the tab was closed, the phone shows an **Open YouTube Music on the PC** button instead of leaving you at "PC offline". While no tab is open the extension keeps one idle connection to your relay (using the same PC code), and the button makes it open `music.youtube.com`. That connection can do nothing else. Chrome itself must still be running on the PC. You can turn it off with the checkbox in the extension's Advanced settings (reload the extension once after updating).
 - **Up next:** shows YouTube Music's real queue. Tap a song to jump to it, press ✕ to remove it, press **Edit** to drag the handles and reorder, or **Clear** to remove everything coming up (the song playing stays).
 
@@ -104,7 +106,7 @@ The relay prints one line per event to its normal output (on Render: the service
 ## Other security notes
 - Without access codes the token is the only credential for the phone side (see above to add them). Use 20+ random characters and HTTPS. Anyone with it can control playback and see the current track title.
 - The relay accepts only a fixed list of commands, clamps values, rate-limits and caps message sizes. Its CORS headers are open only under `/ota/` (public code, no secrets).
-- The extension asks for access to `music.youtube.com` only, plus `storage`, `alarms` and `userScripts`. Token and relay address are kept on this PC (`storage.local`), not synced.
+- The extension asks for access to `music.youtube.com`, plus `storage`, `alarms` and `userScripts`. Access to `www.youtube.com` is optional: it is requested only when you tick the box in the settings, and Chrome shows its own permission prompt. Token and relay address are kept on this PC (`storage.local`), not synced.
 
 ## Work computers
 Check your workplace's IT policy before installing extensions or sending traffic to an external server. This project does not try to hide itself from IT or monitoring tools.

@@ -73,6 +73,8 @@
   </div>
   <details>
     <summary>Advanced</summary>
+    <label class="check"><input id="youtube" type="checkbox">
+      <span>Also control regular YouTube (www.youtube.com), not only YouTube Music. Chrome will ask you to allow it. Search finds videos; the queue, library and radio stay YouTube Music only.</span></label>
     <label class="check"><input id="allowHttp" type="checkbox">
       <span>Allow a plain http:// relay address (only for a relay on your own network). Anyone on that network could then change the code this extension runs.</span></label>
     <label class="check"><input id="agent" type="checkbox" checked>
@@ -103,7 +105,7 @@
   <div class="row"><button id="check" type="button">Check for update now</button></div>
 
   <h2>What this runs</h2>
-  <p class="small">This extension downloads its code from the relay address above and runs it only on music.youtube.com. Use a relay you control, and keep two-step verification on the accounts that can change it (your git host and your server host), because whoever can change those files can change what runs here.</p>
+  <p class="small">This extension downloads its code from the relay address above and runs it only on music.youtube.com (and www.youtube.com if you turned that on above). Use a relay you control, and keep two-step verification on the accounts that can change it (your git host and your server host), because whoever can change those files can change what runs here.</p>
 </main>
 <script src="options.js"></script>
 </body>

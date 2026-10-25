@@ -16,7 +16,7 @@ const ALLOWED_CMDS = new Set([
   'play', 'pause', 'toggle', 'next', 'previous', 'volume', 'seek', 'get_state',
   'search', 'play_video', 'play_next', 'queue_remove', 'yt_jump', 'yt_remove', 'yt_reorder',
   'queue_end', 'queue_clear', 'play_collection', 'collection_next', 'collection_end', 'open', 'library',
-  'radio', 'health', 'related', 'suggest',
+  'radio', 'health', 'related', 'suggest', 'block_current', 'block_remove', 'block_list',
 ]);
 const MAX_MSG_BYTES = 65536;        // PC -> server (search results can be a few KB)
 const MAX_PHONE_MSG_BYTES = 1024;   // phone -> server (commands are tiny)
@@ -452,6 +452,12 @@ wss.on('connection', (ws, { token, role, ip, device }) => {
         out.value = String(msg.value);
       } else if (msg.cmd === 'health') {
         out.value = msg.value === 'deep' ? 'deep' : 'quick';
+      } else if (msg.cmd === 'block_current') {
+        out.value = msg.value === 'artist' ? 'artist' : 'song';
+      } else if (msg.cmd === 'block_remove') {
+        const v = String(msg.value || '');
+        if (!/^(song:[A-Za-z0-9_-]{11}|artist:.{1,90})$/s.test(v)) return;
+        out.value = text(v, 96);
       } else if (msg.cmd === 'suggest') {
         const q = String(msg.value || '').trim().slice(0, 60);
         if (!q) return;
@@ -489,6 +495,7 @@ wss.on('connection', (ws, { token, role, ip, device }) => {
         position: Number.isFinite(s.position) ? s.position : null,
         duration: Number.isFinite(s.duration) ? s.duration : null,
         art: safeHttps(s.art),
+        site: s.site === 'yt' ? 'yt' : 'ytm',
       };
       room.phones.forEach((p) => send(p, { type: 'state', state: room.lastState }));
     } else if (msg.type === 'status' && typeof msg.message === 'string') {
@@ -511,6 +518,10 @@ wss.on('connection', (ws, { token, role, ip, device }) => {
     } else if (msg.type === 'version' && typeof msg.version === 'string') {
       room.version = clean(msg.version, 20);
       tellPhones(room);
+    } else if (msg.type === 'blocklist' && Array.isArray(msg.items)) {
+      const out = { type: 'blocklist', items: msg.items.slice(0, 200).filter((b) => b && (b.kind === 'song' || b.kind === 'artist') && typeof b.id === 'string')
+        .map((b) => ({ kind: b.kind, id: text(b.id, 90), title: text(b.title || b.id, 120) })) };
+      room.phones.forEach((p) => send(p, out));
     } else if (msg.type === 'suggest' && Array.isArray(msg.items)) {
       const out = { type: 'suggest', query: text(msg.query, 60),
         items: msg.items.filter((x) => typeof x === 'string').slice(0, 10).map((x) => text(x, 80)).filter(Boolean) };

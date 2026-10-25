@@ -21,6 +21,72 @@
   const runsText = (runs) => (runs || []).map((r) => r.text).join('');
   const getPlayer = () => document.getElementById('movie_player');
 
+  // ---- Regular YouTube (www.youtube.com) ----
+  // Only the basics: volume, search for videos and a connection check. Everything else on this
+  // file is about YouTube Music and is never started on this site.
+  if (location.hostname === 'www.youtube.com') { liteYouTube(); return; }
+
+  function liteYouTube() {
+    let lastVol = null;
+    const reportVol = (force) => {
+      const pl = getPlayer();
+      const v = typeof pl?.getVolume === 'function' ? pl.getVolume() : null;
+      if (typeof v === 'number' && (force || v !== lastVol)) { lastVol = v; post({ type: 'volume', value: v }); }
+    };
+    const searchVideos = async (query) => {
+      const json = await innertube('search', { query }, 10000);
+      const out = [];
+      const seen = new Set();
+      const walk = (n) => {
+        if (!n || typeof n !== 'object' || out.length >= 20) return;
+        if (Array.isArray(n)) { n.forEach(walk); return; }
+        const r = n.videoRenderer;
+        if (r) {
+          if (r.videoId && ID_RE.test(r.videoId) && !seen.has(r.videoId)) {
+            seen.add(r.videoId);
+            const arr = r.thumbnail?.thumbnails || [];
+            const t = arr.length ? arr[arr.length - 1].url : '';
+            const len = r.lengthText?.simpleText || '';
+            out.push({ kind: 'song', videoId: r.videoId, title: runsText(r.title?.runs),
+              subtitle: [runsText(r.ownerText?.runs), len].filter(Boolean).join(' • '),
+              thumb: String(t).startsWith('https://') ? t : `https://i.ytimg.com/vi/${r.videoId}/hqdefault.jpg` });
+          }
+          return;
+        }
+        for (const k in n) walk(n[k]);
+      };
+      walk(json);
+      return out;
+    };
+    window.addEventListener('message', async (ev) => {
+      if (ev.source !== window || !ev.data || ev.data.source !== 'ytmr-ext') return;
+      const { cmd, value } = ev.data;
+      if (cmd === 'ping') post({ type: 'hello' });
+      else if (cmd === 'volume') {
+        const pl = getPlayer(); const n = Math.min(100, Math.max(0, Number(value)));
+        if (typeof pl?.setVolume === 'function' && isFinite(n)) { if (n > 0 && pl.isMuted?.()) pl.unMute?.(); pl.setVolume(n); reportVol(true); }
+      } else if (cmd === 'search') {
+        try {
+          const text = String(value).replace(/^(song|album|artist|playlist)\|/, '');
+          const kind = (/^(song|album|artist|playlist)\|/.exec(String(value)) || [])[1] || 'song';
+          const results = kind === 'song' ? await searchVideos(text) : [];
+          post({ type: 'results', query: value, results, error: kind === 'song' ? undefined : 'Only videos can be searched on regular YouTube' });
+        } catch (e) { post({ type: 'results', query: value, results: [], error: String((e && e.message) || e) }); }
+      } else if (cmd === 'health') {
+        const checks = [];
+        const test = async (name, fn) => { try { const r = await fn(); checks.push({ name, ok: !!r.ok, detail: String(r.detail || '') }); } catch (e) { checks.push({ name, ok: false, detail: String((e && e.message) || e) }); } };
+        await test('Player', async () => { const pl = getPlayer(); return { ok: typeof pl?.getVideoData === 'function', detail: pl ? 'regular YouTube player found' : 'no player' }; });
+        await test('Volume', async () => { const pl = getPlayer(); return { ok: typeof pl?.getVolume === 'function' && typeof pl?.setVolume === 'function', detail: 'getVolume/setVolume ' + (typeof pl?.setVolume === 'function' ? 'found' : 'missing') }; });
+        await test('Search', async () => { const r = await searchVideos('love'); return { ok: r.length > 0, detail: `${r.length} videos found` }; });
+        post({ type: 'health', checks });
+      } else if (cmd === 'get_state') reportVol(true);
+    }, sig);
+    const iv = setInterval(() => reportVol(false), 1500);
+    sig.signal.addEventListener('abort', () => clearInterval(iv));
+    post({ type: 'hello' });
+    reportVol(true);
+  }
+
   // ---- Search ----
 
   // Search "filter" parameter per kind of result. If one is refused, the unfiltered search is
@@ -879,6 +945,81 @@
     }
   }, { capture: true, ...sig });
 
+  // ---- Do-not-play list ----
+  // Songs and artists you never want to hear. Kept in this browser (YouTube Music's own site storage)
+  // and checked every moment: when a blocked song starts, it is skipped.
+  const BLOCK_KEY = 'ytmr_block';
+  const normName = (s) => String(s || '').toLowerCase().replace(/\s*-\s*topic$/, '').replace(/\s*vevo$/, '').trim();
+  let blocked = [];
+  try {
+    const a = JSON.parse(localStorage.getItem(BLOCK_KEY) || '[]');
+    if (Array.isArray(a)) blocked = a.filter((b) => b && (b.kind === 'song' || b.kind === 'artist') && typeof b.id === 'string' && b.id).slice(0, 200)
+      .map((b) => ({ kind: b.kind, id: b.id.slice(0, 90), title: String(b.title || b.id).slice(0, 120) }));
+  } catch { /* none saved yet */ }
+  const saveBlocked = () => { try { localStorage.setItem(BLOCK_KEY, JSON.stringify(blocked)); } catch { /* storage full or blocked */ } };
+  const postBlocked = () => post({ type: 'blocklist', items: blocked });
+  const explicit = new Set();           // songs you asked for yourself are never skipped
+  let blockSeen = '', blockActed = '', pendingBlock = '';
+  const skipTimes = [];
+
+  function currentArtists() {
+    const out = new Set();
+    const byline = document.querySelector('ytmusic-player-bar .byline')?.textContent || '';
+    byline.split('•')[0].split(/\s*(?:,|&| and )\s*/i).forEach((n) => { if (n.trim()) out.add(normName(n)); });
+    try { const a = getPlayer()?.getVideoData?.()?.author; if (a) out.add(normName(a)); } catch { /* ignore */ }
+    return out;
+  }
+  const isBlocked = (id, artists) => blocked.some((b) => (b.kind === 'song' ? b.id === id : artists.has(b.id)));
+
+  function checkBlocked(now) {
+    if (!blocked.length) return;
+    const id = currentVideoId();
+    if (!id || explicit.has(id)) return;
+    const artists = currentArtists();
+    const key = id + '|' + [...artists].join(',');
+    // The artist line can lag a moment behind a new song: act only once it has stayed the same.
+    if (!now && key !== blockSeen) { blockSeen = key; return; }
+    if (key === blockActed) return;
+    if (!isBlocked(id, artists)) { blockActed = key; return; }
+    blockActed = key;
+    const t = Date.now();
+    while (skipTimes.length && t - skipTimes[0] > 10000) skipTimes.shift();
+    if (skipTimes.length >= 4) {
+      try { getPlayer()?.pauseVideo?.(); } catch { /* ignore */ }
+      status('Everything coming up is on your do-not-play list, so playback was paused.');
+      return;
+    }
+    skipTimes.push(t);
+    status('Skipped a song from your do-not-play list');
+    nextTrack();
+  }
+  const blockTimer = setInterval(() => checkBlocked(false), 700);
+  sig.signal.addEventListener('abort', () => clearInterval(blockTimer));
+
+  function blockCurrent(what) {
+    const id = currentVideoId();
+    if (!id) { status('Nothing is playing to block.'); return; }
+    if (what === 'artist') {
+      const name = (document.querySelector('ytmusic-player-bar .byline')?.textContent || '').split('•')[0].split(/\s*(?:,|&| and )\s*/i)[0].trim();
+      if (!name) { status("Couldn't tell who the artist is."); return; }
+      const key = normName(name);
+      if (!blocked.some((b) => b.kind === 'artist' && b.id === key)) blocked.push({ kind: 'artist', id: key, title: name.slice(0, 120) });
+    } else {
+      const title = document.querySelector('ytmusic-player-bar .title')?.textContent?.trim() || id;
+      if (!blocked.some((b) => b.kind === 'song' && b.id === id)) blocked.push({ kind: 'song', id, title: title.slice(0, 120) });
+    }
+    blocked = blocked.slice(-200);
+    saveBlocked(); postBlocked();
+    explicit.delete(id);
+    checkBlocked(true);                // skip it right away if it is playing now
+  }
+  function unblock(value) {
+    const i = String(value).indexOf(':');
+    const kind = String(value).slice(0, i), id = String(value).slice(i + 1);
+    blocked = blocked.filter((b) => !(b.kind === kind && b.id === id));
+    saveBlocked(); postBlocked();
+  }
+
   // ---- Messages from content.js ----
 
   // ---- Radio: endless songs like this one (the site's own "Start radio") ----
@@ -996,9 +1137,16 @@
     } else if (cmd === 'volume') {
       setVolume(value);
     } else if (cmd === 'play_video') {
+      explicit.add(String(value)); if (explicit.size > 30) explicit.delete(explicit.values().next().value);
       await play(value);
     } else if (cmd === 'play_next') {
       await enqueueNext(value, by);
+    } else if (cmd === 'block_current') {
+      blockCurrent(value === 'artist' ? 'artist' : 'song');
+    } else if (cmd === 'block_remove') {
+      unblock(String(value));
+    } else if (cmd === 'block_list') {
+      postBlocked();
     } else if (cmd === 'radio') {
       await startRadio(value);
     } else if (cmd === 'related') {
