@@ -46,6 +46,11 @@
   <input id="url" type="url" placeholder="https://your-relay.onrender.com" autocomplete="off" spellcheck="false">
   <label for="token">Secret token</label>
   <input id="token" type="text" placeholder="Generate one, then enter the same token on your phone" autocomplete="off" spellcheck="false">
+  <details id="pcdetails">
+    <summary>PC code (only if your relay sets PC_CODE)</summary>
+    <p class="small">If you set a <b>PC_CODE</b> on your relay, enter the same value here. Nobody can take this PC's place on the relay without it, even with the token.</p>
+    <input id="pccode" type="text" placeholder="Leave empty if your relay has no PC_CODE" autocomplete="off" spellcheck="false">
+  </details>
   <div class="row">
     <button id="gen" type="button">Generate token</button>
     <button id="copy" type="button">Copy token</button>

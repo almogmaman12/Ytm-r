@@ -47,6 +47,7 @@
   let backoff = 1000;
   let lastRx = 0;
   let replaced = false;
+  let refused = false;
   let lastReclaim = 0;
 
   const wsBase = () => {
@@ -67,9 +68,22 @@
     backoff = Math.min(backoff * 2, 30000);
   }
 
+  // The relay may ask for the PC code (PC_CODE on the relay). The code itself is never sent:
+  // we answer with HMAC-SHA256(code, token|pc|challenge).
+  async function answerChallenge(s, nonce) {
+    if (!CFG.pcCode) { try { s.close(); } catch { /* ignore */ } refused = true; note('needs-code'); return; }
+    try {
+      const enc = new TextEncoder();
+      const key = await crypto.subtle.importKey('raw', enc.encode(CFG.pcCode), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+      const sig = await crypto.subtle.sign('HMAC', key, enc.encode(`${CFG.token}|pc|${nonce}`));
+      const proof = [...new Uint8Array(sig)].map((b) => b.toString(16).padStart(2, '0')).join('');
+      if (sock === s) s.send(JSON.stringify({ type: 'auth', proof }));
+    } catch { try { s.close(); } catch { /* ignore */ } }
+  }
+
   function connect() {
     clearTimeout(reconnectTimer);
-    if (!active || replaced) return;
+    if (!active || replaced || refused) return;
     if (sock && sock.readyState <= WebSocket.OPEN) return;
 
     let s;
@@ -95,7 +109,9 @@
       lastRx = Date.now();
       let msg;
       try { msg = JSON.parse(ev.data); } catch { return; }
-      if (msg && msg.type === 'cmd') run(msg.cmd, msg.value).catch(() => {});
+      if (msg && msg.type === 'challenge') { answerChallenge(s, msg.nonce); return; }
+      if (msg && msg.type === 'authed') { report(true); toPage('get_state'); return; }  // the relay accepted our code
+      if (msg && msg.type === 'cmd') run(msg.cmd, msg.value, msg.by).catch(() => {});
     };
     s.onclose = (ev) => {
       if (sock !== s) return;
@@ -108,6 +124,13 @@
         // otherwise wait until music starts here.
         const v = video();
         if (v && !v.paused && Date.now() - lastReclaim > 60000) reclaim(2000);
+        return;
+      }
+      if (ev.code === 4003) {
+        // The relay wants a PC code and ours is missing or wrong. Trying again would not help;
+        // saving a new code in the settings starts a fresh copy of this script.
+        refused = true;
+        note(CFG.pcCode ? 'refused' : 'needs-code');
         return;
       }
       note('disconnected');
@@ -207,8 +230,8 @@
   // ---- Talking to page.js (runs in the page's own JS world) ----
   let pageIsReady = false;
   let pageVolume = null;
-  const toPage = (cmd, value) => window.postMessage(
-    { source: 'ytmr-ext', cmd, value: value == null ? '' : String(value) }, location.origin);
+  const toPage = (cmd, value, by) => window.postMessage(
+    { source: 'ytmr-ext', cmd, value: value == null ? '' : String(value), by: by ? String(by) : '' }, location.origin);
 
   function pageReady() {
     if (pageIsReady) return Promise.resolve(true);
@@ -228,6 +251,7 @@
     if (d.type === 'hello') pageIsReady = true;
     else if (d.type === 'volume') { if (isFinite(d.value)) { pageVolume = Number(d.value); reportSoon(); } }
     else if (d.type === 'queue') sendWs({ type: 'queue', items: Array.isArray(d.items) ? d.items : [] });
+    else if (d.type === 'health') sendWs({ type: 'health', checks: Array.isArray(d.checks) ? d.checks : [] });
     else if (d.type === 'library') sendWs({ type: 'library', section: d.section, items: Array.isArray(d.items) ? d.items : [], error: d.error });
     else if (d.type === 'ytqueue') sendWs({ type: 'ytqueue', items: Array.isArray(d.items) ? d.items : [] });
     else if (d.type === 'status') sendWs({ type: 'status', message: String(d.message || '') });
@@ -248,7 +272,7 @@
     if (el) el.click();
   }
 
-  async function run(cmd, value) {
+  async function run(cmd, value, by) {
     const v = video();
     switch (cmd) {
       case 'play': if (v && v.paused) click('#play-pause-button'); break;
@@ -286,6 +310,8 @@
       case 'collection_end':
       case 'open':
       case 'library':
+      case 'radio':
+      case 'health':
         if (!(await pageReady())) {
           sendWs({ type: 'status', message: 'Reload the YouTube Music tab on the PC, then try again.' });
           if (cmd === 'search') {
@@ -297,7 +323,7 @@
           }
           return;
         }
-        toPage(cmd, value);
+        toPage(cmd, value, by);
         if (cmd === 'search' || cmd === 'open' || cmd === 'library') return; // answers come back asynchronously
         break;
       case 'get_state':

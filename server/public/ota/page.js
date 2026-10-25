@@ -409,6 +409,7 @@
       title: runsText(renderer.title?.runs) || String(renderer.title?.simpleText || ''),
       subtitle: runsText((renderer.shortBylineText || renderer.longBylineText)?.runs),
       thumb,
+      by: addedBy.get(renderer.videoId) || '',
     };
   }
 
@@ -516,6 +517,9 @@
     } finally { queueBusy = false; }
     publishYtQueue(true);
   }
+
+  const addedBy = new Map();   // videoId -> name of the phone that queued it
+  const tagAdded = (id, by) => { if (!by) return; addedBy.delete(id); addedBy.set(id, by); while (addedBy.size > 300) addedBy.delete(addedBy.keys().next().value); };
 
   let lastQueueKey = null;
   let queueBusy = false;   // true while a reorder is half-done, so the phone never sees the gap
@@ -673,9 +677,10 @@
     return { ok: false, reason: `queue: ${a.reason}; command: ${b.reason}` };
   }
 
-  async function enqueue(id, where = 'next') {
+  async function enqueue(id, where = 'next', by = '') {
     if (!ID_RE.test(String(id))) return;
-    const track = known.get(id) || { videoId: id, title: id, subtitle: '', thumb: '' };
+    const track = { ...(known.get(id) || { videoId: id, title: id, subtitle: '', thumb: '' }), by };
+    tagAdded(id, by);
     const r = await addToYtQueue(id, where);
     if (r.ok) {
       console.debug('[ytm-remote] added to YT Music queue via', r.method);
@@ -690,10 +695,10 @@
     publishQueue();
     status(`Added to Up next: ${track.title}`);
   }
-  const enqueueNext = (id) => enqueue(id, 'next');
+  const enqueueNext = (id, by) => enqueue(id, 'next', by);
 
   // A whole album or playlist, after the current song or at the end of the queue.
-  async function addCollection(playlistId, where) {
+  async function addCollection(playlistId, where, by = '') {
     if (!PLAYLIST_ID_RE.test(String(playlistId))) return;
     let items;
     try { items = await collectionItems(playlistId); } catch (e) {
@@ -701,6 +706,7 @@
       status("Couldn't load that list from YouTube Music.");
       return;
     }
+    items.forEach((it) => tagAdded(rendererOf(it)?.videoId, by));
     const r = await insertViaStore(items, where);
     if (r.ok) {
       publishYtQueue(true);
@@ -795,9 +801,93 @@
 
   // ---- Messages from content.js ----
 
+  // ---- Radio: endless songs like this one (the site's own "Start radio") ----
+  async function startRadio(value) {
+    const id = value === 'current' ? currentVideoId() : String(value);
+    if (!ID_RE.test(id || '')) { status('Nothing is playing to start a radio from.'); return; }
+    const playlistId = `RDAMVM${id}`;
+    const followed = () => new URLSearchParams(location.search).get('list') === playlistId;
+    if (await tryNavigate({ watchEndpoint: { videoId: id, playlistId } }, followed)) { status('Radio started'); return; }
+    await playCollection(playlistId);   // same thing, started from the list instead
+  }
+
+  // ---- Health check: which parts of the site integration still work ----
+  async function healthCheck(deep) {
+    const checks = [];
+    const test = async (name, fn) => {
+      try { const r = await fn(); checks.push({ name, ok: !!r.ok, detail: String(r.detail || '') }); }
+      catch (e) { checks.push({ name, ok: false, detail: String((e && e.message) || e) }); }
+    };
+    const player = getPlayer();
+    await test('Player', async () => {
+      const id = currentVideoId();
+      return { ok: typeof player?.getVideoData === 'function' && ID_RE.test(id), detail: id ? `playing ${id}` : 'no player or no video id' };
+    });
+    await test('Volume', async () => {
+      if (typeof player?.getVolume !== 'function' || typeof player?.setVolume !== 'function') return { ok: false, detail: 'getVolume/setVolume missing' };
+      const v = player.getVolume();
+      player.setVolume(v);
+      await sleep(200);
+      return { ok: typeof v === 'number' && player.getVolume() === v, detail: `volume ${v}, set and read back` };
+    });
+    await test('Page navigation', async () => {
+      const app = document.querySelector('ytmusic-app');
+      const fns = ['navigate', 'navigate_'].filter((n) => typeof app?.[n] === 'function');
+      return fns.length ? { ok: true, detail: `${fns.join(', ')} found (not run, so the song isn't interrupted)` }
+        : { ok: false, detail: app ? 'no navigate function, only the event fallback is left' : 'ytmusic-app not found' };
+    });
+    await test('Queue (read)', async () => {
+      const items = storeItems();
+      return items ? { ok: items.length > 0, detail: `${items.length} songs in the queue` } : { ok: false, detail: ytQueueEl() ? 'queue state not readable' : 'queue element not found' };
+    });
+    await test('Queue (change access)', async () => {
+      const q = ytQueueEl();
+      const ok = !!q && (typeof q.dispatch === 'function' || typeof queueStore()?.dispatch === 'function');
+      return { ok, detail: ok ? 'dispatch available' : 'no dispatch function' };
+    });
+    await test('Search', async () => {
+      const r = await search('love', 'song');
+      return { ok: r.length > 0, detail: `${r.length} songs found` };
+    });
+    await test('Queue entries', async () => {
+      const items = await fetchQueueItems({ videoIds: [currentVideoId()] });
+      return { ok: items.length > 0, detail: 'get_queue answered' };
+    });
+    await test('Library (signed in)', async () => {
+      const h = await authHeaders();
+      if (!h.Authorization) return { ok: false, detail: 'sign-in cookie not readable, library needs it' };
+      const json = await innertube('browse', { browseId: LIBRARY_BROWSE.playlists }, 12000, true);
+      const n = parseAll(json, 60).filter((i) => i.kind === 'playlist' || i.kind === 'album').length;
+      return { ok: n > 0, detail: `${n} playlists found` };
+    });
+    if (deep) {
+      await test('Queue add and remove', async () => {
+        const q = ytQueueEl(); const store = queueStore(); const before = storeItems()?.length;
+        if (!q || !store || before == null) return { ok: false, detail: 'queue not readable' };
+        const items = await fetchQueueItems({ videoIds: [currentVideoId()] });
+        queueBusy = true;
+        try {
+          const added = await insertViaStore(items, 'end');
+          if (!added.ok) return { ok: false, detail: 'add failed: ' + added.reason };
+          const run = (a) => (typeof q.dispatch === 'function' ? q.dispatch(a) : store.dispatch(a));
+          let removed = false;
+          for (const payload of [before, { index: before }]) {
+            run({ type: 'REMOVE_ITEM', payload });
+            if (await waitFor(() => (storeItems()?.length ?? 0) <= before, 1200)) { removed = true; break; }
+          }
+          return removed ? { ok: true, detail: 'added a test copy at the end and removed it again' }
+            : { ok: false, detail: 'added, but removing failed: one extra song may be at the end of the queue' };
+        } finally { queueBusy = false; publishYtQueue(true); }
+      });
+    }
+    const bad = checks.filter((c) => !c.ok).map((c) => c.name);
+    console.log('[ytm-remote] health check', bad.length ? 'FAILED: ' + bad.join(', ') : 'all ok', checks);
+    post({ type: 'health', checks });
+  }
+
   window.addEventListener('message', async (ev) => {
     if (ev.source !== window || !ev.data || ev.data.source !== 'ytmr-ext') return;
-    const { cmd, value } = ev.data;
+    const { cmd, value, by } = ev.data;
     if (cmd === 'ping') {
       post({ type: 'hello' });
     } else if (cmd === 'search') {
@@ -815,17 +905,21 @@
     } else if (cmd === 'play_video') {
       await play(value);
     } else if (cmd === 'play_next') {
-      await enqueueNext(value);
+      await enqueueNext(value, by);
+    } else if (cmd === 'radio') {
+      await startRadio(value);
+    } else if (cmd === 'health') {
+      await healthCheck(value === 'deep');
     } else if (cmd === 'queue_end') {
-      await enqueue(value, 'end');
+      await enqueue(value, 'end', by);
     } else if (cmd === 'queue_clear') {
       await clearQueue();
     } else if (cmd === 'play_collection') {
       await playCollection(value);
     } else if (cmd === 'collection_next') {
-      await addCollection(value, 'next');
+      await addCollection(value, 'next', by);
     } else if (cmd === 'collection_end') {
-      await addCollection(value, 'end');
+      await addCollection(value, 'end', by);
     } else if (cmd === 'open') {
       if (BROWSE_ID_RE.test(String(value))) await openBrowse(String(value));
     } else if (cmd === 'library') {

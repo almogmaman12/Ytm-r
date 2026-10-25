@@ -35,7 +35,8 @@ function relayOrigin(raw, allowHttp) {
 }
 
 async function getConfig() {
-  const c = await chrome.storage.local.get(['relayUrl', 'token', 'allowHttp']);
+  const c = await chrome.storage.local.get(['relayUrl', 'token', 'allowHttp', 'pcCode']);
+  pcCodeNow = c.pcCode || '';
   return { relayUrl: c.relayUrl || '', token: c.token || '', allowHttp: !!c.allowHttp };
 }
 
@@ -73,7 +74,9 @@ function validateManifest(m) {
   }
 }
 
-const cfgKey = (origin, token) => `${origin}|${token}`;
+// The optional PC code (see the README) travels to the page script together with the token.
+let pcCodeNow = '';
+const cfgKey = (origin, token) => `${origin}|${token}|${pcCodeNow}`;
 
 async function saveStatus(patch) {
   const { ota = {} } = await chrome.storage.local.get('ota');
@@ -84,7 +87,7 @@ async function saveStatus(patch) {
 
 function codeFor(f, origin, token, version) {
   const prefix = f.world === 'USER_SCRIPT'
-    ? `globalThis.__YTMR_CONFIG__=${JSON.stringify({ relay: origin, token, version })};\n`
+    ? `globalThis.__YTMR_CONFIG__=${JSON.stringify({ relay: origin, token, version, pcCode: pcCodeNow })};\n`
     : '';
   return prefix + f.code;
 }
@@ -272,7 +275,7 @@ chrome.tabs.onUpdated.addListener(async (tabId, info, tab) => {
 });
 
 chrome.storage.onChanged.addListener((changes, area) => {
-  if (area === 'local' && (changes.relayUrl || changes.token || changes.allowHttp)) checkForUpdate({ force: true });
+  if (area === 'local' && (changes.relayUrl || changes.token || changes.allowHttp || changes.pcCode)) checkForUpdate({ force: true });
 });
 
 chrome.runtime.onInstalled.addListener((details) => {

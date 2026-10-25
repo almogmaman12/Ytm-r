@@ -169,6 +169,19 @@
   dialog h2 { margin: 0 0 6px; font-size: 22px; }
   dialog p { margin: 0 0 20px; color: var(--muted); font-size: 15px; }
   dialog .row { display: flex; flex-direction: column; gap: 10px; }
+  dialog label.lbl { display: block; margin: 0 0 6px; font-weight: 600; font-size: 15px; }
+  dialog input[type=text], dialog input[type=password] { width: 100%; height: 48px; border-radius: 14px; border: 0; padding: 0 14px; margin-bottom: 8px; background: var(--surface-2); color: var(--ink); font-size: 17px; }
+  dialog p.small { font-size: 13px; margin: 0 0 18px; }
+  dialog h3 { margin: 4px 0 8px; font-size: 16px; }
+  dialog .row.two { flex-direction: row; }
+  dialog .row.two > button { flex: 1; }
+  #healthList { list-style: none; margin: 0 0 16px; padding: 0; font-size: 14px; }
+  #healthList li { display: flex; gap: 8px; padding: 6px 0; border-top: 1px solid var(--surface); }
+  #healthList .ok { color: #7fe3a1; flex: none; width: 1.2em; } #healthList .bad { color: #ff8a8a; flex: none; width: 1.2em; }
+  #healthList .d { color: var(--muted); display: block; font-size: 12.5px; }
+  #radioBtn { display: block; margin: 18px auto 0; padding: 10px 18px; border-radius: 999px; background: var(--surface); color: var(--ink); font-weight: 600; font-size: 15px; }
+  ul.tracks .acts3 { display: flex; align-items: center; flex: none; }
+  ul.tracks .acts3 .act { width: 42px; }
   .secondary { height: 52px; border-radius: 16px; background: var(--surface-2); font-weight: 600; }
   .danger { color: #ff8a8a; }
 
@@ -189,6 +202,7 @@
     <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 8h16M4 16h16"/><circle fill="currentColor" cx="9" cy="8" r="2.4"/><circle fill="currentColor" cx="15" cy="16" r="2.4"/></symbol>
     <symbol id="i-end" viewBox="0 0 24 24"><path d="M4 6h12M4 11h8M4 16h6"/><path d="M17.5 13.5v7M14 17h7"/></symbol>
     <symbol id="i-lib" viewBox="0 0 24 24"><rect x="4" y="5" width="4" height="14" rx="1"/><rect x="10" y="5" width="4" height="14" rx="1"/><path d="M16.5 6.5l3.5 12.5"/></symbol>
+    <symbol id="i-radio" viewBox="0 0 24 24"><circle cx="12" cy="12" r="2"/><path d="M7.8 7.8a6 6 0 000 8.4M16.2 7.8a6 6 0 010 8.4M5 5a10 10 0 000 14M19 5a10 10 0 010 14"/></symbol>
     <symbol id="i-grip" viewBox="0 0 24 24"><path d="M5 8h14M5 12h14M5 16h14"/></symbol>
     <symbol id="i-x" viewBox="0 0 24 24"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></symbol>
     <symbol id="i-vol-lo" viewBox="0 0 24 24"><path fill="currentColor" d="M4 9.5v5h3.5L12 18.5v-13L7.5 9.5z"/></symbol>
@@ -230,6 +244,7 @@
       <input type="range" id="vol" min="0" max="100" value="50" aria-label="Volume">
       <svg class="i"><use href="#i-vol-hi"/></svg>
     </div>
+    <button id="radioBtn" type="button">Start radio from this song</button>
   </section>
 
   <section id="v-search" class="view" aria-label="Search" hidden>
@@ -291,10 +306,31 @@
 
 <dialog id="settings">
   <h2>Settings</h2>
+  <label class="lbl" for="deviceName">This device's name</label>
+  <input id="deviceName" type="text" maxlength="24" placeholder="For example: Almog's phone" autocomplete="off" spellcheck="false">
+  <p class="small">Shown in the relay's log and next to songs you add to the queue.</p>
+  <h3>Connection check</h3>
+  <div class="row two">
+    <button id="healthQuick" class="secondary">Check</button>
+    <button id="healthDeep" class="secondary">Deep check</button>
+  </div>
+  <p id="healthNote" class="small">Tests each part of the YouTube Music connection. The deep check briefly adds a copy of the current song to the end of the queue and removes it again.</p>
+  <ul id="healthList"></ul>
   <p>Changing the token disconnects this phone until you enter a new one.</p>
   <div class="row">
+    <button id="changeCode" class="secondary">Change access code</button>
     <button id="forget" class="secondary danger">Change token</button>
     <button id="closeSettings" class="secondary">Close</button>
+  </div>
+</dialog>
+
+<dialog id="codeDlg">
+  <h2>Access code</h2>
+  <p id="codeMsg">This relay asks for an access code before it lets a phone in.</p>
+  <input id="codeInput" type="password" placeholder="Access code" autocomplete="current-password" autocapitalize="off" spellcheck="false" aria-label="Access code">
+  <div class="row">
+    <button id="codeOk" class="primary">Unlock</button>
+    <button id="codeCancel" class="secondary">Cancel</button>
   </div>
 </dialog>
 
@@ -365,7 +401,37 @@ function setPc(online) {
   }
 }
 
+/* ---------- access code, device name ---------- */
+let needCode = false;
+const getCode = () => { try { return localStorage.getItem('code') || ''; } catch { return ''; } };
+function setCode(c) { try { c ? localStorage.setItem('code', c) : localStorage.removeItem('code'); } catch {} }
+const getName = () => { try { return localStorage.getItem('deviceName') || ''; } catch { return ''; } };
+function sendName() {
+  const n = getName();
+  if (n && ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'name', name: n }));
+}
+async function answerChallenge(sock, nonce) {
+  const code = getCode();
+  if (!code) { needCode = true; askCode(''); return; }
+  try {
+    const enc = new TextEncoder();
+    const key = await crypto.subtle.importKey('raw', enc.encode(code), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+    const sig = await crypto.subtle.sign('HMAC', key, enc.encode(`${token}|phone|${nonce}`));
+    const proof = [...new Uint8Array(sig)].map((b) => b.toString(16).padStart(2, '0')).join('');
+    if (ws === sock && sock.readyState === 1) sock.send(JSON.stringify({ type: 'auth', proof, name: getName() }));
+  } catch {
+    toast('This page must be opened over https to use an access code.');
+  }
+}
+function askCode(msg) {
+  $('codeMsg').textContent = msg || 'This relay asks for an access code before it lets a phone in.';
+  $('codeInput').value = '';
+  if (!$('codeDlg').open) $('codeDlg').showModal();
+  setTimeout(() => $('codeInput').focus(), 50);
+}
+
 function connect() {
+  if (needCode && !getCode()) return;
   clearTimeout(retryTimer);
   if (!token) return;
   if (ws && ws.readyState <= 1) return;
@@ -390,11 +456,23 @@ function connect() {
     else if (m.type === 'status') toast(m.message);
     else if (m.type === 'queue') renderQueue(m.items);
     else if (m.type === 'ytqueue') renderYtQueue(m.items);
+    else if (m.type === 'health') renderHealth(m.checks);
+    else if (m.type === 'challenge') answerChallenge(sock, m.nonce);
+    else if (m.type === 'authed') { needCode = false; sendName(); }
   };
-  sock.onclose = () => {
+  sock.onclose = (ev) => {
     if (ws !== sock) return;
     ws = null;
     $('app').dataset.pc = 'off';
+    if (ev.code === 4003) {
+      // The relay wants an access code and we have none, or it was wrong. Retrying can't help.
+      const wrong = ev.reason === 'wrong code';
+      if (wrong) setCode(null);
+      needCode = true;
+      $('status').textContent = 'Access code needed';
+      askCode(wrong ? 'That code was not accepted. Check it and try again.' : '');
+      return;
+    }
     $('status').textContent = 'Reconnecting…';
     retryTimer = setTimeout(connect, retry);
     retry = Math.min(retry * 2, 15000);
@@ -537,7 +615,8 @@ function trackRow(r, button, onTap) {
   if (r.thumb) th.style.backgroundImage = cssUrl(r.thumb);
   const txt = document.createElement('div'); txt.className = 'txt';
   const t = document.createElement('div'); t.className = 't'; t.textContent = r.title;
-  const s = document.createElement('div'); s.className = 's'; s.textContent = r.subtitle;
+  const s = document.createElement('div'); s.className = 's';
+  s.textContent = r.by ? (r.subtitle ? r.subtitle + ' · ' : '') + 'added by ' + r.by : r.subtitle;
   txt.append(t, s);
   li.append(th, txt);
   if (button) li.append(button);
@@ -681,10 +760,11 @@ function itemRow(r) {
     });
   }
   const box = document.createElement('div');
-  box.style.cssText = 'display:flex;align-items:center;flex:none';
+  box.className = 'acts3';
   box.append(
     actionButton('i-queue', 'Play next', () => cmd('play_next', r.videoId)),
-    actionButton('i-end', 'Add to end of queue', () => cmd('queue_end', r.videoId)));
+    actionButton('i-end', 'Add to end of queue', () => cmd('queue_end', r.videoId)),
+    actionButton('i-radio', 'Start radio from this song', () => { cmd('radio', r.videoId); toast('Starting a radio…'); setView('playing'); }));
   return trackRow(r, box, () => {
     buzz();
     cmd('play_video', r.videoId);
@@ -807,7 +887,59 @@ $('saveToken').onclick = () => {
   setToken(t); show();
 };
 $('tokenInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('saveToken').click(); });
-$('settingsBtn').onclick = () => $('settings').showModal();
+$('settingsBtn').onclick = () => { $('deviceName').value = getName(); $('settings').showModal(); };
+$('deviceName').onchange = () => {
+  const n = $('deviceName').value.replace(/[^\p{L}\p{N} ._'’-]/gu, '').trim().slice(0, 24);
+  $('deviceName').value = n;
+  try { n ? localStorage.setItem('deviceName', n) : localStorage.removeItem('deviceName'); } catch {}
+  sendName();
+};
+$('codeOk').onclick = () => {
+  const c = $('codeInput').value;
+  if (!c) return;
+  setCode(c); needCode = false;
+  $('codeDlg').close();
+  reconnectNow();
+};
+$('codeInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('codeOk').click(); });
+$('codeCancel').onclick = () => $('codeDlg').close();
+$('changeCode').onclick = () => { $('settings').close(); askCode('Enter the new access code.'); };
+$('radioBtn').onclick = () => { buzz(); if (cmd('radio', 'current')) toast('Starting a radio…'); };
+
+/* ---------- connection check ---------- */
+let healthTimer = null;
+function runHealth(deep) {
+  $('healthList').textContent = '';
+  $('healthNote').textContent = deep ? 'Running the deep check…' : 'Checking…';
+  $('healthQuick').disabled = $('healthDeep').disabled = true;
+  if (!cmd('health', deep ? 'deep' : 'quick')) { $('healthNote').textContent = 'Not connected to your PC.'; $('healthQuick').disabled = $('healthDeep').disabled = false; return; }
+  clearTimeout(healthTimer);
+  healthTimer = setTimeout(() => {
+    $('healthNote').textContent = 'No answer. Is YouTube Music open on the PC?';
+    $('healthQuick').disabled = $('healthDeep').disabled = false;
+  }, 30000);
+}
+function renderHealth(checks) {
+  clearTimeout(healthTimer);
+  $('healthQuick').disabled = $('healthDeep').disabled = false;
+  const list = $('healthList');
+  list.textContent = '';
+  let bad = 0;
+  for (const c of checks) {
+    const li = document.createElement('li');
+    const mark = document.createElement('span'); mark.className = c.ok ? 'ok' : 'bad'; mark.textContent = c.ok ? '✓' : '✗';
+    const box = document.createElement('span');
+    box.textContent = c.name;
+    const d = document.createElement('span'); d.className = 'd'; d.textContent = c.detail;
+    box.append(d);
+    li.append(mark, box);
+    list.append(li);
+    if (!c.ok) bad++;
+  }
+  $('healthNote').textContent = bad ? `${bad} of ${checks.length} checks failed. Details are below.` : `All ${checks.length} checks passed.`;
+}
+$('healthQuick').onclick = () => runHealth(false);
+$('healthDeep').onclick = () => runHealth(true);
 $('closeSettings').onclick = () => $('settings').close();
 $('forget').onclick = () => {
   $('settings').close();

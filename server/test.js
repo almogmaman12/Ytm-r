@@ -315,6 +315,85 @@ let port;
   assert.ok(/PC connected/.test(logText) && /phone disconnected/.test(logText), 'PC connection and disconnection logged');
   assert.ok(!logText.includes(lgTok), 'token never appears in the log');
 
+  // ---- Access codes: a token alone is not enough ----
+  const crypto2 = require('crypto');
+  process.env.ACCESS_CODE = 'open-sesame-123';
+  process.env.PC_CODE = 'pc-secret-456';
+  const cTok = 'codecodecodecodecodecode_77';
+  const proof = (code, role, nonce) => crypto2.createHmac('sha256', code).update(`${cTok}|${role}|${nonce}`).digest('hex');
+  // Connects, answers the challenge with `code` (or not at all), resolves once authed or closed.
+  const connectCoded = (role, code, { name, ip = '198.51.100.1', answer = true } = {}) => new Promise((resolve, reject) => {
+    const w = new WebSocket(`ws://localhost:${port}/ws?role=${role}&token=${cTok}`, { headers: { 'x-forwarded-for': ip } });
+    w.msgs = [];
+    w.on('message', (d) => {
+      const m = JSON.parse(d.toString());
+      w.msgs.push(m);
+      if (m.type === 'challenge' && answer) w.send(JSON.stringify({ type: 'auth', proof: proof(code, role, m.nonce), name }));
+      if (m.type === 'authed') resolve({ w, closed: false });
+    });
+    w.on('close', (c) => resolve({ w, closed: true, code: c }));
+    w.on('error', reject);
+  });
+  const pcOk = await connectCoded('pc', 'pc-secret-456');
+  assert.ok(!pcOk.closed && pcOk.w.msgs.some((m) => m.type === 'authed' && m.guarded === true), 'PC with the right code gets in');
+  const phoneOk = await connectCoded('phone', 'open-sesame-123', { name: 'Almog’s phone' });
+  assert.ok(!phoneOk.closed, 'phone with the right code gets in');
+  assert.ok(!phoneOk.w.msgs.some((m) => m.type === 'state' || m.type === 'pc_status') || phoneOk.w.msgs.findIndex((m) => m.type === 'challenge') < phoneOk.w.msgs.findIndex((m) => m.type === 'pc_status'), 'nothing is sent before the code is verified');
+
+  // Token only (wrong code): refused, and gets nothing
+  const bad = await connectCoded('phone', 'wrong-code');
+  assert.ok(bad.closed && bad.code === 4003, 'wrong phone code refused with 4003');
+  assert.ok(!bad.w.msgs.some((m) => m.type === 'pc_status' || m.type === 'state'), 'a refused phone learns nothing');
+  // The phone's code does not open the PC slot, and the real PC is not kicked off
+  const badPc = await connectCoded('pc', 'open-sesame-123');
+  assert.ok(badPc.closed && badPc.code === 4003, 'PC slot needs the PC code');
+  assert.strictEqual(pcOk.w.readyState, 1, 'the real PC was not replaced');
+  // A connection that never answers cannot send commands
+  const mute = await new Promise((resolve) => {
+    const w = new WebSocket(`ws://localhost:${port}/ws?role=phone&token=${cTok}`, { headers: { 'x-forwarded-for': '198.51.100.2' } });
+    w.on('open', () => { w.send(JSON.stringify({ type: 'cmd', cmd: 'toggle' })); setTimeout(() => { w.close(); resolve(); }, 300); });
+  });
+  pcOk.w.msgs.length = 0;
+  await wait(100);
+  assert.ok(!pcOk.w.msgs.some((m) => m.type === 'cmd' && m.cmd === 'toggle'), 'commands before the code are ignored');
+
+  // Names: the PC is told who added a song; unnamed devices fall back to the device label
+  phoneOk.w.send(JSON.stringify({ type: 'cmd', cmd: 'play_next', value: 'AAAAAAAAAA1' }));
+  phoneOk.w.send(JSON.stringify({ type: 'name', name: '  Dana <b>phone</b>  ' }));
+  await wait(80);
+  phoneOk.w.send(JSON.stringify({ type: 'cmd', cmd: 'queue_end', value: 'BBBBBBBBBB2' }));
+  phoneOk.w.send(JSON.stringify({ type: 'cmd', cmd: 'radio', value: 'current' }));
+  phoneOk.w.send(JSON.stringify({ type: 'cmd', cmd: 'radio', value: 'AAAAAAAAAA1' }));
+  phoneOk.w.send(JSON.stringify({ type: 'cmd', cmd: 'radio', value: 'nope nope' }));
+  phoneOk.w.send(JSON.stringify({ type: 'cmd', cmd: 'health' }));
+  await wait(300);
+  const cmds = pcOk.w.msgs.filter((m) => m.type === 'cmd' && m.cmd !== 'get_state');
+  assert.strictEqual(cmds[0].by, 'Almog’s phone', 'name given at login is used');
+  assert.strictEqual(cmds[1].by, 'Dana bphoneb', 'renamed, and markup characters stripped');
+  assert.deepStrictEqual(cmds.slice(2).map((m) => m.cmd + ' ' + (m.value ?? '')), ['radio current', 'radio AAAAAAAAAA1', 'health quick'], 'radio and health pass, a bad radio id does not');
+  // Health results and "added by" labels reach phones, cleaned
+  pcOk.w.send(JSON.stringify({ type: 'health', checks: [{ name: 'Queue', ok: true, detail: 'ok\n<script>' }, { name: 'Volume', ok: false, detail: 'no setVolume' }] }));
+  pcOk.w.send(JSON.stringify({ type: 'ytqueue', items: [{ kind: 'song', videoId: 'AAAAAAAAAA1', title: 'T', by: 'Dana <i>' }] }));
+  await wait(200);
+  const hm = phoneOk.w.msgs.find((m) => m.type === 'health');
+  assert.deepStrictEqual(hm.checks.map((c) => [c.name, c.ok]), [['Queue', true], ['Volume', false]]);
+  assert.ok(!/[\n\r]/.test(hm.checks[0].detail), 'health text has no control characters');
+  assert.strictEqual(phoneOk.w.msgs.find((m) => m.type === 'ytqueue').items[0].by, 'Dana i', 'added-by label cleaned');
+
+  // Five wrong codes from one address block it for a while (the blocked address can't even connect)
+  for (let i = 0; i < 5; i++) await connectCoded('phone', 'nope', { ip: '203.0.113.99' });
+  const blocked = await new Promise((resolve) => {
+    const w = new WebSocket(`ws://localhost:${port}/ws?role=phone&token=${cTok}`, { headers: { 'x-forwarded-for': '203.0.113.99' } });
+    w.on('open', () => resolve('connected')); w.on('error', (e) => resolve(String(e.message)));
+  });
+  assert.ok(/429/.test(blocked), 'address blocked after repeated wrong codes: ' + blocked);
+  const elsewhere = await connectCoded('phone', 'open-sesame-123', { ip: '203.0.113.50' });
+  assert.ok(!elsewhere.closed, 'other addresses are not affected');
+  assert.ok(logLines.some((l) => /WRONG code/.test(l)) && !logLines.some((l) => l.includes('open-sesame-123') || l.includes('pc-secret-456')), 'wrong codes are logged, codes never are');
+  elsewhere.w.close(); phoneOk.w.close(); pcOk.w.close();
+  delete process.env.ACCESS_CODE; delete process.env.PC_CODE;
+  await wait(100);
+
   // An oversized message used to crash the whole relay (unhandled socket error)
   const big = await open('phone', 'bigbigbigbigbigbigbigbig_1');
   const closed = new Promise((r) => big.on('close', r));

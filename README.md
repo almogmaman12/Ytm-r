@@ -26,6 +26,9 @@ your git repo --push--> your relay server <--wss--> phone page
 - **Search** songs, albums, artists or playlists (chips under the search box). Tap a song, album or playlist to play it; it starts the way a click on the site would, so the page, title and queue follow. Tap an artist to see their songs and albums, with a **Back** button.
 - **Play next / add to end:** every song, album and playlist has two buttons. They put a song, or a whole album or playlist, into YouTube Music's own queue right after the current song, or at the very end. If the site refuses a single song, it goes into a short "Waiting to be queued" list on the phone and plays when the current song ends.
 - **Library:** your playlists (with Liked songs first), saved albums and **Recently played** songs, from your own signed-in YouTube Music. Same tap and buttons as search results, so you can go back to a song from earlier.
+- **Radio:** start a radio from the current song (button on the Playing screen) or from any song in search or your library (the radio icon on a row).
+- **Device names:** name your phone in Settings ("Almog's phone"). The name shows in the relay log and next to songs you add to the queue ("added by …").
+- **Connection check:** Settings → **Check** tests each part of the site integration (player, volume, navigation, queue, search, library) and shows which still work, with the reason for any that don't. **Deep check** also adds and removes a copy of the current song. When YouTube changes something you see exactly what broke; the fix is a push to `server/public/ota/page.js`.
 - **Up next:** shows YouTube Music's real queue. Tap a song to jump to it, press ✕ to remove it, press **Edit** to drag the handles and reorder, or **Clear** to remove everything coming up (the song playing stays).
 
 ## Setup (about 10 minutes)
@@ -71,6 +74,15 @@ Anything pushed to the branch your relay deploys becomes code that runs in your 
 - Make sure Render (or your host) deploys only the branch you trust.
 - Git stores your email in every commit and the repo is public. Turn on "Keep my email addresses private" and "Block command line pushes that expose my email" in GitHub's email settings, and commit with your `…@users.noreply.github.com` address.
 
+## If someone finds your token (access codes)
+A token alone can be stolen (a screenshot, a shared link). Set two codes as **environment variables** on your host (on Render: your service → **Environment**). The codes are never sent over the wire: the relay and each device prove they know them with a one-time challenge (HMAC-SHA256), so a stolen token is useless without them.
+- `ACCESS_CODE`: required by phones. The phone page asks for it once and remembers it.
+- `PC_CODE`: required by the PC extension (Options → "PC code"; reload the extension once after updating). Without it nobody who has your token can take the PC's place on the relay.
+- 6 or more characters, no spaces. Use random ones.
+- After 5 wrong codes from one address in 10 minutes, that address is blocked for 15 minutes.
+- **No PC needed to lock everyone out:** if a phone is lost or a token leaks, open your host's dashboard from any phone, change `ACCESS_CODE`, and redeploy. Every device that knew the old code is refused immediately. Then enter the new code on your own phone (Settings → Change access code).
+- The relay log shows `refused` lines with the device and address for every failed attempt.
+
 ## Who is using it (relay logs)
 The relay prints one line per event to its normal output (on Render: the service's **Logs** tab), for example:
 ```
@@ -83,7 +95,7 @@ The relay prints one line per event to its normal output (on Render: the service
 - The address comes from your host's proxy header, so it is the real client address on Render, Fly and similar hosts. It can be faked by someone talking to the server directly, so treat it as a clue.
 
 ## Other security notes
-- The token is the only credential for the phone side. Use 20+ random characters and HTTPS. Anyone with it can control playback and see the current track title.
+- Without access codes the token is the only credential for the phone side (see above to add them). Use 20+ random characters and HTTPS. Anyone with it can control playback and see the current track title.
 - The relay accepts only a fixed list of commands, clamps values, rate-limits and caps message sizes. Its CORS headers are open only under `/ota/` (public code, no secrets).
 - The extension asks for access to `music.youtube.com` only, plus `storage`, `alarms` and `userScripts`. Token and relay address are kept on this PC (`storage.local`), not synced.
 

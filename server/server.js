@@ -16,6 +16,7 @@ const ALLOWED_CMDS = new Set([
   'play', 'pause', 'toggle', 'next', 'previous', 'volume', 'seek', 'get_state',
   'search', 'play_video', 'play_next', 'queue_remove', 'yt_jump', 'yt_remove', 'yt_reorder',
   'queue_end', 'queue_clear', 'play_collection', 'collection_next', 'collection_end', 'open', 'library',
+  'radio', 'health',
 ]);
 const MAX_MSG_BYTES = 65536;        // PC -> server (search results can be a few KB)
 const MAX_PHONE_MSG_BYTES = 1024;   // phone -> server (commands are tiny)
@@ -26,6 +27,8 @@ const SEARCH_KIND_RE = /^(song|album|artist|playlist)\|/;
 const LIBRARY_SECTIONS = new Set(['playlists', 'albums', 'history']);
 const QUEUE_REF_RE = /^\d{1,2}:[A-Za-z0-9_-]{11}$/;
 const QUEUE_MOVE_RE = /^\d{1,2}:[A-Za-z0-9_-]{11}:\d{1,2}$/;  // from position : video id : to position   // position in the site queue : video id
+// Commands that put songs into the queue are tagged with who sent them ("added by ...").
+const TAG_CMDS = new Set(['play_next', 'queue_end', 'collection_next', 'collection_end']);
 const MAX_CMDS_PER_SEC = 10;        // per phone
 const MAX_PC_MSGS_PER_SEC = 50;     // per PC connection
 const MAX_CLIENTS = Number(process.env.MAX_CLIENTS) || 200;
@@ -133,6 +136,48 @@ function clientIp(req) {
   return /^[0-9a-fA-F:.]{3,45}$/.test(ip) ? ip.replace(/^::ffff:/, '') : 'unknown';
 }
 
+// ---- Access codes ----
+// A token alone is not enough when these environment variables are set on the relay (they are
+// set in the host's dashboard, never in the repo):
+//   ACCESS_CODE  phones must prove they know it
+//   PC_CODE      the PC (extension) must prove it too, so nobody can take the PC's place
+// Nobody sends the code itself: the relay sends a random challenge and the client answers with
+// HMAC-SHA256(code, token|role|challenge). Read at connection time, so it can change on restart.
+const accessCode = () => process.env.ACCESS_CODE || '';
+const pcCode = () => process.env.PC_CODE || '';
+const codeFor = (role) => (role === 'pc' ? pcCode() : accessCode());
+function proofFor(code, token, role, nonce) {
+  return crypto.createHmac('sha256', code).update(`${token}|${role}|${nonce}`).digest('hex');
+}
+function proofOk(code, token, role, nonce, proof) {
+  const want = Buffer.from(proofFor(code, token, role, nonce));
+  const got = Buffer.from(String(proof || ''));
+  return got.length === want.length && crypto.timingSafeEqual(got, want);
+}
+const AUTH_TIMEOUT_MS = 8000;
+const MAX_BAD_CODES = 5;                  // wrong answers allowed from one address ...
+const BAD_CODE_WINDOW_MS = 10 * 60 * 1000;  // ... in this long, before it is blocked
+const BLOCK_MS = 15 * 60 * 1000;
+const failures = new Map();               // ip -> { n, first, until }
+function isBlocked(ip) {
+  const f = failures.get(ip);
+  return !!f && f.until > Date.now();
+}
+function noteBadCode(ip) {
+  const now = Date.now();
+  let f = failures.get(ip);
+  if (!f || now - f.first > BAD_CODE_WINDOW_MS) f = { n: 0, first: now, until: 0 };
+  f.n++;
+  if (f.n >= MAX_BAD_CODES) f.until = now + BLOCK_MS;
+  failures.set(ip, f);
+  return f;
+}
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, f] of failures) if (f.until < now && now - f.first > BAD_CODE_WINDOW_MS) failures.delete(ip);
+}, 60000).unref();
+const cleanName = (v) => String(v == null ? '' : v).replace(/[^\p{L}\p{N} ._'’-]/gu, '').trim().slice(0, 24);
+
 // token -> { pc: ws|null, phones: Set<ws>, lastState: object|null }
 const rooms = new Map();
 
@@ -186,6 +231,7 @@ function cleanTracks(list, limit = 20) {
       if (!PLAYLIST_ID_RE.test(String(r.playlistId))) continue;
       item.playlistId = String(r.playlistId);
     }
+    if (r.by) item.by = cleanName(r.by);
     out.push(item);
   }
   return out;
@@ -257,6 +303,10 @@ server.on('upgrade', (req, socket, head) => {
     if (LOG_COMMANDS) console.log(`${new Date().toISOString()} [rejected] bad connection request from ${clientIp(req)} (${deviceLabel(String(req.headers['user-agent'] || ''))})`);
     return rejectUpgrade(socket, 400, 'Bad Request');
   }
+  if (isBlocked(clientIp(req))) {
+    if (LOG_COMMANDS) console.log(`${new Date().toISOString()} [blocked] ${clientIp(req)} is blocked for too many wrong codes`);
+    return rejectUpgrade(socket, 429, 'Too Many Requests');
+  }
   if (wss.clients.size >= MAX_CLIENTS) return rejectUpgrade(socket, 503, 'Service Unavailable');
 
   wss.handleUpgrade(req, socket, head, (ws) => {
@@ -268,7 +318,9 @@ server.on('upgrade', (req, socket, head) => {
 
 wss.on('connection', (ws, { token, role, ip, device }) => {
   const rid = roomId(token);
-  const who = `${device}, ${ip}`;
+  let name = '';
+  let who = `${device}, ${ip}`;
+  const setName = (n) => { name = cleanName(n); who = name ? `${name} (${device}, ${ip})` : `${device}, ${ip}`; ws.who = who; };
   // Without an error listener, a bad frame or an oversized message would crash the whole server.
   ws.on('error', () => {});
 
@@ -289,20 +341,38 @@ wss.on('connection', (ws, { token, role, ip, device }) => {
     return ++count > limit;
   };
 
-  if (role === 'pc') {
-    if (room.pc && room.pc !== ws) { log(rid, `PC replaced: ${room.pc.who} is out, ${who} is in`); room.pc.close(4000, 'replaced'); }
-    room.pc = ws;
-    ws.who = who;
-    log(rid, `PC connected: ${who}`);
-    room.phones.forEach((p) => send(p, { type: 'pc_status', online: true }));
+  let authed = false;
+  let authTimer = null;
+  let nonce = '';
+  const join = () => {
+    authed = true;
+    clearTimeout(authTimer);
+    ws.joined = true;
+    if (role === 'pc') {
+      if (room.pc && room.pc !== ws) { log(rid, `PC replaced: ${room.pc.who} is out, ${who} is in`); room.pc.close(4000, 'replaced'); }
+      room.pc = ws;
+      ws.who = who;
+      log(rid, `PC connected: ${who}`);
+      room.phones.forEach((p) => send(p, { type: 'pc_status', online: true }));
+    } else {
+      room.phones.add(ws);
+      ws.who = who;
+      log(rid, `phone connected: ${who}  (${room.phones.size} phone${room.phones.size === 1 ? '' : 's'})`);
+      send(ws, { type: 'pc_status', online: !!room.pc });
+      if (room.lastState) send(ws, { type: 'state', state: room.lastState });
+      if (room.lastYtQueue) send(ws, room.lastYtQueue);
+      if (room.pc) send(room.pc, { type: 'cmd', cmd: 'get_state' });
+    }
+    send(ws, { type: 'authed', guarded: !!codeFor(role) });
+  };
+
+  const code = codeFor(role);
+  if (!code) {
+    join();
   } else {
-    room.phones.add(ws);
-    ws.who = who;
-    log(rid, `phone connected: ${who}  (${room.phones.size} phone${room.phones.size === 1 ? '' : 's'})`);
-    send(ws, { type: 'pc_status', online: !!room.pc });
-    if (room.lastState) send(ws, { type: 'state', state: room.lastState });
-    if (room.lastYtQueue) send(ws, room.lastYtQueue);
-    if (room.pc) send(room.pc, { type: 'cmd', cmd: 'get_state' });
+    nonce = crypto.randomBytes(16).toString('hex');
+    send(ws, { type: 'challenge', nonce });
+    authTimer = setTimeout(() => { log(rid, `${role} did not answer the code challenge: ${who}`); ws.close(4003, 'code required'); }, AUTH_TIMEOUT_MS);
   }
 
   ws.on('message', (raw) => {
@@ -312,6 +382,27 @@ wss.on('connection', (ws, { token, role, ip, device }) => {
 
     // Lets either side notice a dead connection quickly.
     if (msg.type === 'ping') return send(ws, { type: 'pong' });
+
+    if (!authed) {
+      // The only thing an unverified connection may do is answer the code challenge.
+      if (msg.type !== 'auth') return;
+      if (proofOk(codeFor(role), token, role, nonce, msg.proof)) {
+        setName(msg.name);
+        join();
+      } else {
+        const f = noteBadCode(ip);
+        log(rid, `${role} gave a WRONG code: ${who}  (${f.n} of ${MAX_BAD_CODES}${f.until ? ', now blocked for 15 minutes' : ''})`);
+        ws.close(4003, 'wrong code');
+      }
+      return;
+    }
+
+    if (role === 'phone' && msg.type === 'name') {
+      const before = who;
+      setName(msg.name);
+      if (who !== before) log(rid, `phone renamed: ${before} -> ${who}`);
+      return;
+    }
 
     if (role === 'phone') {
       if (raw.length > MAX_PHONE_MSG_BYTES || msg.type !== 'cmd') return;
@@ -335,6 +426,11 @@ wss.on('connection', (ws, { token, role, ip, device }) => {
       } else if (msg.cmd === 'library') {
         if (!LIBRARY_SECTIONS.has(String(msg.value))) return;
         out.value = String(msg.value);
+      } else if (msg.cmd === 'health') {
+        out.value = msg.value === 'deep' ? 'deep' : 'quick';
+      } else if (msg.cmd === 'radio') {
+        if (msg.value !== 'current' && !VIDEO_ID_RE.test(String(msg.value))) return;
+        out.value = String(msg.value);
       } else if (msg.cmd === 'play_video' || msg.cmd === 'play_next' || msg.cmd === 'queue_end' || msg.cmd === 'queue_remove') {
         if (!VIDEO_ID_RE.test(String(msg.value))) return;
         out.value = String(msg.value);
@@ -345,6 +441,7 @@ wss.on('connection', (ws, { token, role, ip, device }) => {
         if (!QUEUE_MOVE_RE.test(String(msg.value))) return;
         out.value = String(msg.value);
       }
+      if (TAG_CMDS.has(out.cmd)) out.by = name || device;
       if (LOG_COMMANDS && (process.env.LOG_ALL === '1' || !QUIET_CMDS.has(out.cmd))) {
         log(rid, `command ${out.cmd}${out.value != null && out.value !== '' ? ' ' + clean(out.value) : ''}  from ${who}${room.pc ? '' : '  (PC offline, not delivered)'}`);
       }
@@ -377,6 +474,12 @@ wss.on('connection', (ws, { token, role, ip, device }) => {
       const out = { type: 'ytqueue', items: cleanTracks(msg.items, 50) };
       room.lastYtQueue = out;
       room.phones.forEach((p) => send(p, out));
+    } else if (msg.type === 'health' && Array.isArray(msg.checks)) {
+      const out = { type: 'health', checks: msg.checks.slice(0, 14).map((c) => ({
+        name: clean(c && c.name, 40), ok: !!(c && c.ok), detail: clean(c && c.detail, 140) })) };
+      const failed = out.checks.filter((c) => !c.ok).map((c) => c.name);
+      log(rid, `health check: ${out.checks.length - failed.length}/${out.checks.length} ok${failed.length ? ' (failed: ' + failed.join(', ') + ')' : ''}`);
+      room.phones.forEach((p) => send(p, out));
     } else if (msg.type === 'library' && Array.isArray(msg.items) && LIBRARY_SECTIONS.has(msg.section)) {
       const out = { type: 'library', section: msg.section, items: cleanTracks(msg.items, 60) };
       if (msg.error) out.error = String(msg.error).slice(0, 200);
@@ -393,7 +496,8 @@ wss.on('connection', (ws, { token, role, ip, device }) => {
   });
 
   ws.on('close', (code) => {
-    log(rid, `${role === 'pc' ? 'PC' : 'phone'} disconnected: ${who}${code === 4000 ? ' (replaced by another PC)' : ''}`);
+    clearTimeout(authTimer);
+    if (ws.joined) log(rid, `${role === 'pc' ? 'PC' : 'phone'} disconnected: ${who}${code === 4000 ? ' (replaced by another PC)' : ''}`);
     if (role === 'pc') {
       if (room.pc === ws) {
         room.pc = null;
@@ -418,6 +522,9 @@ heartbeat.unref();
 wss.on('close', () => clearInterval(heartbeat));
 
 if (require.main === module) {
+  if (!accessCode()) console.warn('WARNING: ACCESS_CODE is not set. Anyone who learns a token can control playback. Set ACCESS_CODE (and PC_CODE) in your host\'s environment settings.');
+  else if (accessCode().length < 8) console.warn('WARNING: ACCESS_CODE is short. Use 10 or more characters (letters and numbers are fine).');
+  if (accessCode() && !pcCode()) console.warn('Note: PC_CODE is not set, so anyone with a token could take the PC\'s place. Set PC_CODE too.');
   // A bug or a bad client must never take the relay down.
   process.on('uncaughtException', (e) => console.error('uncaughtException:', e));
   process.on('unhandledRejection', (e) => console.error('unhandledRejection:', e));

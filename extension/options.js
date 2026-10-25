@@ -33,6 +33,8 @@ const PC = {
   disconnected: ['Lost the connection, retrying…', 'warn'],
   replaced: ['Another tab or computer took over this token', 'warn'],
   'no-tab': ['No YouTube Music tab is open', 'warn'],
+  refused: ['The relay refused the PC code. Check it in the box above', 'bad'],
+  'needs-code': ['Your relay needs a PC code. Enter it above', 'bad'],
 };
 
 function render(s) {
@@ -66,7 +68,9 @@ async function refresh() {
 }
 
 async function load() {
-  const c = await chrome.storage.local.get(['relayUrl', 'token', 'allowHttp']);
+  const c = await chrome.storage.local.get(['relayUrl', 'token', 'allowHttp', 'pcCode']);
+  $('pccode').value = c.pcCode || '';
+  if (c.pcCode) $('pcdetails').open = true;
   $('url').value = c.relayUrl || '';
   $('token').value = c.token || '';
   $('allowHttp').checked = !!c.allowHttp;
@@ -96,7 +100,9 @@ $('save').onclick = async () => {
   $('url').value = relayUrl;
   $('save').disabled = true;
   say('Saving…');
-  await chrome.storage.local.set({ relayUrl, token, allowHttp });
+  const pcCode = $('pccode').value.trim();
+  if (pcCode && !/^\S{6,100}$/.test(pcCode)) { $('save').disabled = false; return say('The PC code needs 6 or more characters and no spaces (or leave it empty).', 'bad'); }
+  await chrome.storage.local.set({ relayUrl, token, allowHttp, pcCode });
   const r = await chrome.runtime.sendMessage({ type: 'ota-check', force: true }).catch(() => null);
   $('save').disabled = false;
   render(r);
