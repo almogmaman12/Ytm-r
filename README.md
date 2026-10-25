@@ -29,6 +29,7 @@ your git repo --push--> your relay server <--wss--> phone page
 - **Radio:** start a radio from the current song (button on the Playing screen) or from any song in search or your library (the radio icon on a row).
 - **Device names:** name your phone in Settings ("Almog's phone"). The name shows in the relay log and next to songs you add to the queue ("added by …").
 - **Connection check:** Settings → **Check** tests each part of the site integration (player, volume, navigation, queue, search, library) and shows which still work, with the reason for any that don't. **Deep check** also adds and removes a copy of the current song. When YouTube changes something you see exactly what broke; the fix is a push to `server/public/ota/page.js`.
+- **Reopen YouTube Music:** if the tab was closed, the phone shows an **Open YouTube Music on the PC** button instead of leaving you at "PC offline". While no tab is open the extension keeps one idle connection to your relay (using the same PC code), and the button makes it open `music.youtube.com`. That connection can do nothing else. Chrome itself must still be running on the PC. You can turn it off with the checkbox in the extension's Advanced settings (reload the extension once after updating).
 - **Up next:** shows YouTube Music's real queue. Tap a song to jump to it, press ✕ to remove it, press **Edit** to drag the handles and reorder, or **Clear** to remove everything coming up (the song playing stays).
 
 ## Setup (about 10 minutes)

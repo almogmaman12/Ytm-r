@@ -182,6 +182,7 @@ async function doUpdate({ force = false }) {
     validateManifest(manifest);
   } catch (e) {
     await ensureRegistered().catch(() => {});
+getConfig().then(ensureAgent).catch(() => {});
     await saveStatus({ state: ota.version ? 'offline' : 'fetch-failed', error: e.message });
     return summary();
   }
@@ -246,6 +247,66 @@ async function summary() {
   };
 }
 
+// ---- wake-up helper ----
+// While no YouTube Music tab is open, keep one small connection to the relay (role "agent", same
+// PC code as the tab). If your phone asks, it opens music.youtube.com. It can do nothing else:
+// the address is fixed here and the relay sends no other instructions to it.
+let agentWs = null;
+let agentPing = null;
+let agentRetry = null;
+let agentDelay = 3000;
+
+function stopAgent() {
+  clearInterval(agentPing); agentPing = null;
+  clearTimeout(agentRetry); agentRetry = null;
+  if (agentWs) { const w = agentWs; agentWs = null; try { w.close(); } catch {} }
+}
+
+async function openMusicTab() {
+  const tabs = await chrome.tabs.query({ url: YTM }).catch(() => []);
+  if (tabs.length) return;
+  const url = 'https://music.youtube.com/';
+  try { await chrome.tabs.create({ url, active: false }); }
+  catch { await chrome.windows.create({ url, focused: false }).catch(() => {}); }
+}
+
+async function ensureAgent() {
+  const { agent } = await chrome.storage.local.get('agent');
+  const cfg = await getConfig();
+  let origin;
+  try { origin = relayOrigin(cfg.relayUrl, cfg.allowHttp); } catch { return stopAgent(); }
+  const tabs = await chrome.tabs.query({ url: YTM }).catch(() => []);
+  if (agent === false || !cfg.token || tabs.length) return stopAgent();
+  if (agentWs && agentWs.readyState <= 1) return;
+  const ws = new WebSocket(`${origin.replace(/^http/, 'ws')}/ws?token=${encodeURIComponent(cfg.token)}&role=agent`);
+  agentWs = ws;
+  ws.onmessage = async (ev) => {
+    let m; try { m = JSON.parse(ev.data); } catch { return; }
+    if (m.type === 'challenge') {
+      if (!pcCodeNow) return;
+      const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(pcCodeNow), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+      const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(`${cfg.token}|agent|${m.nonce}`));
+      ws.send(JSON.stringify({ type: 'auth', proof: hex(sig) }));
+    } else if (m.type === 'authed') {
+      agentDelay = 3000;
+      clearInterval(agentPing);
+      // A message every 20 s also keeps Chrome from stopping this worker.
+      agentPing = setInterval(() => { try { ws.send('{"type":"ping"}'); } catch {} }, 20000);
+    } else if (m.type === 'wake') {
+      openMusicTab();
+    }
+  };
+  ws.onclose = (ev) => {
+    if (agentWs !== ws) return;
+    agentWs = null;
+    clearInterval(agentPing); agentPing = null;
+    const wait = ev.code === 4003 ? 10 * 60 * 1000 : agentDelay;   // wrong or missing code: do not hammer the relay
+    agentDelay = Math.min(agentDelay * 2, 60000);
+    agentRetry = setTimeout(() => ensureAgent().catch(() => {}), wait);
+  };
+  ws.onerror = () => {};
+}
+
 // ---- events ----
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
@@ -266,9 +327,11 @@ if (chrome.runtime.onUserScriptMessage) {
 chrome.tabs.onRemoved.addListener(async () => {
   const tabs = await chrome.tabs.query({ url: YTM }).catch(() => []);
   if (!tabs.length) chrome.storage.local.set({ pcStatus: { state: 'no-tab', version: '', at: Date.now() } });
+  ensureAgent().catch(() => {});
 });
 
 chrome.tabs.onUpdated.addListener(async (tabId, info, tab) => {
+  if (info.url && info.url.startsWith('https://music.youtube.com/')) ensureAgent().catch(() => {});
   if (info.status !== 'complete' || !tab.url || !tab.url.startsWith('https://music.youtube.com/')) return;
   const { ota = {} } = await chrome.storage.local.get('ota');
   if (Date.now() - (ota.checkedAt || 0) > 120000) checkForUpdate();
@@ -276,15 +339,20 @@ chrome.tabs.onUpdated.addListener(async (tabId, info, tab) => {
 
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area === 'local' && (changes.relayUrl || changes.token || changes.allowHttp || changes.pcCode)) checkForUpdate({ force: true });
+  if (area === 'local' && (changes.relayUrl || changes.token || changes.allowHttp || changes.pcCode || changes.agent)) { stopAgent(); ensureAgent().catch(() => {}); }
 });
 
 chrome.runtime.onInstalled.addListener((details) => {
   if (details.reason === 'install') chrome.runtime.openOptionsPage();
   checkForUpdate({ force: true });
 });
-chrome.runtime.onStartup.addListener(() => checkForUpdate());
+chrome.runtime.onStartup.addListener(() => { checkForUpdate(); ensureAgent().catch(() => {}); });
 chrome.alarms.create('ota-check', { periodInMinutes: CHECK_EVERY_MINUTES, delayInMinutes: 1 });
-chrome.alarms.onAlarm.addListener((a) => { if (a.name === 'ota-check') checkForUpdate(); });
+chrome.alarms.create('agent-check', { periodInMinutes: 1 });
+chrome.alarms.onAlarm.addListener((a) => {
+  if (a.name === 'ota-check') checkForUpdate();
+  if (a.name === 'agent-check') ensureAgent().catch(() => {});
+});
 
 // A worker restart only needs to make sure the saved copy is registered; it does not hit the network.
 ensureRegistered().catch(() => {});

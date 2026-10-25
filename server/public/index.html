@@ -179,6 +179,8 @@
   #healthList li { display: flex; gap: 8px; padding: 6px 0; border-top: 1px solid var(--surface); }
   #healthList .ok { color: #7fe3a1; flex: none; width: 1.2em; } #healthList .bad { color: #ff8a8a; flex: none; width: 1.2em; }
   #healthList .d { color: var(--muted); display: block; font-size: 12.5px; }
+  #wakeBtn { display: none; margin: 14px auto 0; padding: 12px 20px; border-radius: 999px; background: var(--accent, #8b9bff); color: #10131f; font-weight: 700; font-size: 15px; }
+  #app[data-wake="on"] #wakeBtn { display: block; }
   #radioBtn { display: block; margin: 18px auto 0; padding: 10px 18px; border-radius: 999px; background: var(--surface); color: var(--ink); font-weight: 600; font-size: 15px; }
   ul.tracks .acts3 { display: flex; align-items: center; flex: none; }
   ul.tracks .acts3 .act { width: 42px; }
@@ -244,6 +246,7 @@
       <input type="range" id="vol" min="0" max="100" value="50" aria-label="Volume">
       <svg class="i"><use href="#i-vol-hi"/></svg>
     </div>
+    <button id="wakeBtn" type="button">Open YouTube Music on the PC</button>
     <button id="radioBtn" type="button">Start radio from this song</button>
   </section>
 
@@ -393,8 +396,9 @@ function show() {
 }
 
 /* ---------- connection ---------- */
-function setPc(online) {
+function setPc(online, wake) {
   $('app').dataset.pc = online ? 'on' : 'off';
+  $('app').dataset.wake = !online && wake ? 'on' : 'off';
   $('status').textContent = online ? 'PC connected' : 'PC offline';
   if (!last) {
     $('artist').textContent = online ? '' : 'Waiting for your PC. Check that YouTube Music is open in Chrome and the token matches.';
@@ -449,7 +453,7 @@ function connect() {
     if (ws !== sock) return;
     lastRx = Date.now();
     let m; try { m = JSON.parse(ev.data); } catch { return; }
-    if (m.type === 'pc_status') setPc(m.online);
+    if (m.type === 'pc_status') setPc(m.online, m.wake);
     else if (m.type === 'state') render(m.state);
     else if (m.type === 'results') renderResults(m);
     else if (m.type === 'library') renderLibrary(m);
@@ -904,6 +908,11 @@ $('codeOk').onclick = () => {
 $('codeInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('codeOk').click(); });
 $('codeCancel').onclick = () => $('codeDlg').close();
 $('changeCode').onclick = () => { $('settings').close(); askCode('Enter the new access code.'); };
+$('wakeBtn').onclick = () => {
+  if (!ws || ws.readyState !== 1) return toast('Not connected. Reconnecting…');
+  ws.send(JSON.stringify({ type: 'cmd', cmd: 'open_music' }));
+  toast('Asking your PC to open YouTube Music…');
+};
 $('radioBtn').onclick = () => { buzz(); if (cmd('radio', 'current')) toast('Starting a radio…'); };
 
 /* ---------- connection check ---------- */

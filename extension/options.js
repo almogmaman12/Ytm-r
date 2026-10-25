@@ -68,7 +68,8 @@ async function refresh() {
 }
 
 async function load() {
-  const c = await chrome.storage.local.get(['relayUrl', 'token', 'allowHttp', 'pcCode']);
+  const c = await chrome.storage.local.get(['relayUrl', 'token', 'allowHttp', 'pcCode', 'agent']);
+  $('agent').checked = c.agent !== false;
   $('pccode').value = c.pcCode || '';
   if (c.pcCode) $('pcdetails').open = true;
   $('url').value = c.relayUrl || '';
@@ -102,7 +103,7 @@ $('save').onclick = async () => {
   say('Saving…');
   const pcCode = $('pccode').value.trim();
   if (pcCode && !/^\S{6,100}$/.test(pcCode)) { $('save').disabled = false; return say('The PC code needs 6 or more characters and no spaces (or leave it empty).', 'bad'); }
-  await chrome.storage.local.set({ relayUrl, token, allowHttp, pcCode });
+  await chrome.storage.local.set({ relayUrl, token, allowHttp, pcCode, agent: $('agent').checked });
   const r = await chrome.runtime.sendMessage({ type: 'ota-check', force: true }).catch(() => null);
   $('save').disabled = false;
   render(r);

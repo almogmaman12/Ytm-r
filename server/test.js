@@ -317,6 +317,28 @@ let port;
 
   // ---- Access codes: a token alone is not enough ----
   const crypto2 = require('crypto');
+  // PC helper: lets a phone ask the extension to reopen YouTube Music when no tab is connected
+  const wTok = 'wakewakewakewakewake_5555';
+  const wPhone = await open('phone', wTok);
+  const wAgent = await open('agent', wTok);
+  await wait(100);
+  assert(wPhone.msgs.some((m) => m.type === 'pc_status' && !m.online && m.wake), 'phone is told it can wake the PC');
+  wPhone.send(JSON.stringify({ type: 'cmd', cmd: 'open_music' }));
+  await wait(100);
+  assert(wAgent.msgs.some((m) => m.type === 'wake'), 'helper receives the wake request');
+  wPhone.send(JSON.stringify({ type: 'cmd', cmd: 'open_music' }));
+  await wait(100);
+  assert.strictEqual(wAgent.msgs.filter((m) => m.type === 'wake').length, 1, 'wake requests are rate limited');
+  const wPc = await open('pc', wTok);
+  await wait(100);
+  assert(wPhone.msgs.some((m) => m.type === 'pc_status' && m.online && !m.wake), 'wake is off once the tab is connected');
+  wPhone.send(JSON.stringify({ type: 'cmd', cmd: 'open_music' }));
+  wAgent.send(JSON.stringify({ type: 'cmd', cmd: 'play' }));
+  await wait(100);
+  assert.strictEqual(wAgent.msgs.filter((m) => m.type === 'wake').length, 1, 'no wake while the PC is online');
+  assert(!wPc.msgs.some((m) => m.cmd === 'play'), 'the helper cannot send commands');
+  [wPhone, wAgent, wPc].forEach((w) => w.close());
+
   process.env.ACCESS_CODE = 'open-sesame-123';
   process.env.PC_CODE = 'pc-secret-456';
   const cTok = 'codecodecodecodecodecode_77';

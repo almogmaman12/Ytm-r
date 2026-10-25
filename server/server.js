@@ -145,7 +145,7 @@ function clientIp(req) {
 // HMAC-SHA256(code, token|role|challenge). Read at connection time, so it can change on restart.
 const accessCode = () => process.env.ACCESS_CODE || '';
 const pcCode = () => process.env.PC_CODE || '';
-const codeFor = (role) => (role === 'pc' ? pcCode() : accessCode());
+const codeFor = (role) => (role === 'phone' ? accessCode() : pcCode());   // 'pc' and 'agent' are the PC side
 function proofFor(code, token, role, nonce) {
   return crypto.createHmac('sha256', code).update(`${token}|${role}|${nonce}`).digest('hex');
 }
@@ -184,15 +184,20 @@ const rooms = new Map();
 function getRoom(token) {
   let room = rooms.get(token);
   if (!room) {
-    room = { pc: null, phones: new Set(), lastState: null, lastYtQueue: null };
+    room = { pc: null, agent: null, lastWake: 0, phones: new Set(), lastState: null, lastYtQueue: null };
     rooms.set(token, room);
   }
   return room;
 }
 
+// What phones are told about the PC. `wake` means: no tab is connected, but the extension's
+// small helper is, so the phone may ask it to reopen YouTube Music.
+const pcStatus = (room) => ({ type: 'pc_status', online: !!room.pc, wake: !room.pc && !!room.agent });
+const tellPhones = (room) => room.phones.forEach((p) => send(p, pcStatus(room)));
+
 function cleanupRoom(token) {
   const room = rooms.get(token);
-  if (room && !room.pc && room.phones.size === 0) rooms.delete(token);
+  if (room && !room.pc && !room.agent && room.phones.size === 0) rooms.delete(token);
 }
 
 // Returns a normalised https URL, or '' if it is not a plain https URL.
@@ -299,7 +304,7 @@ server.on('upgrade', (req, socket, head) => {
   const token = url.searchParams.get('token') || '';
   const role = url.searchParams.get('role');
   if (token.length < MIN_TOKEN_LEN || token.length > 200 || !/^[A-Za-z0-9_-]+$/.test(token) ||
-      (role !== 'pc' && role !== 'phone')) {
+      (role !== 'pc' && role !== 'phone' && role !== 'agent')) {
     if (LOG_COMMANDS) console.log(`${new Date().toISOString()} [rejected] bad connection request from ${clientIp(req)} (${deviceLabel(String(req.headers['user-agent'] || ''))})`);
     return rejectUpgrade(socket, 400, 'Bad Request');
   }
@@ -348,17 +353,23 @@ wss.on('connection', (ws, { token, role, ip, device }) => {
     authed = true;
     clearTimeout(authTimer);
     ws.joined = true;
-    if (role === 'pc') {
+    if (role === 'agent') {
+      if (room.agent && room.agent !== ws) room.agent.close(4000, 'replaced');
+      room.agent = ws;
+      ws.who = who;
+      log(rid, `PC helper connected: ${who}`);
+      tellPhones(room);
+    } else if (role === 'pc') {
       if (room.pc && room.pc !== ws) { log(rid, `PC replaced: ${room.pc.who} is out, ${who} is in`); room.pc.close(4000, 'replaced'); }
       room.pc = ws;
       ws.who = who;
       log(rid, `PC connected: ${who}`);
-      room.phones.forEach((p) => send(p, { type: 'pc_status', online: true }));
+      tellPhones(room);
     } else {
       room.phones.add(ws);
       ws.who = who;
       log(rid, `phone connected: ${who}  (${room.phones.size} phone${room.phones.size === 1 ? '' : 's'})`);
-      send(ws, { type: 'pc_status', online: !!room.pc });
+      send(ws, pcStatus(room));
       if (room.lastState) send(ws, { type: 'state', state: room.lastState });
       if (room.lastYtQueue) send(ws, room.lastYtQueue);
       if (room.pc) send(room.pc, { type: 'cmd', cmd: 'get_state' });
@@ -404,9 +415,21 @@ wss.on('connection', (ws, { token, role, ip, device }) => {
       return;
     }
 
+    // The helper only keeps the connection alive; it sends nothing else.
+    if (role === 'agent') return;
+
     if (role === 'phone') {
       if (raw.length > MAX_PHONE_MSG_BYTES || msg.type !== 'cmd') return;
       if (overLimit(MAX_CMDS_PER_SEC)) return;
+      if (msg.cmd === 'open_music') {
+        // Ask the extension to reopen YouTube Music when no tab is connected. At most once per 10 s.
+        const now = Date.now();
+        if (room.pc || !room.agent || now - room.lastWake < 10000) return;
+        room.lastWake = now;
+        if (LOG_COMMANDS) log(rid, `command open_music  from ${who}`);
+        send(room.agent, { type: 'wake' });
+        return;
+      }
       if (!ALLOWED_CMDS.has(msg.cmd)) { if (LOG_COMMANDS) log(rid, `unknown command ${clean(msg.cmd, 30)} refused  from ${who}`); return; }
       const out = { type: 'cmd', cmd: msg.cmd };
       if (msg.cmd === 'volume' || msg.cmd === 'seek') {
@@ -497,11 +520,13 @@ wss.on('connection', (ws, { token, role, ip, device }) => {
 
   ws.on('close', (code) => {
     clearTimeout(authTimer);
-    if (ws.joined) log(rid, `${role === 'pc' ? 'PC' : 'phone'} disconnected: ${who}${code === 4000 ? ' (replaced by another PC)' : ''}`);
-    if (role === 'pc') {
+    if (ws.joined) log(rid, `${role === 'pc' ? 'PC' : role === 'agent' ? 'PC helper' : 'phone'} disconnected: ${who}${code === 4000 ? ' (replaced by another PC)' : ''}`);
+    if (role === 'agent') {
+      if (room.agent === ws) { room.agent = null; tellPhones(room); }
+    } else if (role === 'pc') {
       if (room.pc === ws) {
         room.pc = null;
-        room.phones.forEach((p) => send(p, { type: 'pc_status', online: false }));
+        tellPhones(room);
       }
     } else {
       room.phones.delete(ws);
