@@ -339,6 +339,33 @@ let port;
   assert(!wPc.msgs.some((m) => m.cmd === 'play'), 'the helper cannot send commands');
   [wPhone, wAgent, wPc].forEach((w) => w.close());
 
+  // ---- Home shelves, related songs, suggestions, code version ----
+  const hTok = 'homehomehomehomehome_66666';
+  const hPc = await open('pc', hTok);
+  const hPhone = await open('phone', hTok);
+  await wait(100);
+  hPhone.send(JSON.stringify({ type: 'cmd', cmd: 'related', value: 'current' }));
+  hPhone.send(JSON.stringify({ type: 'cmd', cmd: 'related', value: 'AAAAAAAAAA1' }));
+  hPhone.send(JSON.stringify({ type: 'cmd', cmd: 'related', value: '../etc' }));
+  hPhone.send(JSON.stringify({ type: 'cmd', cmd: 'suggest', value: 'daft pu' }));
+  hPhone.send(JSON.stringify({ type: 'cmd', cmd: 'suggest', value: '   ' }));
+  hPhone.send(JSON.stringify({ type: 'cmd', cmd: 'library', value: 'home' }));
+  await wait(150);
+  const homeGot = hPc.msgs.filter((m) => m.type === 'cmd' && m.cmd !== 'get_state').map((m) => `${m.cmd} ${m.value}`);
+  assert.deepStrictEqual(homeGot, ['related current', 'related AAAAAAAAAA1', 'suggest daft pu', 'library home'], 'related, suggest and home commands are validated');
+  hPc.send(JSON.stringify({ type: 'library', section: 'home', items: [], shelves: [
+    { title: 'Listen again', items: [{ kind: 'song', videoId: 'AAAAAAAAAA1', title: 'T', subtitle: 'S' }, { kind: 'song', videoId: 'bad', title: 'x' }] },
+    { title: 'Empty shelf', items: [] }, { title: '', items: [{ kind: 'song', videoId: 'AAAAAAAAAA2', title: 'U' }] }] }));
+  hPc.send(JSON.stringify({ type: 'suggest', query: 'daft pu', items: ['daft punk', 5, 'שלום', ''] }));
+  hPc.send(JSON.stringify({ type: 'version', version: '2026.10.25-abc' }));
+  await wait(150);
+  const lib = hPhone.msgs.find((m) => m.type === 'library' && m.section === 'home');
+  assert(lib && lib.shelves.length === 1 && lib.shelves[0].title === 'Listen again' && lib.shelves[0].items.length === 1, 'home shelves are cleaned (bad rows and empty shelves dropped)');
+  const sg = hPhone.msgs.find((m) => m.type === 'suggest');
+  assert.deepStrictEqual(sg.items, ['daft punk', 'שלום'], 'suggestions keep any language and drop junk');
+  assert(hPhone.msgs.some((m) => m.type === 'pc_status' && m.online && m.version === '2026.10.25-abc'), 'phones are told the PC code version');
+  [hPc, hPhone].forEach((w) => w.close());
+
   process.env.ACCESS_CODE = 'open-sesame-123';
   process.env.PC_CODE = 'pc-secret-456';
   const cTok = 'codecodecodecodecodecode_77';

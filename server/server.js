@@ -16,7 +16,7 @@ const ALLOWED_CMDS = new Set([
   'play', 'pause', 'toggle', 'next', 'previous', 'volume', 'seek', 'get_state',
   'search', 'play_video', 'play_next', 'queue_remove', 'yt_jump', 'yt_remove', 'yt_reorder',
   'queue_end', 'queue_clear', 'play_collection', 'collection_next', 'collection_end', 'open', 'library',
-  'radio', 'health',
+  'radio', 'health', 'related', 'suggest',
 ]);
 const MAX_MSG_BYTES = 65536;        // PC -> server (search results can be a few KB)
 const MAX_PHONE_MSG_BYTES = 1024;   // phone -> server (commands are tiny)
@@ -24,7 +24,7 @@ const VIDEO_ID_RE = /^[A-Za-z0-9_-]{11}$/;
 const PLAYLIST_ID_RE = /^[A-Za-z0-9_-]{2,64}$/;      // albums, playlists, 'LM' (liked songs)
 const BROWSE_ID_RE = /^(UC|MPREb_|VL)[A-Za-z0-9_-]{4,60}$/;   // artist / album / playlist pages
 const SEARCH_KIND_RE = /^(song|album|artist|playlist)\|/;
-const LIBRARY_SECTIONS = new Set(['playlists', 'albums', 'history']);
+const LIBRARY_SECTIONS = new Set(['home', 'playlists', 'albums', 'history']);
 const QUEUE_REF_RE = /^\d{1,2}:[A-Za-z0-9_-]{11}$/;
 const QUEUE_MOVE_RE = /^\d{1,2}:[A-Za-z0-9_-]{11}:\d{1,2}$/;  // from position : video id : to position   // position in the site queue : video id
 // Commands that put songs into the queue are tagged with who sent them ("added by ...").
@@ -110,7 +110,8 @@ function serveOtaManifest(req, res) {
 // Goes to the server's normal output (Render: the Logs tab). The token itself is never logged,
 // only a short fingerprint of it ("room"), so lines from one setup can be matched up.
 const LOG_COMMANDS = process.env.LOG_COMMANDS !== '0';           // LOG_COMMANDS=0 turns command lines off
-const QUIET_CMDS = new Set(['volume', 'seek', 'get_state']);    // fire constantly; shown only with LOG_ALL=1
+const QUIET_CMDS = new Set(['volume', 'seek', 'get_state', 'suggest']);    // fire constantly; shown only with LOG_ALL=1
+const text = (v, n = 80) => String(v == null ? '' : v).replace(/[\u0000-\u001f\u007f\u2028\u2029]/g, '').slice(0, n);   // keeps any language
 const clean = (v, n = 60) => String(v == null ? '' : v).replace(/[^\x20-\x7e]/g, '?').slice(0, n);
 const roomId = (token) => crypto.createHash('sha256').update(token).digest('hex').slice(0, 6);
 
@@ -184,7 +185,7 @@ const rooms = new Map();
 function getRoom(token) {
   let room = rooms.get(token);
   if (!room) {
-    room = { pc: null, agent: null, lastWake: 0, phones: new Set(), lastState: null, lastYtQueue: null };
+    room = { pc: null, agent: null, version: '', lastWake: 0, phones: new Set(), lastState: null, lastYtQueue: null };
     rooms.set(token, room);
   }
   return room;
@@ -192,7 +193,7 @@ function getRoom(token) {
 
 // What phones are told about the PC. `wake` means: no tab is connected, but the extension's
 // small helper is, so the phone may ask it to reopen YouTube Music.
-const pcStatus = (room) => ({ type: 'pc_status', online: !!room.pc, wake: !room.pc && !!room.agent });
+const pcStatus = (room) => ({ type: 'pc_status', online: !!room.pc, wake: !room.pc && !!room.agent, version: room.pc ? room.version || '' : '' });
 const tellPhones = (room) => room.phones.forEach((p) => send(p, pcStatus(room)));
 
 function cleanupRoom(token) {
@@ -451,7 +452,11 @@ wss.on('connection', (ws, { token, role, ip, device }) => {
         out.value = String(msg.value);
       } else if (msg.cmd === 'health') {
         out.value = msg.value === 'deep' ? 'deep' : 'quick';
-      } else if (msg.cmd === 'radio') {
+      } else if (msg.cmd === 'suggest') {
+        const q = String(msg.value || '').trim().slice(0, 60);
+        if (!q) return;
+        out.value = q;
+      } else if (msg.cmd === 'radio' || msg.cmd === 'related') {
         if (msg.value !== 'current' && !VIDEO_ID_RE.test(String(msg.value))) return;
         out.value = String(msg.value);
       } else if (msg.cmd === 'play_video' || msg.cmd === 'play_next' || msg.cmd === 'queue_end' || msg.cmd === 'queue_remove') {
@@ -503,8 +508,19 @@ wss.on('connection', (ws, { token, role, ip, device }) => {
       const failed = out.checks.filter((c) => !c.ok).map((c) => c.name);
       log(rid, `health check: ${out.checks.length - failed.length}/${out.checks.length} ok${failed.length ? ' (failed: ' + failed.join(', ') + ')' : ''}`);
       room.phones.forEach((p) => send(p, out));
+    } else if (msg.type === 'version' && typeof msg.version === 'string') {
+      room.version = clean(msg.version, 20);
+      tellPhones(room);
+    } else if (msg.type === 'suggest' && Array.isArray(msg.items)) {
+      const out = { type: 'suggest', query: text(msg.query, 60),
+        items: msg.items.filter((x) => typeof x === 'string').slice(0, 10).map((x) => text(x, 80)).filter(Boolean) };
+      room.phones.forEach((p) => send(p, out));
     } else if (msg.type === 'library' && Array.isArray(msg.items) && LIBRARY_SECTIONS.has(msg.section)) {
       const out = { type: 'library', section: msg.section, items: cleanTracks(msg.items, 60) };
+      if (Array.isArray(msg.shelves)) {
+        out.shelves = msg.shelves.slice(0, 12).map((sh) => ({ title: text(sh && sh.title, 70), items: cleanTracks((sh && sh.items) || [], 14) }))
+          .filter((sh) => sh.title && sh.items.length);
+      }
       if (msg.error) out.error = String(msg.error).slice(0, 200);
       room.phones.forEach((p) => send(p, out));
     } else if (msg.type === 'results' && Array.isArray(msg.results)) {

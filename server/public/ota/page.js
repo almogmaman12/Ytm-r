@@ -201,13 +201,39 @@
   }
 
   // Phone-side library and artist pages.
-  const LIBRARY_BROWSE = { playlists: 'FEmusic_liked_playlists', albums: 'FEmusic_liked_albums', history: 'FEmusic_history' };
+  const LIBRARY_BROWSE = { home: 'FEmusic_home', playlists: 'FEmusic_liked_playlists', albums: 'FEmusic_liked_albums', history: 'FEmusic_history' };
+
+  // The home page is a stack of shelves ("Listen again", "Mixed for you", ...), each with a title.
+  function parseShelves(json) {
+    const shelves = [];
+    const walk = (n) => {
+      if (!n || typeof n !== 'object') return;
+      if (Array.isArray(n)) { n.forEach(walk); return; }
+      const shelf = n.musicCarouselShelfRenderer || n.musicImmersiveCarouselShelfRenderer;
+      if (shelf) {
+        const head = shelf.header?.musicCarouselShelfBasicHeaderRenderer || shelf.header?.musicImmersiveCarouselShelfBasicHeaderRenderer;
+        const title = runsText(head?.title?.runs);
+        const items = parseAll(shelf.contents, 14);
+        if (title && items.length) shelves.push({ title, items });
+        return;
+      }
+      for (const k in n) walk(n[k]);
+    };
+    walk(json);
+    return shelves.slice(0, 12);
+  }
 
   async function loadLibrary(section) {
     const browseId = LIBRARY_BROWSE[section];
     if (!browseId) return;
     try {
       const json = await innertube('browse', { browseId }, 12000, true);
+      if (section === 'home') {
+        const shelves = parseShelves(json);
+        if (!shelves.length) throw new Error('The home page had no shelves');
+        post({ type: 'library', section, items: shelves.flatMap((s) => s.items).slice(0, 60), shelves });
+        return;
+      }
       // Recently played is a list of songs (each song once, newest first); the rest are albums and playlists.
       let items = parseAll(json, 60).filter((i) => (section === 'history' ? i.kind === 'song' : i.kind === 'album' || i.kind === 'playlist'));
       if (section === 'playlists') {
@@ -218,6 +244,60 @@
     } catch (e) {
       post({ type: 'library', section, items: [], error: String((e && e.message) || e) });
     }
+  }
+
+  // Songs similar to one: what the site's own radio for that song would play.
+  async function relatedSongs(value) {
+    const query = `related:${value}`;
+    try {
+      const id = value === 'current' ? currentVideoId() : String(value);
+      if (!id || !ID_RE.test(id)) throw new Error('No song is playing');
+      const json = await innertube('next', { videoId: id, playlistId: 'RDAMVM' + id, enablePersistentPlaylistPanel: true, isAudioOnly: true }, 12000);
+      const out = [];
+      const seen = new Set([id]);
+      const walk = (n) => {
+        if (!n || typeof n !== 'object' || out.length >= 25) return;
+        if (Array.isArray(n)) { n.forEach(walk); return; }
+        const r = n.playlistPanelVideoRenderer;
+        if (r) {
+          const vid = r.videoId;
+          if (vid && ID_RE.test(vid) && !seen.has(vid)) {
+            seen.add(vid);
+            const arr = r.thumbnail?.thumbnails || [];
+            const t = arr.length ? arr[arr.length - 1].url : '';
+            out.push({ kind: 'song', videoId: vid, title: runsText(r.title?.runs), subtitle: runsText(r.shortBylineText?.runs),
+              thumb: String(t).startsWith('https://') ? t : '' });
+          }
+          return;
+        }
+        for (const k in n) walk(n[k]);
+      };
+      walk(json);
+      if (!out.length) throw new Error('YouTube Music found no similar songs');
+      post({ type: 'results', query, results: out });
+    } catch (e) {
+      post({ type: 'results', query, results: [], error: String((e && e.message) || e) });
+    }
+  }
+
+  // Search-as-you-type suggestions.
+  async function suggest(text) {
+    try {
+      const json = await innertube('music/get_search_suggestions', { input: text }, 5000);
+      const items = [];
+      const walk = (n) => {
+        if (!n || typeof n !== 'object' || items.length >= 8) return;
+        if (Array.isArray(n)) { n.forEach(walk); return; }
+        if (n.searchSuggestionRenderer) {
+          const t = runsText(n.searchSuggestionRenderer.suggestion?.runs);
+          if (t && !items.includes(t)) items.push(t);
+          return;
+        }
+        for (const k in n) walk(n[k]);
+      };
+      walk(json);
+      post({ type: 'suggest', query: text, items });
+    } catch { post({ type: 'suggest', query: text, items: [] }); }
   }
 
   async function openBrowse(browseId) {
@@ -821,7 +901,7 @@
     const player = getPlayer();
     await test('Player', async () => {
       const id = currentVideoId();
-      return { ok: typeof player?.getVideoData === 'function' && ID_RE.test(id), detail: id ? `playing ${id}` : 'no player or no video id' };
+      return { ok: typeof player?.getVideoData === 'function', detail: id ? `playing ${id}` : (player ? 'player found, nothing playing' : 'no player') };
     });
     await test('Volume', async () => {
       if (typeof player?.getVolume !== 'function' || typeof player?.setVolume !== 'function') return { ok: false, detail: 'getVolume/setVolume missing' };
@@ -838,7 +918,7 @@
     });
     await test('Queue (read)', async () => {
       const items = storeItems();
-      return items ? { ok: items.length > 0, detail: `${items.length} songs in the queue` } : { ok: false, detail: ytQueueEl() ? 'queue state not readable' : 'queue element not found' };
+      return items ? { ok: true, detail: `${items.length} songs in the queue` } : { ok: false, detail: ytQueueEl() ? 'queue state not readable' : 'queue element not found' };
     });
     await test('Queue (change access)', async () => {
       const q = ytQueueEl();
@@ -850,7 +930,9 @@
       return { ok: r.length > 0, detail: `${r.length} songs found` };
     });
     await test('Queue entries', async () => {
-      const items = await fetchQueueItems({ videoIds: [currentVideoId()] });
+      const id = currentVideoId();
+      if (!id) return { ok: true, detail: 'skipped, nothing is playing' };
+      const items = await fetchQueueItems({ videoIds: [id] });
       return { ok: items.length > 0, detail: 'get_queue answered' };
     });
     await test('Library (signed in)', async () => {
@@ -859,6 +941,17 @@
       const json = await innertube('browse', { browseId: LIBRARY_BROWSE.playlists }, 12000, true);
       const n = parseAll(json, 60).filter((i) => i.kind === 'playlist' || i.kind === 'album').length;
       return { ok: n > 0, detail: `${n} playlists found` };
+    });
+    await test('Home page', async () => {
+      const shelves = parseShelves(await innertube('browse', { browseId: LIBRARY_BROWSE.home }, 12000, true));
+      return { ok: shelves.length > 0, detail: `${shelves.length} shelves found` };
+    });
+    await test('Related songs', async () => {
+      const id = currentVideoId();
+      if (!id) return { ok: true, detail: 'skipped, nothing is playing' };
+      const json = await innertube('next', { videoId: id, playlistId: 'RDAMVM' + id, enablePersistentPlaylistPanel: true, isAudioOnly: true }, 12000);
+      const n = (JSON.stringify(json).match(/"playlistPanelVideoRenderer"/g) || []).length;
+      return { ok: n > 1, detail: `${n} songs in the radio list` };
     });
     if (deep) {
       await test('Queue add and remove', async () => {
@@ -908,6 +1001,10 @@
       await enqueueNext(value, by);
     } else if (cmd === 'radio') {
       await startRadio(value);
+    } else if (cmd === 'related') {
+      await relatedSongs(String(value));
+    } else if (cmd === 'suggest') {
+      await suggest(String(value).slice(0, 60));
     } else if (cmd === 'health') {
       await healthCheck(value === 'deep');
     } else if (cmd === 'queue_end') {

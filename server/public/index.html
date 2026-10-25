@@ -181,6 +181,18 @@
   #healthList .d { color: var(--muted); display: block; font-size: 12.5px; }
   #wakeBtn { display: none; margin: 14px auto 0; padding: 12px 20px; border-radius: 999px; background: var(--accent, #8b9bff); color: #10131f; font-weight: 700; font-size: 15px; }
   #app[data-wake="on"] #wakeBtn { display: block; }
+  .pbtns { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin: 14px 0 0; }
+  .pbtns button { padding: 10px 16px; border-radius: 999px; background: var(--surface); color: var(--ink); font-weight: 600; font-size: 14.5px; }
+  #suggest { margin: 2px 0 6px; padding: 0; list-style: none; }
+  #suggest li button { width: 100%; text-align: left; padding: 11px 6px; display: flex; gap: 10px; align-items: center; color: var(--ink); font-size: 16px; border-top: 1px solid var(--surface); }
+  #suggest li button svg { width: 18px; height: 18px; flex: none; opacity: .6; }
+  #suggest li.clear button { color: var(--muted); font-size: 14px; }
+  .shelf { margin: 18px 0 4px; font-size: 17px; font-weight: 700; }
+  #repair { display: none; margin: 12px 0 0; padding: 12px 14px; border-radius: 14px; background: rgba(255,207,107,.14); color: var(--ink); font-size: 14px; line-height: 1.4; }
+  #repair.on { display: block; }
+  #repair b { display: block; margin-bottom: 2px; }
+  #repair button { margin-top: 8px; margin-right: 8px; padding: 6px 12px; border-radius: 999px; background: var(--surface); color: var(--ink); font-weight: 600; font-size: 13px; }
+  #verLine { color: var(--muted); font-size: 13px; margin: 0 0 12px; }
   #radioBtn { display: block; margin: 18px auto 0; padding: 10px 18px; border-radius: 999px; background: var(--surface); color: var(--ink); font-weight: 600; font-size: 15px; }
   ul.tracks .acts3 { display: flex; align-items: center; flex: none; }
   ul.tracks .acts3 .act { width: 42px; }
@@ -205,6 +217,8 @@
     <symbol id="i-end" viewBox="0 0 24 24"><path d="M4 6h12M4 11h8M4 16h6"/><path d="M17.5 13.5v7M14 17h7"/></symbol>
     <symbol id="i-lib" viewBox="0 0 24 24"><rect x="4" y="5" width="4" height="14" rx="1"/><rect x="10" y="5" width="4" height="14" rx="1"/><path d="M16.5 6.5l3.5 12.5"/></symbol>
     <symbol id="i-radio" viewBox="0 0 24 24"><circle cx="12" cy="12" r="2"/><path d="M7.8 7.8a6 6 0 000 8.4M16.2 7.8a6 6 0 010 8.4M5 5a10 10 0 000 14M19 5a10 10 0 010 14"/></symbol>
+    <symbol id="i-list" viewBox="0 0 24 24"><path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
     <symbol id="i-grip" viewBox="0 0 24 24"><path d="M5 8h14M5 12h14M5 16h14"/></symbol>
     <symbol id="i-x" viewBox="0 0 24 24"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></symbol>
     <symbol id="i-vol-lo" viewBox="0 0 24 24"><path fill="currentColor" d="M4 9.5v5h3.5L12 18.5v-13L7.5 9.5z"/></symbol>
@@ -247,7 +261,12 @@
       <svg class="i"><use href="#i-vol-hi"/></svg>
     </div>
     <button id="wakeBtn" type="button">Open YouTube Music on the PC</button>
-    <button id="radioBtn" type="button">Start radio from this song</button>
+    <div class="pbtns">
+      <button id="radioBtn" type="button">Radio</button>
+      <button id="relatedBtn" type="button">Similar songs</button>
+      <button id="artistBtn" type="button">Artist page</button>
+    </div>
+    <div id="repair" role="status"></div>
   </section>
 
   <section id="v-search" class="view" aria-label="Search" hidden>
@@ -257,6 +276,7 @@
         <input id="q" type="search" placeholder="Search YouTube Music" enterkeyhint="search" autocomplete="off" autocapitalize="off" maxlength="100">
       </label>
     </form>
+    <ul id="suggest" hidden></ul>
     <div id="kinds" class="chips" role="group" aria-label="What to search for">
       <button class="chip" data-kind="song" aria-pressed="true">Songs</button>
       <button class="chip" data-kind="album" aria-pressed="false">Albums</button>
@@ -272,7 +292,8 @@
   <section id="v-library" class="view" aria-label="Library" hidden>
     <div class="head"><h2 class="section">Library</h2><button id="libRefresh" class="pill">Refresh</button></div>
     <div id="libTabs" class="chips" role="group" aria-label="Library section">
-      <button class="chip" data-section="playlists" aria-pressed="true">Playlists</button>
+      <button class="chip" data-section="home" aria-pressed="true">Home</button>
+      <button class="chip" data-section="playlists" aria-pressed="false">Playlists</button>
       <button class="chip" data-section="albums" aria-pressed="false">Albums</button>
       <button class="chip" data-section="history" aria-pressed="false">Recently played</button>
     </div>
@@ -312,6 +333,7 @@
   <label class="lbl" for="deviceName">This device's name</label>
   <input id="deviceName" type="text" maxlength="24" placeholder="For example: Almog's phone" autocomplete="off" spellcheck="false">
   <p class="small">Shown in the relay's log and next to songs you add to the queue.</p>
+  <p id="verLine"></p>
   <h3>Connection check</h3>
   <div class="row two">
     <button id="healthQuick" class="secondary">Check</button>
@@ -396,7 +418,17 @@ function show() {
 }
 
 /* ---------- connection ---------- */
-function setPc(online, wake) {
+let pcVer = '', wasOnline = false;
+function setPc(online, wake, version) {
+  if (online && version && version !== pcVer) {
+    let before = '';
+    try { before = localStorage.getItem('pcVersion') || ''; localStorage.setItem('pcVersion', version); } catch {}
+    pcVer = version;
+    if (before && before !== version) toast(`The PC picked up an update: version ${version}`);
+    $('verLine').textContent = `Code running on your PC: version ${version}`;
+  }
+  if (online && !wasOnline) scheduleAutoCheck();
+  wasOnline = online;
   $('app').dataset.pc = online ? 'on' : 'off';
   $('app').dataset.wake = !online && wake ? 'on' : 'off';
   $('status').textContent = online ? 'PC connected' : 'PC offline';
@@ -453,7 +485,7 @@ function connect() {
     if (ws !== sock) return;
     lastRx = Date.now();
     let m; try { m = JSON.parse(ev.data); } catch { return; }
-    if (m.type === 'pc_status') setPc(m.online, m.wake);
+    if (m.type === 'pc_status') setPc(m.online, m.wake, m.version);
     else if (m.type === 'state') render(m.state);
     else if (m.type === 'results') renderResults(m);
     else if (m.type === 'library') renderLibrary(m);
@@ -461,6 +493,7 @@ function connect() {
     else if (m.type === 'queue') renderQueue(m.items);
     else if (m.type === 'ytqueue') renderYtQueue(m.items);
     else if (m.type === 'health') renderHealth(m.checks);
+    else if (m.type === 'suggest') renderSuggest(m);
     else if (m.type === 'challenge') answerChallenge(sock, m.nonce);
     else if (m.type === 'authed') { needCode = false; sendName(); }
   };
@@ -753,9 +786,13 @@ function itemRow(r) {
   if (r.kind === 'album' || r.kind === 'playlist') {
     const box = document.createElement('div');
     box.style.cssText = 'display:flex;align-items:center;flex:none';
+    box.className = 'acts3';
     box.append(
       actionButton('i-queue', 'Play next', () => cmd('collection_next', r.playlistId)),
       actionButton('i-end', 'Add to end of queue', () => cmd('collection_end', r.playlistId)));
+    if (r.playlistId.length >= 4) {
+      box.append(actionButton('i-list', 'Show the songs', () => { setView('search'); openArtist({ browseId: 'VL' + r.playlistId, title: r.title }); }));
+    }
     return trackRow(r, box, () => {
       buzz();
       cmd('play_collection', r.playlistId);
@@ -777,7 +814,7 @@ function itemRow(r) {
   });
 }
 
-let searchKind = 'song', currentResults = [], prevSearch = null;
+let searchKind = 'song', currentResults = [], prevSearch = null, autoArtist = '';
 const queryText = (q) => String(q).replace(/^(song|album|artist|playlist)\|/, '');
 
 function renderResults(m) {
@@ -788,9 +825,16 @@ function renderResults(m) {
   currentResults = m.results || [];
   $('searchEmpty').hidden = true;
   $('backBtn').hidden = !prevSearch;
-  if (m.error) { $('searchMsg').textContent = 'Search failed: ' + m.error; return; }
+  if (m.error) { autoArtist = ''; $('searchMsg').textContent = 'Search failed: ' + m.error; return; }
+  if (autoArtist && m.query === lastQuery) {
+    const want = autoArtist.toLowerCase();
+    autoArtist = '';
+    const artists = currentResults.filter((r) => r.kind === 'artist');
+    const hit = artists.find((r) => r.title.toLowerCase() === want) || artists[0];
+    if (hit) { openArtist(hit); return; }
+  }
   if (!currentResults.length) {
-    $('searchMsg').textContent = m.query.startsWith('open:') ? 'Nothing to show here.' : `No results for “${queryText(m.query)}”. Try different words.`;
+    $('searchMsg').textContent = m.query.startsWith('open:') || m.query.startsWith('related:') ? 'Nothing to show here.' : `No results for “${queryText(m.query)}”. Try different words.`;
     return;
   }
   $('searchMsg').textContent = '';
@@ -798,6 +842,7 @@ function renderResults(m) {
 }
 
 function openArtist(r) {
+  if (view !== 'search') setView('search');
   prevSearch = { query: lastQuery, results: currentResults };
   lastQuery = 'open:' + r.browseId;
   $('results').textContent = '';
@@ -825,11 +870,11 @@ document.querySelectorAll('#kinds .chip').forEach((b) => {
 });
 
 /* ---------- library ---------- */
-let libSection = 'playlists';
+let libSection = 'home';
 const libCache = {};
 let libTimer = null;
 function loadLibrary(force) {
-  if (!force && libCache[libSection] && libSection !== 'history') { drawLibrary(libCache[libSection]); return; }  // history changes as you listen
+  if (!force && libCache[libSection] && libSection !== 'history' && libSection !== 'home') { drawLibrary(libCache[libSection]); return; }  // history changes as you listen
   $('libList').textContent = '';
   $('libMsg').textContent = 'Loading…';
   if (!cmd('library', libSection)) { $('libMsg').textContent = 'Not connected to your PC yet.'; return; }
@@ -854,6 +899,17 @@ function drawLibrary(m) {
   if (m.error) { $('libMsg').textContent = "Couldn't load your library: " + m.error; return; }
   if (!m.items.length) { $('libMsg').textContent = 'Nothing here yet.'; return; }
   $('libMsg').textContent = '';
+  if (m.shelves && m.shelves.length) {
+    for (const sh of m.shelves) {
+      const li = document.createElement('li');
+      li.className = 'shelf';
+      li.setAttribute('role', 'presentation');
+      li.textContent = sh.title;
+      list.append(li);
+      for (const r of sh.items) list.append(itemRow(r));
+    }
+    return;
+  }
   for (const r of m.items) list.append(itemRow(r));
 }
 document.querySelectorAll('#libTabs .chip').forEach((b) => {
@@ -871,6 +927,8 @@ $('searchForm').onsubmit = (e) => {
   const q = $('q').value.trim();
   if (!q) return;
   $('q').blur();
+  remember(q);
+  $('suggest').hidden = true;
   lastQuery = `${searchKind}|${q}`;
   prevSearch = null;
   $('backBtn').hidden = true;
@@ -914,6 +972,133 @@ $('wakeBtn').onclick = () => {
   toast('Asking your PC to open YouTube Music…');
 };
 $('radioBtn').onclick = () => { buzz(); if (cmd('radio', 'current')) toast('Starting a radio…'); };
+$('relatedBtn').onclick = () => {
+  buzz();
+  setView('search');
+  lastQuery = 'related:current'; prevSearch = null; autoArtist = '';
+  $('backBtn').hidden = true;
+  $('results').textContent = '';
+  $('searchEmpty').hidden = true;
+  $('searchMsg').textContent = 'Finding songs similar to the one playing…';
+  if (!cmd('related', 'current')) { $('searchMsg').textContent = 'Not connected to your PC yet.'; return; }
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => { $('searchMsg').textContent = 'No response. Check that YouTube Music is open on the PC.'; }, 14000);
+};
+$('artistBtn').onclick = () => {
+  buzz();
+  const raw = (last && last.artist) || '';
+  // "Artist A, Artist B" or "Artist • Album": take the first name.
+  const name = raw.split(/\s*(?:,|&|•|·| feat\.? | ft\.? | x )\s*/i)[0].trim();
+  if (!name) return toast('Nothing is playing, so there is no artist to open.');
+  setView('search');
+  searchKind = 'artist';
+  document.querySelectorAll('#kinds .chip').forEach((c) => c.setAttribute('aria-pressed', String(c.dataset.kind === 'artist')));
+  $('q').value = name;
+  autoArtist = name;
+  $('searchForm').requestSubmit();
+};
+
+/* ---------- search suggestions and history ---------- */
+const getHistory = () => { try { return JSON.parse(localStorage.getItem('searchHistory') || '[]').filter((x) => typeof x === 'string').slice(0, 10); } catch { return []; } };
+function remember(q) {
+  const list = [q, ...getHistory().filter((x) => x.toLowerCase() !== q.toLowerCase())].slice(0, 10);
+  try { localStorage.setItem('searchHistory', JSON.stringify(list)); } catch {}
+}
+let suggestTimer = null, suggested = { query: '', items: [] };
+function drawSuggest() {
+  const box = $('suggest');
+  const text = $('q').value.trim();
+  box.textContent = '';
+  const hist = getHistory();
+  let rows;
+  if (!text) rows = hist.map((t) => ({ t, h: true }));
+  else {
+    const lc = text.toLowerCase();
+    const fromHist = hist.filter((x) => x.toLowerCase().startsWith(lc) && x.toLowerCase() !== lc).map((t) => ({ t, h: true }));
+    const remote = suggested.query === text ? suggested.items.map((t) => ({ t, h: false })) : [];
+    const seen = new Set();
+    rows = [...fromHist, ...remote].filter((r) => { const k = r.t.toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true; }).slice(0, 8);
+  }
+  for (const r of rows) {
+    const li = document.createElement('li');
+    const b = document.createElement('button');
+    b.type = 'button';
+    const ic = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); ic.setAttribute('class', 'i');
+    const use = document.createElementNS('http://www.w3.org/2000/svg', 'use'); use.setAttribute('href', r.h ? '#i-clock' : '#i-search');
+    ic.append(use);
+    const span = document.createElement('span'); span.textContent = r.t;
+    b.append(ic, span);
+    b.onclick = () => { buzz(); $('q').value = r.t; $('searchForm').requestSubmit(); };
+    li.append(b);
+    box.append(li);
+  }
+  if (!text && hist.length) {
+    const li = document.createElement('li'); li.className = 'clear';
+    const b = document.createElement('button'); b.type = 'button'; b.textContent = 'Clear search history';
+    b.onclick = () => { try { localStorage.removeItem('searchHistory'); } catch {} drawSuggest(); };
+    li.append(b); box.append(li);
+  }
+  box.hidden = !rows.length;
+}
+function renderSuggest(m) {
+  suggested = { query: m.query, items: m.items || [] };
+  if (document.activeElement === $('q')) drawSuggest();
+}
+$('q').addEventListener('focus', drawSuggest);
+$('q').addEventListener('input', () => {
+  drawSuggest();
+  clearTimeout(suggestTimer);
+  const text = $('q').value.trim();
+  if (text.length < 2) return;
+  suggestTimer = setTimeout(() => cmd('suggest', text), 250);
+});
+$('q').addEventListener('blur', () => setTimeout(() => { if (document.activeElement !== $('q')) $('suggest').hidden = true; }, 200));
+
+/* ---------- plain-language repair note ---------- */
+const BROKEN = {
+  'Player': "the player can't be controlled, so play, pause and skip may not work",
+  'Volume': 'the volume slider may not work',
+  'Page navigation': "tapping a song may change only the audio, not the YouTube Music page",
+  'Queue (read)': "the phone can't read YouTube Music's queue",
+  'Queue (change access)': 'jumping, removing and reordering in the real queue may not work',
+  'Queue entries': "adding songs to the real queue may fail, so they wait on the phone instead",
+  'Queue add and remove': 'adding songs to the real queue is not working',
+  'Search': 'search is not working',
+  'Library (signed in)': "your library won't load (is YouTube Music signed in on the PC?)",
+  'Home page': "the Home recommendations won't load",
+  'Related songs': 'similar songs and radio suggestions may not work',
+};
+function showRepair(checks) {
+  const box = $('repair');
+  const bad = (checks || []).filter((c) => !c.ok);
+  box.textContent = '';
+  if (!bad.length) { box.classList.remove('on'); return; }
+  const head = document.createElement('b');
+  head.textContent = bad.length === checks.length ? "Nothing is working right now" : 'Some things are not working';
+  const body = document.createElement('div');
+  body.textContent = 'YouTube Music may have changed something. ' + bad.map((c) => BROKEN[c.name] || c.name).join('; ') + '. '
+    + (bad.length === checks.length ? '' : 'Everything else still works. ') + 'The fix is a code update on your relay.';
+  const again = document.createElement('button'); again.type = 'button'; again.textContent = 'Check again';
+  again.onclick = () => { box.classList.remove('on'); cmd('health', 'quick'); };
+  const hide = document.createElement('button'); hide.type = 'button'; hide.textContent = 'Dismiss';
+  hide.onclick = () => box.classList.remove('on');
+  box.append(head, body, again, hide);
+  box.classList.add('on');
+}
+let autoTimer = null;
+function scheduleAutoCheck() {
+  // Once the PC connects, and the version changed or it was a while ago, run the quick check quietly.
+  let lastRun = 0, ver = '';
+  try { lastRun = Number(localStorage.getItem('autoCheckAt') || 0); ver = localStorage.getItem('autoCheckVer') || ''; } catch {}
+  const due = Date.now() - lastRun > 30 * 60 * 1000 || (pcVer && pcVer !== ver);
+  if (!due) return;
+  clearTimeout(autoTimer);
+  autoTimer = setTimeout(() => {
+    if (!wasOnline) return;
+    try { localStorage.setItem('autoCheckAt', String(Date.now())); localStorage.setItem('autoCheckVer', pcVer); } catch {}
+    cmd('health', 'quick');
+  }, 6000);
+}
 
 /* ---------- connection check ---------- */
 let healthTimer = null;
@@ -945,6 +1130,7 @@ function renderHealth(checks) {
     list.append(li);
     if (!c.ok) bad++;
   }
+  showRepair(checks);
   $('healthNote').textContent = bad ? `${bad} of ${checks.length} checks failed. Details are below.` : `All ${checks.length} checks passed.`;
 }
 $('healthQuick').onclick = () => runHealth(false);
