@@ -122,6 +122,88 @@ $('check').onclick = async () => {
 
 $('open-ext').onclick = () => chrome.tabs.create({ url: `chrome://extensions/?id=${chrome.runtime.id}` });
 
-chrome.storage.onChanged.addListener((changes, area) => { if (area === 'local' && (changes.ota || changes.pcStatus)) refresh(); });
-setInterval(refresh, 3000);
-load();
+chrome.storage.onChanged.addListener((changes, area) => { if (unlocked && area === 'local' && (changes.ota || changes.pcStatus)) refresh(); });
+setInterval(() => { if (unlocked) refresh(); }, 3000);
+
+/* ---------- settings password ----------
+   A salted PBKDF2 hash is kept in storage.local. The page shows nothing until the password is
+   entered, and locks again after it has been in the background for a minute. This keeps casual
+   visitors out of the settings; it does not encrypt what is stored (the extension must be able to
+   connect on its own), so it is not protection against someone with full control of the PC. */
+let unlocked = false;
+let fails = 0;
+let hiddenAt = 0;
+const hex = (buf) => [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
+const unhex = (s) => new Uint8Array(s.match(/../g).map((x) => parseInt(x, 16)));
+async function derive(pw, salt) {
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(pw), 'PBKDF2', false, ['deriveBits']);
+  return hex(await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt, iterations: 310000 }, key, 256));
+}
+async function makeLock(pw) {
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  return { salt: hex(salt), hash: await derive(pw, salt) };
+}
+function showLock(mode) {
+  unlocked = false;
+  $('app').hidden = true;
+  $('lock').hidden = false;
+  const first = mode === 'set';
+  $('lockTitle').textContent = first ? 'Set a password' : 'Locked';
+  $('lockText').textContent = first
+    ? 'Choose a password for this extension\'s settings. You will need it every time you open them.'
+    : 'Enter the password to open the settings.';
+  $('pw1Label').textContent = first ? 'New password (8 or more characters)' : 'Password';
+  $('pw1').autocomplete = first ? 'new-password' : 'current-password';
+  $('pw2Wrap').hidden = !first;
+  $('lockGo').textContent = first ? 'Set password' : 'Unlock';
+  $('lockHint').textContent = first ? 'There is no way to recover a forgotten password. If you lose it, remove and reinstall the extension.' : '';
+  $('pw1').value = ''; $('pw2').value = ''; $('lockMsg').textContent = '';
+  setTimeout(() => $('pw1').focus(), 50);
+}
+function open_() {
+  unlocked = true;
+  $('lock').hidden = true;
+  $('app').hidden = false;
+  $('pw1').value = ''; $('pw2').value = '';
+  load();
+}
+async function gate() {
+  const { lock } = await chrome.storage.local.get('lock');
+  if (!lock || !lock.hash) showLock('set'); else showLock('enter');
+}
+$('lockGo').onclick = async () => {
+  const { lock } = await chrome.storage.local.get('lock');
+  const pw = $('pw1').value;
+  const msg = $('lockMsg');
+  msg.className = 'msg bad';
+  if (!lock || !lock.hash) {
+    if (pw.length < 8) return (msg.textContent = 'Use 8 or more characters.');
+    if (pw !== $('pw2').value) return (msg.textContent = 'The two passwords do not match.');
+    $('lockGo').disabled = true;
+    await chrome.storage.local.set({ lock: await makeLock(pw) });
+    $('lockGo').disabled = false;
+    return open_();
+  }
+  $('lockGo').disabled = true;
+  const ok = (await derive(pw, unhex(lock.salt))) === lock.hash;
+  if (ok) { fails = 0; $('lockGo').disabled = false; return open_(); }
+  fails++;
+  msg.textContent = 'Wrong password.';
+  $('pw1').value = '';
+  // Slow repeated guessing down: 1s after the first miss, doubling up to 30s.
+  const wait = Math.min(30, 2 ** (fails - 1));
+  setTimeout(() => { $('lockGo').disabled = false; }, wait * 1000);
+};
+for (const id of ['pw1', 'pw2']) $(id).addEventListener('keydown', (e) => { if (e.key === 'Enter') $('lockGo').click(); });
+$('changepw').onclick = async () => {
+  const pw = $('newpw').value;
+  if (pw.length < 8) return say('Use 8 or more characters for the password.', 'bad');
+  await chrome.storage.local.set({ lock: await makeLock(pw) });
+  $('newpw').value = '';
+  say('Password changed.', 'ok');
+};
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) hiddenAt = Date.now();
+  else if (unlocked && hiddenAt && Date.now() - hiddenAt > 60000) gate();
+});
+gate();
