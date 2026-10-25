@@ -225,6 +225,7 @@
     <symbol id="i-end" viewBox="0 0 24 24"><path d="M4 6h12M4 11h8M4 16h6"/><path d="M17.5 13.5v7M14 17h7"/></symbol>
     <symbol id="i-lib" viewBox="0 0 24 24"><rect x="4" y="5" width="4" height="14" rx="1"/><rect x="10" y="5" width="4" height="14" rx="1"/><path d="M16.5 6.5l3.5 12.5"/></symbol>
     <symbol id="i-radio" viewBox="0 0 24 24"><circle cx="12" cy="12" r="2"/><path d="M7.8 7.8a6 6 0 000 8.4M16.2 7.8a6 6 0 010 8.4M5 5a10 10 0 000 14M19 5a10 10 0 010 14"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 11a8 8 0 10-2.3 5.7M20 4v7h-7"/></symbol>
     <symbol id="i-list" viewBox="0 0 24 24"><path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"/></symbol>
     <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
     <symbol id="i-grip" viewBox="0 0 24 24"><path d="M5 8h14M5 12h14M5 16h14"/></symbol>
@@ -247,7 +248,8 @@
   <section id="v-playing" class="view" aria-label="Now playing">
     <div class="top">
       <span class="pill"><span class="dot"></span><span id="status">Connecting…</span></span>
-      <button id="settingsBtn" class="icon-btn" aria-label="Settings"><svg class="i"><use href="#i-sliders"/></svg></button>
+      <div style="display:flex;gap:2px"><button id="refreshBtn" class="icon-btn" aria-label="Force refresh" title="Force refresh"><svg class="i"><use href="#i-refresh"/></svg></button>
+      <button id="settingsBtn" class="icon-btn" aria-label="Settings"><svg class="i"><use href="#i-sliders"/></svg></button></div>
     </div>
     <div id="art" role="img" aria-label="Album art"></div>
     <div class="meta">
@@ -347,6 +349,12 @@
   <h3>Do-not-play list</h3>
   <ul id="blockList"></ul>
   <p id="blockNote" class="small"></p>
+  <h3>Refresh</h3>
+  <div class="row">
+    <button id="reloadPage" class="secondary">Reload this page</button>
+    <button id="reloadPc" class="secondary">Reload YouTube Music on the PC</button>
+  </div>
+  <p class="small">Use these if something looks stuck. Reloading YouTube Music on the PC stops the music for a few seconds. The round arrow at the top of the Playing screen refreshes everything without interrupting playback.</p>
   <h3>Connection check</h3>
   <div class="row two">
     <button id="healthQuick" class="secondary">Check</button>
@@ -450,10 +458,12 @@ function setPc(online, wake, version) {
     if (before && before !== version) toast(`The PC picked up an update: version ${version}`);
     $('verLine').textContent = `Code running on your PC: version ${version}`;
   }
-  if (online && !wasOnline) { scheduleAutoCheck(); cmd('block_list'); }
+  const cameOnline = online && !wasOnline;
   wasOnline = online;
   $('app').dataset.pc = online ? 'on' : 'off';
   $('app').dataset.wake = !online && wake ? 'on' : 'off';
+  if (cameOnline) { scheduleAutoCheck(); cmd('block_list'); }
+  if (online) finishRefresh();
   $('status').textContent = online ? 'PC connected' : 'PC offline';
   if (!last) {
     $('artist').textContent = online ? '' : 'Waiting for your PC. Check that YouTube Music is open in Chrome and the token matches.';
@@ -1024,6 +1034,38 @@ $('artistBtn').onclick = () => {
 };
 
 /* ---------- do-not-play list ---------- */
+/* ---------- force refresh ---------- */
+let refreshPending = false, refreshTimer = null;
+function forceRefresh() {
+  buzz();
+  for (const k of Object.keys(libCache)) delete libCache[k];
+  suggested = { query: '', items: [] };
+  refreshPending = true;
+  toast('Refreshing…');
+  reconnectNow();
+  clearTimeout(refreshTimer);
+  refreshTimer = setTimeout(() => { if (refreshPending) { refreshPending = false; toast('Still waiting for your PC. Is YouTube Music open?'); } }, 10000);
+}
+function finishRefresh() {
+  if (!refreshPending) return;
+  refreshPending = false;
+  clearTimeout(refreshTimer);
+  cmd('refresh');
+  cmd('block_list');
+  if (view === 'library') loadLibrary(true);
+  toast('Refreshed');
+}
+$('refreshBtn').onclick = forceRefresh;
+$('reloadPage').onclick = async () => {
+  try { for (const k of await caches.keys()) await caches.delete(k); } catch {}
+  try { for (const r of await navigator.serviceWorker.getRegistrations()) await r.unregister(); } catch {}
+  location.reload();
+};
+$('reloadPc').onclick = () => {
+  if (!confirm('Reload YouTube Music on the PC? The music stops for a few seconds.')) return;
+  if (cmd('reload_tab')) { $('settings').close(); toast('Reloading YouTube Music on the PC…'); }
+};
+
 $('blockBtn').onclick = () => {
   buzz();
   if (!last || !last.title) return toast('Nothing is playing to block.');

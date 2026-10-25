@@ -1141,6 +1141,8 @@
       await play(value);
     } else if (cmd === 'play_next') {
       await enqueueNext(value, by);
+    } else if (cmd === 'refresh') {
+      publishQueue(); publishYtQueue(true); reportVolume(true); postBlocked();
     } else if (cmd === 'block_current') {
       blockCurrent(value === 'artist' ? 'artist' : 'song');
     } else if (cmd === 'block_remove') {

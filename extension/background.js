@@ -320,9 +320,15 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type === 'ota-status') { summary().then(sendResponse, () => sendResponse(null)); return true; }
 });
 
+let lastPhoneCheck = 0;
 // Optional status messages from the running payload (shown on the settings page).
 if (chrome.runtime.onUserScriptMessage) {
   chrome.runtime.onUserScriptMessage.addListener((msg) => {
+    if (msg && msg.type === 'ota-check') {
+      // "Refresh" on the phone: look for an update now (at most every 30 seconds).
+      if (Date.now() - lastPhoneCheck > 30000) { lastPhoneCheck = Date.now(); checkForUpdate({ force: false }); }
+      return;
+    }
     if (msg && msg.type === 'pc-status' && typeof msg.state === 'string') {
       chrome.storage.local.set({ pcStatus: { state: msg.state.slice(0, 20), version: String(msg.version || '').slice(0, 20), at: Date.now() } });
     }

@@ -16,7 +16,7 @@ const ALLOWED_CMDS = new Set([
   'play', 'pause', 'toggle', 'next', 'previous', 'volume', 'seek', 'get_state',
   'search', 'play_video', 'play_next', 'queue_remove', 'yt_jump', 'yt_remove', 'yt_reorder',
   'queue_end', 'queue_clear', 'play_collection', 'collection_next', 'collection_end', 'open', 'library',
-  'radio', 'health', 'related', 'suggest', 'block_current', 'block_remove', 'block_list',
+  'radio', 'health', 'related', 'suggest', 'block_current', 'block_remove', 'block_list', 'refresh', 'reload_tab',
 ]);
 const MAX_MSG_BYTES = 65536;        // PC -> server (search results can be a few KB)
 const MAX_PHONE_MSG_BYTES = 1024;   // phone -> server (commands are tiny)

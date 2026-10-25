@@ -321,7 +321,8 @@
       case 'library': sendWs({ type: 'library', section: value, items: [], error: 'The library is only available on YouTube Music' }); return;
       case 'open': sendWs({ type: 'results', query: `open:${value}`, results: [], error: 'Only available on YouTube Music' }); return;
       case 'related': sendWs({ type: 'results', query: `related:${value}`, results: [], error: 'Only available on YouTube Music' }); return;
-      case 'get_state': break;
+      case 'get_state': case 'refresh': break;
+      case 'reload_tab': setTimeout(() => location.reload(), 300); return;
       default:
         sendWs({ type: 'status', message: 'That only works on YouTube Music. This tab is regular YouTube.' });
         return;
@@ -392,6 +393,16 @@
         toPage(cmd, value, by);
         if (cmd === 'search' || cmd === 'open' || cmd === 'library' || cmd === 'related' || cmd === 'suggest') return; // answers come back asynchronously
         break;
+      case 'refresh':
+        // Everything again: version, state, queue, volume, block list. And ask the extension to look for an update.
+        try { const p = chrome.runtime.sendMessage({ type: 'ota-check' }); if (p && p.catch) p.catch(() => {}); } catch { /* messaging unavailable */ }
+        sendWs({ type: 'version', version: String(CFG.version || '') });
+        if (await pageReady()) { toPage('get_state'); toPage('refresh'); }
+        break;
+      case 'reload_tab':
+        sendWs({ type: 'status', message: 'Reloading YouTube Music on the PC…' });
+        setTimeout(() => location.reload(), 300);
+        return;
       case 'get_state':
         if (await pageReady()) toPage('get_state');
         break;
