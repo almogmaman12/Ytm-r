@@ -238,6 +238,7 @@ function cleanTracks(list, limit = 20) {
       item.playlistId = String(r.playlistId);
     }
     if (r.by) item.by = cleanName(r.by);
+    if (r.auto) item.auto = true;
     out.push(item);
   }
   return out;

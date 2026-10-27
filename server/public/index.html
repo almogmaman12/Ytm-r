@@ -317,6 +317,9 @@
     <div class="head"><h2 class="section">Up next</h2><div class="pills"><button id="clearBtn" class="pill" hidden>Clear</button><button id="editBtn" class="pill" hidden>Edit</button></div></div>
     <div id="queueEmpty" class="empty"><strong>Nothing queued</strong>The songs coming up in YouTube Music show here. Add more with the queue button on a search result.</div>
     <ul id="ytqueue" class="tracks"></ul>
+    <h3 id="autoHead" class="sub" hidden>Autoplay</h3>
+    <p id="autoNote" class="hint" hidden>YouTube Music adds these when the queue ends. Tap one to play it now.</p>
+    <ul id="autoqueue" class="tracks"></ul>
     <h3 id="waitingHead" class="sub" hidden>Waiting to be queued</h3>
     <ul id="queue" class="tracks"></ul>
   </section>
@@ -706,9 +709,13 @@ function actionButton(icon, label, handler) {
 let waitingItems = [], siteItems = [];
 let editing = false, dragging = false, pendingSite = null;
 function renderQueue(items) { waitingItems = items; drawQueue(); }
+let autoItems = [];
 function renderYtQueue(items) {
-  if (dragging) { pendingSite = items; return; }   // don't pull rows from under a finger
-  siteItems = items; drawQueue();
+  const all = items || [];
+  const real = all.filter((r) => !r.auto);
+  autoItems = all.filter((r) => r.auto);
+  if (dragging) { pendingSite = real; return; }   // don't pull rows from under a finger
+  siteItems = real; drawQueue();
 }
 function drawQueue() {
   const site = $('ytqueue'), list = $('queue');
@@ -716,7 +723,18 @@ function drawQueue() {
   list.textContent = '';
   site.classList.toggle('editing', editing);
   const total = siteItems.length + waitingItems.length;
-  $('queueEmpty').hidden = total > 0;
+  $('queueEmpty').hidden = total > 0 || autoItems.length > 0;
+  $('autoHead').hidden = $('autoNote').hidden = autoItems.length === 0;
+  const autoList = $('autoqueue');
+  autoList.textContent = '';
+  for (const r of autoItems) {
+    autoList.append(trackRow(r, null, () => {
+      buzz();
+      cmd('play_video', r.videoId);
+      toast('Starting ' + r.title);
+      setView('playing');
+    }));
+  }
   $('waitingHead').hidden = waitingItems.length === 0 || siteItems.length === 0;
   $('badge').hidden = total === 0;
   $('badge').textContent = total > 99 ? '99+' : total;

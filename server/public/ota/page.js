@@ -669,6 +669,41 @@
 
   let lastQueueKey = null;
   let queueBusy = false;   // true while a reorder is half-done, so the phone never sees the gap
+  // YouTube Music's "Autoplay" list: songs it will play when the queue runs out. They are not
+  // queue entries (the queue itself can be empty), but the site shows them under "Up next", so
+  // the phone shows them too, marked as autoplay. Read from the queue state, or failing that from
+  // what the site's own queue panel is showing.
+  function autoplayRenderers(currentId) {
+    const out = [];
+    const seen = new Set([currentId]);
+    const add = (r) => { if (r && ID_RE.test(String(r.videoId)) && !seen.has(r.videoId) && out.length < 50) { seen.add(r.videoId); out.push(r); } };
+    try {
+      const st = queueStore()?.getState?.()?.queue;
+      for (const k of Object.keys(st || {})) {
+        if (!/automix|autoplay/i.test(k)) continue;
+        const walk = (n, d) => {
+          if (!n || typeof n !== 'object' || d > 7) return;
+          if (Array.isArray(n)) { n.forEach((x) => walk(x, d + 1)); return; }
+          const r = rendererOf(n);
+          if (r) { add(r); return; }
+          for (const kk in n) walk(n[kk], d + 1);
+        };
+        walk(st[k], 0);
+      }
+    } catch { /* state not readable */ }
+    if (out.length) return out;
+    try {
+      let after = false;
+      for (const el of document.querySelectorAll('ytmusic-player-queue-item')) {
+        const d = el.data || el.__data?.data || {};
+        const r = d.playlistPanelVideoRenderer || d;
+        if (el.hasAttribute('selected') || r?.selected) { after = true; continue; }
+        if (after) add(r);
+      }
+    } catch { /* panel not readable */ }
+    return out;
+  }
+
   function publishYtQueue(force) {
     if (queueBusy) return;
     const items = storeItems();
@@ -677,10 +712,12 @@
     let at = rs.findIndex((r) => r.selected);
     if (at < 0) { const now = currentVideoId(); at = rs.findIndex((r) => r.videoId === now); }
     const upcoming = rs.slice(at + 1, at + 51);
-    const key = upcoming.map((r) => r.videoId).join(',');
+    const nowId = currentVideoId();
+    const autos = autoplayRenderers(nowId).filter((r) => !upcoming.some((u) => u.videoId === r.videoId));
+    const key = upcoming.map((r) => r.videoId).join(',') + '|' + autos.map((r) => r.videoId).join(',');
     if (!force && key === lastQueueKey) return;
     lastQueueKey = key;
-    post({ type: 'ytqueue', items: upcoming.map(trackOf) });
+    post({ type: 'ytqueue', items: [...upcoming.map(trackOf), ...autos.map((r) => ({ ...trackOf(r), auto: true }))] });
   }
   const ytqTimer = setInterval(() => publishYtQueue(false), 1500);
   ac.signal.addEventListener('abort', () => clearInterval(ytqTimer));
@@ -1059,7 +1096,7 @@
     });
     await test('Queue (read)', async () => {
       const items = storeItems();
-      return items ? { ok: true, detail: `${items.length} songs in the queue` } : { ok: false, detail: ytQueueEl() ? 'queue state not readable' : 'queue element not found' };
+      return items ? { ok: true, detail: `${items.length} songs in the queue, ${autoplayRenderers(currentVideoId()).length} autoplay suggestions` } : { ok: false, detail: ytQueueEl() ? 'queue state not readable' : 'queue element not found' };
     });
     await test('Queue (change access)', async () => {
       const q = ytQueueEl();
