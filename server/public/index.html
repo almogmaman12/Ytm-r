@@ -155,6 +155,26 @@
            padding: 12px 16px; border-radius: 14px; background: var(--ink); color: var(--bg); font-size: 15px; font-weight: 550;
            opacity: 0; transform: translateY(8px); pointer-events: none; transition: opacity .2s, transform .2s; }
   #toast.show { opacity: 1; transform: none; }
+  #toast.show.hasAct { pointer-events: auto; display: flex; align-items: center; gap: 12px; }
+  #toast .toastAct { margin-left: auto; padding: 6px 12px; border-radius: 999px; background: var(--bg); color: var(--ink); font-weight: 700; font-size: 14px; flex: none; }
+  .ex { display: inline-block; margin-right: 6px; padding: 0 5px; border-radius: 4px; background: var(--muted); color: var(--bg); font-size: 11px; font-weight: 700; line-height: 15px; vertical-align: 1px; }
+  .chk { width: 26px; height: 26px; border-radius: 8px; border: 2px solid var(--muted); display: grid; place-items: center; flex: none; margin: 0 10px; }
+  li.sel .chk { background: var(--accent); border-color: var(--accent); color: var(--accent-ink, #fff); }
+  li.sel .chk::after { content: '✓'; font-weight: 800; font-size: 16px; }
+  #selBar { position: fixed; left: 0; right: 0; bottom: calc(var(--nav-h) + var(--mini-h) + var(--safe-b)); z-index: 15; display: none; gap: 8px; padding: 10px 16px; background: var(--surface-2); border-top: 1px solid var(--surface); justify-content: center; align-items: center; flex-wrap: wrap; }
+  body[data-view="queue"] #selBar.on { display: flex; }
+  #selBar button { padding: 9px 14px; border-radius: 999px; background: var(--surface); color: var(--ink); font-weight: 650; font-size: 14px; }
+  #selBar button.danger { color: #ff8a8a; }
+  #selBar button:disabled { opacity: .45; }
+  #selBar .count { color: var(--muted); font-size: 14px; margin-right: 4px; }
+  #waking { position: fixed; inset: 0; z-index: 30; display: none; place-items: center; background: rgba(10,10,16,.92); padding: 24px; text-align: center; }
+  #waking.on { display: grid; }
+  #waking .box { max-width: 340px; }
+  #waking h2 { margin: 0 0 8px; font-size: 22px; }
+  #waking p { color: var(--muted); margin: 0 0 14px; line-height: 1.45; }
+  #waking .bar { height: 6px; border-radius: 3px; background: var(--surface); overflow: hidden; margin: 14px 0 6px; }
+  #waking .bar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .5s linear; }
+  #waking .secs { font-variant-numeric: tabular-nums; color: var(--ink); font-weight: 650; }
   body[data-view="search"] #toast, body[data-view="queue"] #toast, body[data-view="library"] #toast { bottom: calc(var(--nav-h) + var(--mini-h) + var(--safe-b) + 24px); }
 
   /* ---- Setup + settings ---- */
@@ -226,6 +246,8 @@
     <symbol id="i-lib" viewBox="0 0 24 24"><rect x="4" y="5" width="4" height="14" rx="1"/><rect x="10" y="5" width="4" height="14" rx="1"/><path d="M16.5 6.5l3.5 12.5"/></symbol>
     <symbol id="i-radio" viewBox="0 0 24 24"><circle cx="12" cy="12" r="2"/><path d="M7.8 7.8a6 6 0 000 8.4M16.2 7.8a6 6 0 010 8.4M5 5a10 10 0 000 14M19 5a10 10 0 010 14"/></symbol>
     <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 11a8 8 0 10-2.3 5.7M20 4v7h-7"/></symbol>
+    <symbol id="i-top" viewBox="0 0 24 24"><path d="M5 4h14M12 20V9M6 14l6-6 6 6"/></symbol>
+    <symbol id="i-bottom" viewBox="0 0 24 24"><path d="M5 20h14M12 4v11M6 10l6 6 6-6"/></symbol>
     <symbol id="i-list" viewBox="0 0 24 24"><path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"/></symbol>
     <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
     <symbol id="i-grip" viewBox="0 0 24 24"><path d="M5 8h14M5 12h14M5 16h14"/></symbol>
@@ -314,7 +336,7 @@
   </section>
 
   <section id="v-queue" class="view" aria-label="Up next" hidden>
-    <div class="head"><h2 class="section">Up next</h2><div class="pills"><button id="clearBtn" class="pill" hidden>Clear</button><button id="editBtn" class="pill" hidden>Edit</button></div></div>
+    <div class="head"><h2 class="section">Up next</h2><div class="pills"><button id="clearBtn" class="pill" hidden>Clear</button><button id="selectBtn" class="pill" hidden>Select</button><button id="editBtn" class="pill" hidden>Edit</button></div></div>
     <div id="queueEmpty" class="empty"><strong>Nothing queued</strong>The songs coming up in YouTube Music show here. Add more with the queue button on a search result.</div>
     <ul id="ytqueue" class="tracks"></ul>
     <h3 id="autoHead" class="sub" hidden>Autoplay</h3>
@@ -342,6 +364,24 @@
 </div>
 
 <div id="toast" role="status" aria-live="polite"></div>
+
+<div id="selBar" role="toolbar" aria-label="Selected songs">
+  <span class="count" id="selCount">0 selected</span>
+  <button id="selTop" type="button">To top</button>
+  <button id="selBottom" type="button">To bottom</button>
+  <button id="selRemove" type="button" class="danger">Remove</button>
+  <button id="selDone" type="button">Cancel</button>
+</div>
+
+<div id="waking" role="status" aria-live="polite">
+  <div class="box">
+    <h2 id="wakeTitle">Waking up your relay</h2>
+    <p id="wakeText">Free hosting puts the relay to sleep when nobody uses it. It usually takes under a minute to start again.</p>
+    <div class="bar"><i id="wakeBar"></i></div>
+    <p><span class="secs" id="wakeSecs">0</span> s</p>
+    <button id="wakeHide" type="button" class="secondary">Hide this</button>
+  </div>
+</div>
 
 <dialog id="settings">
   <h2>Settings</h2>
@@ -415,12 +455,19 @@ function cssUrl(u) {
 function setToken(t) { try { t ? localStorage.setItem('token', t) : localStorage.removeItem('token'); } catch {} }
 function buzz() { try { navigator.vibrate && navigator.vibrate(8); } catch {} }
 function fmt(s) { s = Math.max(0, Math.floor(s || 0)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); }
-function toast(msg) {
+function toast(msg, action) {
   const t = $('toast');
   t.textContent = msg;
+  t.classList.toggle('hasAct', !!action);
+  if (action) {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'toastAct'; b.textContent = action.label;
+    b.onclick = () => { t.classList.remove('show'); buzz(); action.fn(); };
+    t.append(b);
+  }
   t.classList.add('show');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => t.classList.remove('show'), 3500);
+  toastTimer = setTimeout(() => t.classList.remove('show'), action ? 7000 : 3500);
 }
 function cmd(c, value) {
   if (!ws || ws.readyState !== 1) { toast('Not connected. Reconnecting…'); return false; }
@@ -450,6 +497,33 @@ function show() {
   $('glow').hidden = !token;
   if (token) { setView('playing'); connect(); }
 }
+
+/* ---------- waking relay ---------- */
+let downSince = 0, wakeHidden = false;
+function wakeTick() {
+  const up = ws && ws.readyState === 1;
+  if (!token || up || needCode) { downSince = 0; wakeHidden = false; $('waking').classList.remove('on'); return; }
+  if (!downSince) downSince = Date.now();
+  const secs = Math.round((Date.now() - downSince) / 1000);
+  if (secs < 5 || wakeHidden) return;
+  const offline = navigator.onLine === false;
+  $('waking').classList.add('on');
+  $('wakeTitle').textContent = offline ? 'No internet connection' : secs > 75 ? 'Still waking up…' : 'Waking up your relay';
+  $('wakeText').textContent = offline ? 'Waiting for your phone to get back online.'
+    : secs > 75 ? 'This is taking longer than usual. It keeps trying by itself.'
+    : 'Free hosting puts the relay to sleep when nobody uses it. It usually takes under a minute to start again.';
+  $('wakeSecs').textContent = secs;
+  $('wakeBar').style.width = Math.min(100, (secs / 45) * 100) + '%';
+  if (!offline && secs % 3 === 0) probeAwake();
+}
+async function probeAwake() {
+  try {
+    const r = await fetch('/manifest.json?ts=' + Date.now(), { cache: 'no-store' });
+    if (r.ok && !(ws && ws.readyState === 1)) reconnectNow();
+  } catch { /* still asleep */ }
+}
+setInterval(wakeTick, 1000);
+$('wakeHide').onclick = () => { wakeHidden = true; $('waking').classList.remove('on'); };
 
 /* ---------- connection ---------- */
 let pcVer = '', wasOnline = false;
@@ -692,6 +766,7 @@ function trackRow(r, button, onTap) {
   const t = document.createElement('div'); t.className = 't'; t.textContent = r.title;
   const s = document.createElement('div'); s.className = 's';
   s.textContent = r.by ? (r.subtitle ? r.subtitle + ' · ' : '') + 'added by ' + r.by : r.subtitle;
+  if (r.explicit) { const e = document.createElement('span'); e.className = 'ex'; e.textContent = 'E'; e.title = 'Explicit'; e.setAttribute('aria-label', 'Explicit'); s.prepend(e); }
   txt.append(t, s);
   li.append(th, txt);
   if (button) li.append(button);
@@ -708,6 +783,46 @@ function actionButton(icon, label, handler) {
 
 let waitingItems = [], siteItems = [];
 let editing = false, dragging = false, pendingSite = null;
+let selecting = false;
+const selected = new Set();
+function toggleSel(id) {
+  buzz();
+  if (selected.has(id)) selected.delete(id);
+  else if (selected.size >= 40) { toast('Select up to 40 songs at a time.'); return; }
+  else selected.add(id);
+  drawQueue();
+}
+function removeSong(r, k) {
+  if (!cmd('yt_remove', `${k}:${r.videoId}`)) return;
+  toast('Removed “' + r.title + '”', { label: 'Undo', fn: () => cmd('queue_restore', `${k};${r.videoId}`) });
+}
+function moveSong(k, r, to) {
+  if (to === k) return;
+  const moved = siteItems.splice(k, 1)[0];
+  siteItems.splice(to, 0, moved);
+  cmd('yt_reorder', `${k}:${r.videoId}:${to}`);
+  pendingSite = null;
+  drawQueue();
+}
+function endSelect() { selecting = false; selected.clear(); drawQueue(); }
+$('selectBtn').onclick = () => { buzz(); selecting = !selecting; if (selecting) editing = false; selected.clear(); drawQueue(); };
+$('selDone').onclick = () => { buzz(); endSelect(); };
+$('selTop').onclick = () => {
+  const ids = siteItems.filter((x) => selected.has(x.videoId)).map((x) => x.videoId);
+  if (ids.length && cmd('yt_move_many', 'top;' + ids.join(','))) { toast(`Moved ${ids.length} to the top`); endSelect(); }
+};
+$('selBottom').onclick = () => {
+  const ids = siteItems.filter((x) => selected.has(x.videoId)).map((x) => x.videoId);
+  if (ids.length && cmd('yt_move_many', 'bottom;' + ids.join(','))) { toast(`Moved ${ids.length} to the bottom`); endSelect(); }
+};
+$('selRemove').onclick = () => {
+  const picked = siteItems.map((r, k) => ({ r, k })).filter((x) => selected.has(x.r.videoId));
+  if (!picked.length) return;
+  if (!cmd('yt_remove_many', picked.map((x) => `${x.k}:${x.r.videoId}`).join(','))) return;
+  const back = picked.map((x) => `${x.k};${x.r.videoId}`).join('|');
+  toast(`Removed ${picked.length} song${picked.length === 1 ? '' : 's'}`, { label: 'Undo', fn: () => cmd('queue_restore', back) });
+  endSelect();
+};
 function renderQueue(items) { waitingItems = items; drawQueue(); }
 let autoItems = [];
 function renderYtQueue(items) {
@@ -739,25 +854,42 @@ function drawQueue() {
   $('badge').hidden = total === 0;
   $('badge').textContent = total > 99 ? '99+' : total;
   if (siteItems.length === 0 && editing) { editing = false; site.classList.remove('editing'); }
-  $('editBtn').hidden = siteItems.length < 2;
+  $('editBtn').hidden = siteItems.length < 2 || selecting;
+  if (selecting && siteItems.length === 0) selecting = false;
+  for (const id of [...selected]) if (!siteItems.some((x) => x.videoId === id)) selected.delete(id);
+  $('selectBtn').hidden = siteItems.length < 1;
+  $('selectBtn').textContent = selecting ? 'Done' : 'Select';
+  $('selBar').classList.toggle('on', selecting);
+  $('selCount').textContent = selected.size + ' selected';
+  $('selTop').disabled = $('selBottom').disabled = $('selRemove').disabled = selected.size === 0;
   $('clearBtn').hidden = total === 0;
   $('editBtn').textContent = editing ? 'Done' : 'Edit';
   $('editBtn').setAttribute('aria-pressed', editing);
   siteItems.forEach((r, k) => {
     const ref = `${k}:${r.videoId}`;
-    if (editing) {
+    if (selecting) {
+      const li = trackRow(r, null, () => toggleSel(r.videoId));
+      const chk = document.createElement('div'); chk.className = 'chk'; chk.setAttribute('aria-hidden', 'true');
+      li.prepend(chk);
+      li.classList.toggle('sel', selected.has(r.videoId));
+      li.setAttribute('aria-selected', selected.has(r.videoId));
+      site.append(li);
+    } else if (editing) {
       const grip = document.createElement('div');
       grip.className = 'grip'; grip.setAttribute('aria-label', 'Drag to reorder'); grip.title = 'Drag to reorder';
       grip.innerHTML = '<svg class="i"><use href="#i-grip"/></svg>';
       const box = document.createElement('div');
       box.style.cssText = 'display:flex;align-items:center;flex:none';
-      box.append(actionButton('i-x', 'Remove from YouTube Music queue', () => cmd('yt_remove', ref)), grip);
+      const last = siteItems.length - 1;
+      if (k > 0) box.append(actionButton('i-top', 'Move to top', () => moveSong(k, r, 0)));
+      if (k < last) box.append(actionButton('i-bottom', 'Move to bottom', () => moveSong(k, r, last)));
+      box.append(actionButton('i-x', 'Remove from YouTube Music queue', () => removeSong(r, k)), grip);
       const li = trackRow(r, box);
       li.dataset.k = k;
       attachDrag(li, grip, k);
       site.append(li);
     } else {
-      site.append(trackRow(r, actionButton('i-x', 'Remove from YouTube Music queue', () => cmd('yt_remove', ref)), () => {
+      site.append(trackRow(r, actionButton('i-x', 'Remove from YouTube Music queue', () => removeSong(r, k)), () => {
         buzz();
         if (cmd('yt_jump', ref)) { toast('Jumping to ' + r.title); setView('playing'); }
       }));
@@ -768,12 +900,17 @@ function drawQueue() {
   }
 }
 $('clearBtn').onclick = () => {
-  if (!confirm('Remove everything coming up?')) return;
+  const ids = siteItems.map((x) => x.videoId).slice(0, 60);
+  const n = siteItems.length;
+  if (!n && !confirm('Remove everything coming up?')) return;
   buzz();
-  editing = false;
-  if (cmd('queue_clear')) { siteItems = []; waitingItems = []; drawQueue(); }
+  editing = false; selecting = false; selected.clear();
+  if (cmd('queue_clear')) {
+    siteItems = []; waitingItems = []; drawQueue();
+    if (ids.length) toast(`Cleared ${n} song${n === 1 ? '' : 's'}${n > ids.length ? ` (Undo brings back the first ${ids.length})` : ''}`, { label: 'Undo', fn: () => cmd('queue_restore', `0;${ids.join(',')}`) });
+  }
 };
-$('editBtn').onclick = () => { buzz(); editing = !editing; drawQueue(); };
+$('editBtn').onclick = () => { buzz(); editing = !editing; if (editing) { selecting = false; selected.clear(); } drawQueue(); };
 
 // Drag a row by its handle. Other rows slide out of the way; on release the new place is sent.
 function attachDrag(li, grip, from) {
@@ -828,6 +965,16 @@ function attachDrag(li, grip, from) {
   };
 }
 
+// Adding a song that is already coming up: say so first, and let it through if it was on purpose.
+const isQueued = (id) => siteItems.some((x) => x.videoId === id) || waitingItems.some((x) => x.videoId === id);
+function addSong(c, r) {
+  if (isQueued(r.videoId)) {
+    toast('“' + r.title + '” is already in the queue', { label: 'Add anyway', fn: () => cmd(c, r.videoId) });
+    return;
+  }
+  cmd(c, r.videoId);
+}
+
 // One row for a song, album, playlist or artist, with the right buttons and tap action.
 function itemRow(r) {
   if (r.kind === 'artist') {
@@ -856,8 +1003,8 @@ function itemRow(r) {
   const box = document.createElement('div');
   box.className = 'acts3';
   box.append(
-    actionButton('i-queue', 'Play next', () => cmd('play_next', r.videoId)),
-    actionButton('i-end', 'Add to end of queue', () => cmd('queue_end', r.videoId)),
+    actionButton('i-queue', 'Play next', () => addSong('play_next', r)),
+    actionButton('i-end', 'Add to end of queue', () => addSong('queue_end', r)),
     actionButton('i-radio', 'Start radio from this song', () => { cmd('radio', r.videoId); toast('Starting a radio…'); setView('playing'); }));
   return trackRow(r, box, () => {
     buzz();
@@ -1093,10 +1240,24 @@ $('blockBtn').onclick = () => {
   $('blockArtist').hidden = !last.artist;
   $('blockDlg').showModal();
 };
-$('blockSong').onclick = () => { $('blockDlg').close(); if (cmd('block_current', 'song')) toast('Blocked. Skipping it.'); };
-$('blockArtist').onclick = () => { $('blockDlg').close(); if (cmd('block_current', 'artist')) toast('Artist blocked. Skipping.'); };
+let lastBlocked = [], blockBase = null;
+const blockKey = (b) => b.kind + ':' + b.id;
+function askBlock(what) {
+  $('blockDlg').close();
+  blockBase = new Set(lastBlocked.map(blockKey));
+  if (cmd('block_current', what)) toast(what === 'artist' ? 'Artist blocked. Skipping.' : 'Blocked. Skipping it.');
+  else blockBase = null;
+}
+$('blockSong').onclick = () => askBlock('song');
+$('blockArtist').onclick = () => askBlock('artist');
 $('blockCancel').onclick = () => $('blockDlg').close();
 function renderBlocklist(items) {
+  lastBlocked = items || [];
+  if (blockBase) {
+    const fresh = lastBlocked.filter((b) => !blockBase.has(blockKey(b)));
+    blockBase = null;
+    if (fresh.length) toast(`Blocked “${fresh[0].title}”`, { label: 'Undo', fn: () => cmd('block_remove', blockKey(fresh[0])) });
+  }
   const ul = $('blockList');
   ul.textContent = '';
   for (const b of items || []) {

@@ -377,6 +377,9 @@
       case 'block_current':
       case 'block_remove':
       case 'block_list':
+      case 'queue_restore':
+      case 'yt_remove_many':
+      case 'yt_move_many':
         if (!(await pageReady())) {
           sendWs({ type: 'status', message: 'Reload the YouTube Music tab on the PC, then try again.' });
           if (cmd === 'search') {

@@ -16,7 +16,7 @@ const ALLOWED_CMDS = new Set([
   'play', 'pause', 'toggle', 'next', 'previous', 'volume', 'seek', 'get_state',
   'search', 'play_video', 'play_next', 'queue_remove', 'yt_jump', 'yt_remove', 'yt_reorder',
   'queue_end', 'queue_clear', 'play_collection', 'collection_next', 'collection_end', 'open', 'library',
-  'radio', 'health', 'related', 'suggest', 'block_current', 'block_remove', 'block_list', 'refresh', 'reload_tab',
+  'radio', 'health', 'related', 'suggest', 'block_current', 'block_remove', 'block_list', 'refresh', 'reload_tab', 'queue_restore', 'yt_remove_many', 'yt_move_many',
 ]);
 const MAX_MSG_BYTES = 65536;        // PC -> server (search results can be a few KB)
 const MAX_PHONE_MSG_BYTES = 1024;   // phone -> server (commands are tiny)
@@ -26,6 +26,10 @@ const BROWSE_ID_RE = /^(UC|MPREb_|VL)[A-Za-z0-9_-]{4,60}$/;   // artist / album 
 const SEARCH_KIND_RE = /^(song|album|artist|playlist)\|/;
 const LIBRARY_SECTIONS = new Set(['home', 'playlists', 'albums', 'history']);
 const QUEUE_REF_RE = /^\d{1,2}:[A-Za-z0-9_-]{11}$/;
+const ID11 = '[A-Za-z0-9_-]{11}';
+const QUEUE_MANY_RE = new RegExp(`^\\d{1,2}:${ID11}(,\\d{1,2}:${ID11}){0,39}$`);                       // pos:id,pos:id
+const MOVE_MANY_RE = new RegExp(`^(top|bottom);${ID11}(,${ID11}){0,39}$`);                          // top;id,id
+const RESTORE_RE = new RegExp(`^\\d{1,2};${ID11}(,${ID11}){0,59}(\\|\\d{1,2};${ID11}(,${ID11}){0,59}){0,39}$`);  // pos;ids|pos;ids
 const QUEUE_MOVE_RE = /^\d{1,2}:[A-Za-z0-9_-]{11}:\d{1,2}$/;  // from position : video id : to position   // position in the site queue : video id
 // Commands that put songs into the queue are tagged with who sent them ("added by ...").
 const TAG_CMDS = new Set(['play_next', 'queue_end', 'collection_next', 'collection_end']);
@@ -239,6 +243,7 @@ function cleanTracks(list, limit = 20) {
     }
     if (r.by) item.by = cleanName(r.by);
     if (r.auto) item.auto = true;
+    if (r.explicit === true && kind === 'song') item.explicit = true;
     out.push(item);
   }
   return out;
@@ -471,6 +476,15 @@ wss.on('connection', (ws, { token, role, ip, device }) => {
         out.value = String(msg.value);
       } else if (msg.cmd === 'yt_jump' || msg.cmd === 'yt_remove') {
         if (!QUEUE_REF_RE.test(String(msg.value))) return;
+        out.value = String(msg.value);
+      } else if (msg.cmd === 'yt_remove_many') {
+        if (!QUEUE_MANY_RE.test(String(msg.value))) return;
+        out.value = String(msg.value);
+      } else if (msg.cmd === 'yt_move_many') {
+        if (!MOVE_MANY_RE.test(String(msg.value))) return;
+        out.value = String(msg.value);
+      } else if (msg.cmd === 'queue_restore') {
+        if (!RESTORE_RE.test(String(msg.value))) return;
         out.value = String(msg.value);
       } else if (msg.cmd === 'yt_reorder') {
         if (!QUEUE_MOVE_RE.test(String(msg.value))) return;

@@ -187,6 +187,7 @@
         playlistId = findKey(r.overlay, 'watchPlaylistEndpoint')?.playlistId || '';
       }
       if (!title) continue;
+      const explicit = JSON.stringify(r.badges || []).includes('MUSIC_EXPLICIT_BADGE');
       if (!playlistId && /^VL/.test(browseId)) playlistId = browseId.slice(2);
       const arr = thumbs || [];
       const t = arr.length ? arr[arr.length - 1].url : '';
@@ -194,6 +195,7 @@
       let item = null;
       if (videoId && ID_RE.test(videoId) && !/^(MPREb|UC)/.test(browseId)) {
         item = { kind: 'song', videoId, title, subtitle: subtitle.replace(/^(Song|Video)\s*•\s*/, ''), thumb };
+        if (explicit) item.explicit = true;
         const next = findQueueCommand(r.menu, 'INSERT_AFTER_CURRENT_VIDEO');
         if (next) remember_(playNextEndpoints, videoId, next);
         const end = findQueueCommand(r.menu, 'INSERT_AT_END');
@@ -332,7 +334,8 @@
             const arr = r.thumbnail?.thumbnails || [];
             const t = arr.length ? arr[arr.length - 1].url : '';
             out.push({ kind: 'song', videoId: vid, title: runsText(r.title?.runs), subtitle: runsText(r.shortBylineText?.runs),
-              thumb: String(t).startsWith('https://') ? t : '' });
+              thumb: String(t).startsWith('https://') ? t : '',
+              explicit: JSON.stringify(r.badges || []).includes('MUSIC_EXPLICIT_BADGE') || undefined });
           }
           return;
         }
@@ -556,6 +559,7 @@
       subtitle: runsText((renderer.shortBylineText || renderer.longBylineText)?.runs),
       thumb,
       by: addedBy.get(renderer.videoId) || '',
+      explicit: JSON.stringify(renderer.badges || []).includes('MUSIC_EXPLICIT_BADGE') || undefined,
     };
   }
 
@@ -778,11 +782,12 @@
     const current = state?.items;
     if (!Array.isArray(current)) return { ok: false, reason: 'queue state not readable' };
     let index = current.length;
-    if (where !== 'end') {
+    if (where !== 'end') {   // 'next', or a number: that many songs after the one playing
       const nowId = currentVideoId();
       let at = current.findIndex((it) => rendererOf(it)?.selected);
       if (at < 0 && nowId) at = current.findIndex((it) => rendererOf(it)?.videoId === nowId);
       index = at < 0 ? 0 : at + 1;
+      if (typeof where === 'number') index = Math.min(current.length, index + Math.max(0, where));
     }
     const before = queueLen();
     const action = { type: 'ADD_ITEMS', payload: {
@@ -921,6 +926,45 @@
   }
 
   // Removes everything coming up (the current song stays), plus the phone-side waiting list.
+  // Puts songs back after an Undo. value = "pos;id,id,...|pos;id,..." where pos counts from the first
+  // upcoming song. Groups go in order of position, so the original arrangement comes back.
+  async function restoreToQueue(value) {
+    const groups = String(value).split('|').slice(0, 40);
+    let done = 0;
+    for (const g of groups) {
+      const [ps, list] = g.split(';');
+      const ids = String(list || '').split(',').filter((x) => ID_RE.test(x)).slice(0, 60);
+      const pos = Number(ps);
+      if (!ids.length || !isFinite(pos)) continue;
+      try {
+        const items = await fetchQueueItems({ videoIds: ids });
+        const r = await insertViaStore(items, pos);
+        if (r.ok) done += ids.length; else console.warn('[ytm-remote] restore failed:', r.reason);
+      } catch (e) { console.warn('[ytm-remote] restore failed:', e); }
+    }
+    publishYtQueue(true);
+    status(done ? `Put ${done} song${done === 1 ? '' : 's'} back` : "Couldn't put the songs back.");
+  }
+
+  // Several songs at once. refs = "pos:id,pos:id": removed from the highest position down, so the
+  // positions still to go don't shift.
+  async function removeMany(value) {
+    const refs = String(value).split(',').slice(0, 40).map((r) => ({ k: Number(r.split(':')[0]), r })).filter((x) => isFinite(x.k));
+    refs.sort((a, b) => b.k - a.k);
+    for (const x of refs) await removeFromQueue(x.r);
+  }
+  // "top;id,id" or "bottom;id,id": the chosen songs keep their order relative to each other.
+  async function moveMany(value) {
+    const [dir, list] = String(value).split(';');
+    const ids = String(list || '').split(',').filter((x) => ID_RE.test(x)).slice(0, 40);
+    const order = dir === 'top' ? ids.slice().reverse() : ids;
+    for (const id of order) {
+      const hit = locateInQueue(`0:${id}`);
+      if (!hit) continue;
+      await reorderQueue(`${hit.steps - 1}:${id}:${dir === 'top' ? 0 : 98}`);
+    }
+  }
+
   async function clearQueue() {
     upNext = [];
     publishQueue();
@@ -1178,6 +1222,12 @@
       await play(value);
     } else if (cmd === 'play_next') {
       await enqueueNext(value, by);
+    } else if (cmd === 'queue_restore') {
+      await restoreToQueue(String(value));
+    } else if (cmd === 'yt_remove_many') {
+      await removeMany(String(value));
+    } else if (cmd === 'yt_move_many') {
+      await moveMany(String(value));
     } else if (cmd === 'refresh') {
       publishQueue(); publishYtQueue(true); reportVolume(true); postBlocked();
     } else if (cmd === 'block_current') {

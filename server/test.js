@@ -385,6 +385,26 @@ let port;
   assert(bPhone.msgs.some((m) => m.type === 'state' && m.state.site === 'yt'), 'phone is told which site is playing');
   [bPc, bPhone].forEach((w) => w.close());
 
+  // ---- Undo / multi-select commands ----
+  const uTok = 'undoundoundoundo_9999999';
+  const uPc = await open('pc', uTok);
+  const uPhone = await open('phone', uTok);
+  await wait(100);
+  const A = 'AAAAAAAAAA1', B = 'BBBBBBBBBB2';
+  for (const [c, v] of [
+    ['queue_restore', `0;${A},${B}`], ['queue_restore', `0;${A}|2;${B}`], ['queue_restore', `x;${A}`], ['queue_restore', `0;${A.slice(1)}`],
+    ['yt_remove_many', `1:${A},0:${B}`], ['yt_remove_many', `1:${A};drop`], ['yt_remove_many', ''],
+    ['yt_move_many', `top;${A},${B}`], ['yt_move_many', `middle;${A}`], ['yt_move_many', `bottom;${A.slice(2)}`],
+  ]) uPhone.send(JSON.stringify({ type: 'cmd', cmd: c, value: v }));
+  await wait(150);
+  const uGot = uPc.msgs.filter((m) => m.type === 'cmd' && m.cmd !== 'get_state').map((m) => `${m.cmd} ${m.value}`);
+  assert.deepStrictEqual(uGot, [`queue_restore 0;${A},${B}`, `queue_restore 0;${A}|2;${B}`, `yt_remove_many 1:${A},0:${B}`, `yt_move_many top;${A},${B}`], 'restore and many-song commands are validated');
+  uPc.send(JSON.stringify({ type: 'ytqueue', items: [{ kind: 'song', videoId: A, title: 'T', explicit: true }, { kind: 'song', videoId: B, title: 'U', explicit: 'yes' }] }));
+  await wait(150);
+  const uyq = uPhone.msgs.find((m) => m.type === 'ytqueue');
+  assert(uyq && uyq.items[0].explicit === true && uyq.items[1].explicit === undefined, 'explicit flag is passed on only when it is true');
+  [uPc, uPhone].forEach((w) => w.close());
+
   process.env.ACCESS_CODE = 'open-sesame-123';
   process.env.PC_CODE = 'pc-secret-456';
   const cTok = 'codecodecodecodecodecode_77';
