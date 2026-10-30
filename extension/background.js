@@ -267,12 +267,32 @@ function stopAgent() {
   if (agentWs) { const w = agentWs; agentWs = null; try { w.close(); } catch {} }
 }
 
+// Chrome can put a YouTube Music tab to sleep (discard it, or freeze it) when it has been in the
+// background for a while. Ask Chrome not to discard it on its own, every time we see one.
+async function pinTabs() {
+  const tabs = await chrome.tabs.query({ url: YTM }).catch(() => []);
+  for (const t of tabs) {
+    if (t.autoDiscardable !== false) chrome.tabs.update(t.id, { autoDiscardable: false }).catch(() => {});
+  }
+}
+
+// The phone asked for YouTube Music. No tab: open one. A discarded tab: reload it (it has no live
+// state left anyway). A tab that is asleep but still loaded: bring it to the front for a moment
+// and put you back where you were, which wakes it without losing the page.
 async function openMusicTab() {
   const tabs = await chrome.tabs.query({ url: YTM }).catch(() => []);
-  if (tabs.length) return;
-  const url = 'https://music.youtube.com/';
-  try { await chrome.tabs.create({ url, active: false }); }
-  catch { await chrome.windows.create({ url, focused: false }).catch(() => {}); }
+  if (!tabs.length) {
+    const url = 'https://music.youtube.com/';
+    try { await chrome.tabs.create({ url, active: false }); }
+    catch { await chrome.windows.create({ url, focused: false }).catch(() => {}); }
+    return;
+  }
+  const t = tabs[0];
+  if (t.discarded) { await chrome.tabs.reload(t.id).catch(() => {}); return; }
+  if (t.active) return;
+  const [was] = await chrome.tabs.query({ active: true, windowId: t.windowId }).catch(() => []);
+  await chrome.tabs.update(t.id, { active: true }).catch(() => {});
+  setTimeout(() => { if (was && was.id !== t.id) chrome.tabs.update(was.id, { active: true }).catch(() => {}); }, 1200);
 }
 
 async function ensureAgent() {
@@ -280,8 +300,8 @@ async function ensureAgent() {
   const cfg = await getConfig();
   let origin;
   try { origin = relayOrigin(cfg.relayUrl, cfg.allowHttp); } catch { return stopAgent(); }
-  const tabs = await chrome.tabs.query({ url: YTM }).catch(() => []);
-  if (agent === false || !cfg.token || tabs.length) return stopAgent();
+  // Always on (not only when no tab is open): if the tab is asleep, the phone can still wake it.
+  if (agent === false || !cfg.token) return stopAgent();
   if (agentWs && agentWs.readyState <= 1) return;
   const ws = new WebSocket(`${origin.replace(/^http/, 'ws')}/ws?token=${encodeURIComponent(cfg.token)}&role=agent`);
   agentWs = ws;
@@ -342,7 +362,7 @@ chrome.tabs.onRemoved.addListener(async () => {
 });
 
 chrome.tabs.onUpdated.addListener(async (tabId, info, tab) => {
-  if (info.url && info.url.startsWith('https://music.youtube.com/')) ensureAgent().catch(() => {});
+  if (info.url && info.url.startsWith('https://music.youtube.com/')) { ensureAgent().catch(() => {}); pinTabs(); }
   if (info.status !== 'complete' || !tab.url || !tab.url.startsWith('https://music.youtube.com/')) return;
   const { ota = {} } = await chrome.storage.local.get('ota');
   if (Date.now() - (ota.checkedAt || 0) > 120000) checkForUpdate();
@@ -366,8 +386,10 @@ chrome.alarms.create('ota-check', { periodInMinutes: CHECK_EVERY_MINUTES, delayI
 chrome.alarms.create('agent-check', { periodInMinutes: 1 });
 chrome.alarms.onAlarm.addListener((a) => {
   if (a.name === 'ota-check') checkForUpdate();
-  if (a.name === 'agent-check') ensureAgent().catch(() => {});
+  if (a.name === 'agent-check') { ensureAgent().catch(() => {}); pinTabs(); }
 });
+
+pinTabs();
 
 // A worker restart only needs to make sure the saved copy is registered; it does not hit the network.
 ensureRegistered().catch(() => {});

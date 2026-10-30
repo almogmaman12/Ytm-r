@@ -26,6 +26,7 @@
     const s = sock;
     sock = null;
     if (s) { s.onclose = null; try { s.close(); } catch { /* ignore */ } }
+    if (releaseLock) { try { releaseLock(); } catch { /* ignore */ } releaseLock = null; }
   }
 
   const myId = Math.random().toString(36).slice(2);
@@ -36,6 +37,13 @@
   }, { signal: ac.signal });
 
   const every = (fn, ms) => timers.push(setInterval(fn, ms));
+
+  // Chrome doesn't freeze a page that holds a Web Lock, so this tab keeps its connection when it is
+  // in the background. (Released when this copy stops.)
+  let releaseLock = null;
+  try {
+    navigator.locks.request('ytmr-keepalive', () => new Promise((resolve) => { releaseLock = resolve; })).catch(() => {});
+  } catch { /* not available */ }
 
   // Lets the extension's settings page show what this tab is doing (optional; ignored if unavailable).
   function note(state) {
@@ -151,6 +159,22 @@
       connect();
     }, delay || 0);
   }
+
+  // If Chrome froze this page and it wakes up, the connection is probably dead: check it right away.
+  const wakeCheck = () => {
+    if (!active || refused) return;
+    if (!sock || sock.readyState !== WebSocket.OPEN) { if (!replaced) { backoff = 1000; connect(); } return; }
+    const asked = Date.now(); const s = sock;
+    sendWs({ type: 'ping' });
+    // No answer within 5 seconds: the connection died while the page slept. Replace it.
+    setTimeout(() => {
+      if (!active || sock !== s || lastRx >= asked) return;
+      sock = null; try { s.close(); } catch { /* ignore */ }
+      note('disconnected'); scheduleReconnect();
+    }, 5000);
+  };
+  document.addEventListener('resume', wakeCheck, { signal: ac.signal });
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) wakeCheck(); }, { signal: ac.signal });
 
   // Traffic every 20s: keeps the link alive and shows quickly when it has died.
   every(() => {

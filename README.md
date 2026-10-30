@@ -119,6 +119,7 @@ Check your workplace's IT policy before installing extensions or sending traffic
 ## If something goes wrong
 - **Settings say "Chrome setting: Off":** turn on **Allow User Scripts** for the extension (steps above).
 - **"PC offline" on the phone:** Chrome must be running with a YouTube Music tab open, and both sides need the same token.
+- **"PC offline" although Chrome and the tab are open (tab asleep):** Chrome's Memory Saver and background throttling can discard or freeze an idle tab until you focus it. Most reliable fix: Chrome Settings → Performance → Memory Saver → "Always keep these sites active" → add `music.youtube.com`. Extension 2.1.1 also marks the tab as non-discardable, holds a Web Lock (Chrome won't freeze pages that hold one), re-checks the connection when the tab resumes, and keeps its helper connected so the phone's **Wake YouTube Music on the PC** button can reload a discarded tab or briefly bring a frozen one to the front. This version changes `extension/`, so reload the extension once in `chrome://extensions`.
 - **"Another tab or computer took over":** two places can't share a token. Start music in the tab you want, or give the other its own token.
 - **"Reload the YouTube Music tab":** shown once after the first install or when the tab was open before an update that needs it.
 - **A relay on your home network:** Chrome blocks public pages from reaching local addresses, so use a public https relay.
