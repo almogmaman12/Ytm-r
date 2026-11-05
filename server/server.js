@@ -189,7 +189,7 @@ const rooms = new Map();
 function getRoom(token) {
   let room = rooms.get(token);
   if (!room) {
-    room = { pc: null, agent: null, version: '', lastWake: 0, phones: new Set(), lastState: null, lastYtQueue: null };
+    room = { pc: null, agent: null, version: '', lastSeen: 0, lastAgent: 0, lastWake: 0, phones: new Set(), lastState: null, lastYtQueue: null };
     rooms.set(token, room);
   }
   return room;
@@ -197,7 +197,14 @@ function getRoom(token) {
 
 // What phones are told about the PC. `wake` means: no tab is connected, but the extension's
 // small helper is, so the phone may ask it to reopen YouTube Music.
-const pcStatus = (room) => ({ type: 'pc_status', online: !!room.pc, wake: !room.pc && !!room.agent, version: room.pc ? room.version || '' : '' });
+const pcStatus = (room) => ({
+  type: 'pc_status', online: !!room.pc, wake: !room.pc && !!room.agent, version: room.pc ? room.version || '' : '',
+  // How long ago the YouTube Music tab was last connected (ms), or -1 if never since the relay started.
+  // Sent as an age, not a timestamp, so phone and relay clocks never need to agree.
+  ago: room.pc ? 0 : room.lastSeen ? Date.now() - room.lastSeen : -1,
+  // Chrome's helper still connected means Chrome is running and only the tab is gone or asleep.
+  why: room.pc ? '' : room.agent ? 'tab' : room.lastSeen || room.lastAgent ? 'chrome' : 'never',
+});
 const tellPhones = (room) => room.phones.forEach((p) => send(p, pcStatus(room)));
 
 function cleanupRoom(token) {
@@ -564,10 +571,11 @@ wss.on('connection', (ws, { token, role, ip, device }) => {
     clearTimeout(authTimer);
     if (ws.joined) log(rid, `${role === 'pc' ? 'PC' : role === 'agent' ? 'PC helper' : 'phone'} disconnected: ${who}${code === 4000 ? ' (replaced by another PC)' : ''}`);
     if (role === 'agent') {
-      if (room.agent === ws) { room.agent = null; tellPhones(room); }
+      if (room.agent === ws) { room.agent = null; room.lastAgent = Date.now(); tellPhones(room); }
     } else if (role === 'pc') {
       if (room.pc === ws) {
         room.pc = null;
+        room.lastSeen = Date.now();
         tellPhones(room);
       }
     } else {

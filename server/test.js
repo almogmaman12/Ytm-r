@@ -337,7 +337,16 @@ let port;
   await wait(100);
   assert.strictEqual(wAgent.msgs.filter((m) => m.type === 'wake').length, 1, 'no wake while the PC is online');
   assert(!wPc.msgs.some((m) => m.cmd === 'play'), 'the helper cannot send commands');
-  [wPhone, wAgent, wPc].forEach((w) => w.close());
+  const lastSt = () => wPhone.msgs.filter((m) => m.type === 'pc_status').pop();
+  assert(wPhone.msgs.some((m) => m.type === 'pc_status' && !m.online && m.why === 'tab' && m.ago === -1), 'tab never seen yet: helper only');
+  wPc.close();
+  await wait(150);
+  assert(lastSt().why === 'tab' && lastSt().ago >= 0 && lastSt().ago < 2000, 'tab gone while Chrome helper stays: reason tab, recent');
+  wAgent.close();
+  await wait(150);
+  assert(lastSt().why === 'chrome' && lastSt().ago >= 0, 'helper gone too: reason chrome');
+  wPhone.close();
+  [wAgent, wPc].forEach((w) => w.close());
 
   // ---- Home shelves, related songs, suggestions, code version ----
   const hTok = 'homehomehomehomehome_66666';

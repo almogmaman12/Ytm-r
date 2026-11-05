@@ -308,6 +308,7 @@
       <input type="range" id="vol" min="0" max="100" value="50" aria-label="Volume">
       <svg class="i"><use href="#i-vol-hi"/></svg>
     </div>
+    <p id="lastSeen" class="hint" aria-live="polite"></p>
     <button id="wakeBtn" type="button">Wake YouTube Music on the PC</button>
     <div class="pbtns">
       <button id="radioBtn" type="button"><svg class="i"><use href="#i-radio"/></svg>Radio</button>
@@ -554,7 +555,30 @@ $('wakeHide').onclick = () => { wakeHidden = true; $('waking').classList.remove(
 
 /* ---------- connection ---------- */
 let pcVer = '', wasOnline = false;
-function setPc(online, wake, version) {
+let seenAt = 0, seenWhy = '';
+function ago(ms) {
+  const m = Math.floor(ms / 60000);
+  if (m < 1) return 'less than a minute ago';
+  if (m < 60) return m === 1 ? '1 minute ago' : `${m} minutes ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return h === 1 ? '1 hour ago' : `${h} hours ago`;
+  const d = Math.floor(h / 24);
+  return d === 1 ? 'yesterday' : `${d} days ago`;
+}
+function renderSeen() {
+  const el = $('lastSeen');
+  if (wasOnline || !seenWhy) { el.textContent = ''; return; }
+  const when = seenAt ? `Last connected ${ago(Date.now() - seenAt)}. ` : 'Not connected since the relay started. ';
+  el.textContent = when + ({
+    tab: 'Chrome is running, but the YouTube Music tab is closed or asleep.',
+    chrome: 'Chrome itself is not reachable: the PC may be off, asleep or offline, or Chrome is closed.',
+    never: 'Open YouTube Music in Chrome on the PC.',
+  }[seenWhy] || '');
+}
+setInterval(renderSeen, 30000);
+function setPc(online, wake, version, agoMs, why) {
+  seenAt = agoMs >= 0 ? Date.now() - agoMs : 0;
+  seenWhy = why || '';
   if (online && version && version !== pcVer) {
     let before = '';
     try { before = localStorage.getItem('pcVersion') || ''; localStorage.setItem('pcVersion', version); } catch {}
@@ -569,6 +593,7 @@ function setPc(online, wake, version) {
   if (cameOnline) { scheduleAutoCheck(); cmd('block_list'); }
   if (online) finishRefresh();
   $('status').textContent = online ? 'PC connected' : 'PC offline';
+  renderSeen();
   if (!last) {
     $('artist').textContent = online ? '' : 'Waiting for your PC. Check that YouTube Music is open in Chrome and the token matches.';
   }
@@ -622,7 +647,7 @@ function connect() {
     if (ws !== sock) return;
     lastRx = Date.now();
     let m; try { m = JSON.parse(ev.data); } catch { return; }
-    if (m.type === 'pc_status') setPc(m.online, m.wake, m.version);
+    if (m.type === 'pc_status') setPc(m.online, m.wake, m.version, m.ago, m.why);
     else if (m.type === 'state') render(m.state);
     else if (m.type === 'results') renderResults(m);
     else if (m.type === 'library') renderLibrary(m);
