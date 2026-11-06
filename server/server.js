@@ -17,7 +17,7 @@ const ALLOWED_CMDS = new Set([
   'search', 'play_video', 'play_next', 'queue_remove', 'yt_jump', 'yt_remove', 'yt_reorder',
   'queue_end', 'queue_clear', 'play_collection', 'collection_next', 'collection_end', 'open', 'library',
   'radio', 'health', 'related', 'suggest', 'block_current', 'block_remove', 'block_list', 'refresh', 'reload_tab', 'queue_restore', 'yt_remove_many', 'yt_move_many',
-  'like', 'dislike', 'shuffle', 'repeat', 'speed', 'skip', 'sleep',
+  'like', 'dislike', 'shuffle', 'repeat', 'speed', 'skip', 'sleep', 'save_playlist',
 ]);
 const MAX_MSG_BYTES = 65536;        // PC -> server (search results can be a few KB)
 const MAX_PHONE_MSG_BYTES = 1024;   // phone -> server (commands are tiny)
@@ -498,6 +498,10 @@ wss.on('connection', (ws, { token, role, ip, device }) => {
       } else if (msg.cmd === 'yt_reorder') {
         if (!QUEUE_MOVE_RE.test(String(msg.value))) return;
         out.value = String(msg.value);
+      } else if (msg.cmd === 'save_playlist') {
+        const name = text(String(msg.value || '').trim(), 60);
+        if (!name) return;
+        out.value = name;
       } else if (msg.cmd === 'speed') {
         const v = Number(msg.value);
         if (!Number.isFinite(v) || v < 0.25 || v > 2) return;
@@ -556,6 +560,9 @@ wss.on('connection', (ws, { token, role, ip, device }) => {
         name: clean(c && c.name, 40), ok: !!(c && c.ok), detail: clean(c && c.detail, 140) })) };
       const failed = out.checks.filter((c) => !c.ok).map((c) => c.name);
       log(rid, `health check: ${out.checks.length - failed.length}/${out.checks.length} ok${failed.length ? ' (failed: ' + failed.join(', ') + ')' : ''}`);
+      room.phones.forEach((p) => send(p, out));
+    } else if (msg.type === 'saved') {
+      const out = { type: 'saved', ok: !!msg.ok, title: text(msg.title || '', 60), count: Number.isFinite(msg.count) ? Math.min(500, msg.count) : 0, error: msg.ok ? '' : text(msg.error || '', 160) };
       room.phones.forEach((p) => send(p, out));
     } else if (msg.type === 'version' && typeof msg.version === 'string') {
       room.version = clean(msg.version, 20);

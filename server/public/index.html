@@ -126,6 +126,22 @@
   .back[hidden] { display: none; }
   .head .pills { display: flex; gap: 8px; }
   .head { display: flex; align-items: center; justify-content: space-between; }
+  h2.section { white-space: nowrap; }
+  @media (max-width: 400px) {
+    .head .pills { gap: 6px; }
+    .head .pill { padding: 8px 12px; font-size: 14px; }
+    h2.section { font-size: 24px; }
+    .pbtns button { font-size: 11.5px; }
+  }
+  /* Short screens: shrink the cover and tighten the player so the buttons still fit above the bar. */
+  @media (max-height: 760px) {
+    #art { width: min(100%, 24dvh); }
+    .meta { margin-top: 12px; }
+    .controls { margin-top: 8px; }
+    #toggle { height: 72px; width: 84px; }
+    .pbtns { margin-top: 8px; }
+    .pbtns button { padding: 8px 2px 6px; }
+  }
   .pill { padding: 8px 16px; border-radius: 999px; background: var(--surface); color: var(--ink); font-weight: 650; font-size: 15px; }
   .pill[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink, #fff); }
   ul.tracks .grip { width: 48px; height: 48px; display: grid; place-items: center; flex: none; color: var(--muted); touch-action: none; cursor: grab; }
@@ -224,11 +240,12 @@
   .pbtns button:active { background: var(--surface-2); }
   #app[data-pc="off"] .pbtns { opacity: .4; pointer-events: none; }
   #wakeBtn { margin-top: 12px; }
-  dialog#picker { padding: 22px; }
+  dialog#picker, dialog#saveDlg { padding: 22px; }
+  #saveQueue.wide { width: 100%; margin: 16px 0 4px; }
   .pickOpt[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
-  .chk { display: flex; gap: 12px; align-items: flex-start; padding: 8px 0; font-size: 15px; font-weight: 600; }
-  .chk input { width: 22px; height: 22px; flex: none; accent-color: var(--accent); margin-top: 1px; }
-  .chk small { display: block; font-weight: 400; color: var(--muted); font-size: 13px; margin-top: 2px; }
+  .optrow { display: flex; gap: 12px; align-items: flex-start; padding: 8px 0; font-size: 15px; font-weight: 600; }
+  .optrow input { width: 22px; height: 22px; flex: none; accent-color: var(--accent); margin-top: 1px; }
+  .optrow small { display: block; font-weight: 400; color: var(--muted); font-size: 13px; margin-top: 2px; }
   #volMax { width: 100%; accent-color: var(--accent); }
   #suggest { margin: 2px 0 6px; padding: 0; list-style: none; }
   #suggest li button { width: 100%; text-align: left; padding: 11px 6px; display: flex; gap: 10px; align-items: center; color: var(--ink); font-size: 16px; border-top: 1px solid var(--surface); }
@@ -389,6 +406,7 @@
     <ul id="autoqueue" class="tracks"></ul>
     <h3 id="waitingHead" class="sub" hidden>Waiting to be queued</h3>
     <ul id="queue" class="tracks"></ul>
+    <button id="saveQueue" class="secondary wide" type="button" hidden>Save queue as a playlist</button>
   </section>
 
   <div id="mini" hidden>
@@ -444,8 +462,8 @@
 
     <details>
       <summary>On this phone</summary>
-      <label class="chk"><input type="checkbox" id="optMedia"><span>Lock-screen and notification controls<small>Plays a silent sound so Android shows play, pause, skip and the song's cover. It can pause other audio on this phone.</small></span></label>
-      <label class="chk"><input type="checkbox" id="optKeepOn"><span>Keep the screen on while the app is open</span></label>
+      <label class="optrow"><input type="checkbox" id="optMedia"><span>Lock-screen and notification controls<small>Plays a silent sound so Android shows play, pause, skip and the song's cover. It can pause other audio on this phone.</small></span></label>
+      <label class="optrow"><input type="checkbox" id="optKeepOn"><span>Keep the screen on while the app is open</span></label>
       <label class="lbl" for="volMax" style="margin-top:10px">Volume limit: <span id="volMaxLbl">No limit</span></label>
       <input type="range" id="volMax" min="20" max="100" step="5" value="100">
       <p class="small" style="margin-top:6px">The volume slider on this phone will not go above this. The PC's own volume is not capped.</p>
@@ -476,6 +494,17 @@
     </details>
   </div>
   <div class="sheetFoot"><button id="closeSettings" class="secondary">Close</button></div>
+</dialog>
+
+<dialog id="saveDlg">
+  <h2>Save as a playlist</h2>
+  <p id="saveInfo"></p>
+  <label class="lbl" for="saveName">Playlist name</label>
+  <input id="saveName" type="text" maxlength="60" autocomplete="off">
+  <div class="row two" style="margin-top:6px">
+    <button id="saveCancel" class="secondary" type="button">Cancel</button>
+    <button id="saveGo" type="button">Save</button>
+  </div>
 </dialog>
 
 <dialog id="picker">
@@ -703,6 +732,7 @@ function connect() {
     else if (m.type === 'queue') renderQueue(m.items);
     else if (m.type === 'ytqueue') renderYtQueue(m.items);
     else if (m.type === 'health') renderHealth(m.checks);
+    else if (m.type === 'saved') savedResult(m);
     else if (m.type === 'suggest') renderSuggest(m);
     else if (m.type === 'blocklist') renderBlocklist(m.items);
     else if (m.type === 'challenge') answerChallenge(sock, m.nonce);
@@ -1028,6 +1058,7 @@ function drawQueue() {
   $('selCount').textContent = selected.size + ' selected';
   $('selTop').disabled = $('selBottom').disabled = $('selRemove').disabled = selected.size === 0;
   $('clearBtn').hidden = total === 0;
+  $('saveQueue').hidden = siteItems.length === 0 || editing || selecting;
   $('editBtn').textContent = editing ? 'Done' : 'Edit';
   $('editBtn').setAttribute('aria-pressed', editing);
   siteItems.forEach((r, k) => {
@@ -1579,6 +1610,38 @@ function renderHealth(checks) {
 }
 $('healthQuick').onclick = () => runHealth(false);
 $('healthDeep').onclick = () => runHealth(true);
+
+/* ---------- save the queue as a playlist ---------- */
+let saving = false;
+function defaultPlaylistName() {
+  const d = new Date();
+  return 'Queue ' + d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) + ' ' + d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+}
+$('saveQueue').onclick = () => {
+  const n = new Set(siteItems.map((r) => r.videoId)).size + (last && last.title ? 1 : 0);
+  $('saveInfo').textContent = `About ${n} song${n === 1 ? '' : 's'}: the one playing and everything coming up (a song queued twice is saved once). It is saved to your YouTube Music library as a private playlist.`;
+  $('saveName').value = defaultPlaylistName();
+  $('saveGo').disabled = false; $('saveGo').textContent = 'Save';
+  $('saveDlg').showModal();
+  $('saveName').select();
+};
+$('saveCancel').onclick = () => $('saveDlg').close();
+$('saveGo').onclick = () => {
+  const name = $('saveName').value.trim().slice(0, 60);
+  if (!name) { $('saveName').focus(); return; }
+  if (!cmd('save_playlist', name)) return;
+  saving = true; $('saveGo').disabled = true; $('saveGo').textContent = 'Saving…';
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => { if (saving) { saving = false; $('saveDlg').close(); toast('No answer from YouTube Music. The playlist may still have been created.'); } }, 25000);
+};
+let saveTimer = null;
+function savedResult(m) {
+  if (!saving) return;
+  saving = false; clearTimeout(saveTimer);
+  $('saveDlg').close();
+  if (m.ok) { buzz(); toast(`Saved "${m.title}" with ${m.count} song${m.count === 1 ? '' : 's'}. Find it in Library → Playlists.`); }
+  else toast(m.error || 'Could not save the playlist.');
+}
 
 /* ---------- options on this phone ---------- */
 const getOpt = (k) => { try { return localStorage.getItem('opt_' + k) === '1'; } catch { return false; } };

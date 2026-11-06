@@ -339,6 +339,14 @@ let port;
   const sts = xPhone.msgs.filter((m) => m.type === 'state').map((m) => m.state);
   assert(sts[0].speed === 1.25 && sts[0].like === 'like' && sts[0].repeat === 'one' && sts[0].shuffle === true && sts[0].sleep === 90, 'extra state reaches the phone');
   assert(sts[1].speed === 2 && sts[1].like === '' && sts[1].repeat === 'none' && sts[1].shuffle === null && sts[1].sleep === null, 'bad extra state is cleaned');
+  await wait(1100);
+  xSend('save_playlist', 'Road trip'); xSend('save_playlist', '   '); xSend('save_playlist', '');
+  await wait(300);
+  assert.deepStrictEqual(xGot('save_playlist').map((m) => m.value), ['Road trip'], 'a playlist name is required and passed on');
+  xPc.send(JSON.stringify({ type: 'saved', ok: true, title: 'Road trip', count: 12, playlistId: 'PLx' }));
+  await wait(200);
+  const sv = xPhone.msgs.find((m) => m.type === 'saved');
+  assert(sv && sv.ok && sv.title === 'Road trip' && sv.count === 12, 'the result reaches the phone');
   [xPc, xPhone].forEach((w) => w.close());
 
   // ---- Access codes: a token alone is not enough ----

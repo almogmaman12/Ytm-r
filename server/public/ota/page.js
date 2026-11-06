@@ -726,6 +726,24 @@
   const ytqTimer = setInterval(() => publishYtQueue(false), 1500);
   ac.signal.addEventListener('abort', () => clearInterval(ytqTimer));
 
+  // Save the playing song and everything coming up as a private playlist in the signed-in library.
+  async function savePlaylist(title) {
+    title = title.trim().slice(0, 60);
+    try {
+      const rs = (storeItems() || []).map(rendererOf).filter((r) => r && ID_RE.test(String(r.videoId)));
+      let at = rs.findIndex((r) => r.selected);
+      if (at < 0) { const now = currentVideoId(); at = rs.findIndex((r) => r.videoId === now); }
+      const ids = [...new Set(rs.slice(Math.max(0, at)).map((r) => r.videoId))].slice(0, 200);
+      if (!ids.length) { post({ type: 'saved', ok: false, error: 'There is nothing in the queue to save.' }); return; }
+      if (!title) title = 'Saved queue';
+      const json = await innertube('playlist/create', { title, videoIds: ids, privacyStatus: 'PRIVATE' }, 20000, true);
+      if (!json?.playlistId) throw new Error('YouTube Music did not create the playlist. Are you signed in?');
+      post({ type: 'saved', ok: true, title, count: ids.length, playlistId: json.playlistId });
+    } catch (e) {
+      post({ type: 'saved', ok: false, error: String((e && e.message) || e) });
+    }
+  }
+
   // Without "selected": a song added to the queue must never look like the one playing.
   function unselect(item) {
     const r = item?.playlistPanelVideoRenderer;
@@ -1277,6 +1295,8 @@
       dequeue(value);
     } else if (cmd === 'next') {
       nextTrack();
+    } else if (cmd === 'save_playlist') {
+      await savePlaylist(String(value || ''));
     } else if (cmd === 'get_state') {
       publishQueue();
       publishYtQueue(true);
