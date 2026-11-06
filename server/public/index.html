@@ -258,7 +258,12 @@
   #repair button { margin-top: 8px; margin-right: 8px; padding: 6px 12px; border-radius: 999px; background: var(--surface); color: var(--ink); font-weight: 600; font-size: 13px; }
   #siteNote { display: none; margin: 10px 0 0; text-align: center; font-size: 13px; color: var(--muted); }
   #app[data-site="yt"] #siteNote { display: block; }
-  #app[data-site="yt"] #radioBtn, #app[data-site="yt"] #relatedBtn, #app[data-site="yt"] #artistBtn, #app[data-site="yt"] #blockBtn { display: none; }
+  #app[data-site="yt"] #artistBtn, #app[data-site="yt"] #blockBtn, #app[data-site="yt"] #plBtn { display: none; }
+  #pickList { flex-direction: column; flex-wrap: nowrap; max-height: 55dvh; overflow-y: auto; }
+  #pickList .pickOpt { width: 100%; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #adBar { display: none; align-items: center; justify-content: space-between; gap: 10px; margin: 10px 0 0; padding: 8px 8px 8px 14px; border-radius: 14px; background: var(--surface); font-size: 14px; font-weight: 600; }
+  #adBar.on { display: flex; }
+  #adBar button { padding: 6px 14px; border-radius: 99px; background: var(--accent); color: var(--accent-ink); font-weight: 700; font-size: 14px; }
   #blockList { list-style: none; margin: 0 0 14px; padding: 0; font-size: 14px; }
   #blockList li { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-top: 1px solid var(--surface); }
   #blockList li span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -285,6 +290,7 @@
     <symbol id="i-bars" viewBox="0 0 24 24"><path d="M6 14v5M12 5v14M18 10v9"/></symbol>
     <symbol id="i-queue" viewBox="0 0 24 24"><path d="M4 6h12M4 12h8M4 18h6"/><path fill="currentColor" d="M15 13.5v7l5.5-3.5z"/></symbol>
     <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 8h16M4 16h16"/><circle fill="currentColor" cx="9" cy="8" r="2.4"/><circle fill="currentColor" cx="15" cy="16" r="2.4"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
     <symbol id="i-end" viewBox="0 0 24 24"><path d="M4 6h12M4 11h8M4 16h6"/><path d="M17.5 13.5v7M14 17h7"/></symbol>
     <symbol id="i-lib" viewBox="0 0 24 24"><rect x="4" y="5" width="4" height="14" rx="1"/><rect x="10" y="5" width="4" height="14" rx="1"/><path d="M16.5 6.5l3.5 12.5"/></symbol>
     <symbol id="i-radio" viewBox="0 0 24 24"><circle cx="12" cy="12" r="2"/><path d="M7.8 7.8a6 6 0 000 8.4M16.2 7.8a6 6 0 010 8.4M5 5a10 10 0 000 14M19 5a10 10 0 010 14"/></symbol>
@@ -329,6 +335,7 @@
     <div class="meta">
       <h1 id="title">Nothing playing</h1>
       <p id="artist"></p>
+      <div id="adBar" role="status"><span id="adText">Ad playing</span><button id="adSkip" type="button" hidden>Skip ad</button></div>
     </div>
     <div id="seek" role="slider" aria-label="Seek" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" tabindex="0">
       <div class="track"><div id="fill"></div></div>
@@ -359,9 +366,10 @@
       <button id="radioBtn" type="button"><svg class="i"><use href="#i-radio"/></svg>Radio</button>
       <button id="relatedBtn" type="button"><svg class="i"><use href="#i-queue"/></svg>Similar</button>
       <button id="artistBtn" type="button"><svg class="i"><use href="#i-user"/></svg>Artist</button>
-      <button id="blockBtn" type="button"><svg class="i"><use href="#i-block"/></svg>Never play</button>
+      <button id="plBtn" type="button"><svg class="i"><use href="#i-plus"/></svg>Playlist</button>
+      <button id="blockBtn" aria-label="Never play this artist" title="Never play this artist" type="button"><svg class="i"><use href="#i-block"/></svg>Block</button>
     </div>
-    <div id="siteNote">Regular YouTube. Search finds videos. The queue, library and radio need YouTube Music.</div>
+    <div id="siteNote">Regular YouTube. Videos queue on this phone; the library, artist pages and albums need YouTube Music.</div>
     <div id="repair" role="status"></div>
   </section>
 
@@ -845,6 +853,8 @@ function render(s) {
   applyColour(s.art || '');
   if (s.volume != null && !volDragging) $('vol').value = Math.min(s.volume, Number($('vol').max) || 100);
   renderExtras(s);
+  $('adBar').classList.toggle('on', s.ad === 'ad' || s.ad === 'skip');
+  $('adSkip').hidden = s.ad !== 'skip';
   syncMedia();
   tick();
 }
@@ -888,6 +898,23 @@ function pick(title, opts, cur, done) {
   $('picker').showModal();
 }
 $('pickClose').onclick = () => $('picker').close();
+let wantPlaylist = false;
+function openPlaylistPick() {
+  const lib = libCache.playlists || storedLib('playlists');
+  if (!lib) {
+    if (!cmd('library', 'playlists')) return;
+    wantPlaylist = true; toast('Loading your playlists…');
+    return;
+  }
+  const items = (lib.items || []).filter((r) => r.kind === 'playlist' && r.playlistId && !['LM', 'SE'].includes(r.playlistId));
+  if (!items.length) { toast('No playlists found in your library.'); return; }
+  pick('Add this song to…', items.map((r) => ({ value: r.playlistId, label: r.title })), null, (id) => {
+    const it = items.find((r) => r.playlistId === id);
+    if (cmd('add_to_playlist', id + '|current')) toast(`Adding to “${it ? it.title : 'playlist'}”…`);
+  });
+}
+$('plBtn').onclick = () => { buzz(); openPlaylistPick(); };
+$('adSkip').onclick = () => { buzz(); cmd('skip_ad'); };
 $('likeBtn').onclick = () => { buzz(); cmd('like'); };
 $('shuffleBtn').onclick = () => { buzz(); cmd('shuffle'); };
 $('repeatBtn').onclick = () => { buzz(); cmd('repeat'); };
@@ -936,8 +963,14 @@ function seekTo(clientX) {
 }
 $('seek').addEventListener('pointerdown', (e) => seekTo(e.clientX));
 
-$('toggle').onclick = () => { buzz(); cmd('toggle'); };
-$('miniToggle').onclick = () => { buzz(); cmd('toggle'); };
+function togglePlay() {
+  buzz();
+  if (!cmd('toggle')) return;
+  // Show the change at once; the PC's real state arrives a moment later and wins.
+  if (last && last.title) { last.position = (last.position || 0) + (last.playing ? (Date.now() - lastAt) / 1000 : 0); lastAt = Date.now(); last.playing = !last.playing; render(last); }
+}
+$('toggle').onclick = togglePlay;
+$('miniToggle').onclick = togglePlay;
 $('next').onclick = () => { buzz(); cmd('next'); };
 $('miniNext').onclick = () => { buzz(); cmd('next'); };
 $('prev').onclick = () => { buzz(); cmd('previous'); };
@@ -1269,24 +1302,43 @@ document.querySelectorAll('#kinds .chip').forEach((b) => {
 let libSection = 'home';
 const libCache = {};
 let libTimer = null;
+const LIB_KEY = 'lib_';
+function storedLib(section) {
+  try { const j = JSON.parse(localStorage.getItem(LIB_KEY + section) || 'null'); return j && j.items && !j.error ? j : null; } catch { return null; }
+}
+// Shows what was loaded last time at once and refreshes it quietly in the background, so the
+// Library feels instant even while the relay or the PC is slow to answer.
 function loadLibrary(force) {
-  if (!force && libCache[libSection] && libSection !== 'history' && libSection !== 'home') { drawLibrary(libCache[libSection]); return; }  // history changes as you listen
+  const section = libSection;
+  const stale = force ? null : (libCache[section] || storedLib(section));
+  if (stale) {
+    drawLibrary(stale);
+    const fresh = libCache[section] && Date.now() - (libCache[section].at || 0) < 10 * 60000 && section !== 'history' && section !== 'home';
+    if (fresh) return;
+    cmd('library', section);          // quiet refresh: the old list stays until the new one arrives
+    return;
+  }
   $('libList').textContent = '';
   $('libMsg').textContent = 'Loading…';
-  if (!cmd('library', libSection)) { $('libMsg').textContent = 'Not connected to your PC yet.'; return; }
+  if (!cmd('library', section)) { $('libMsg').textContent = 'Not connected to your PC yet.'; return; }
   clearTimeout(libTimer);
   // A command can be lost while the PC reconnects, so ask once more before giving up.
-  const asked = libSection;
   libTimer = setTimeout(() => {
-    if (libSection !== asked) return;
-    cmd('library', asked);
+    if (libSection !== section) return;
+    cmd('library', section);
     libTimer = setTimeout(() => { $('libMsg').textContent = 'No response. Check that YouTube Music is open on the PC.'; }, 12000);
   }, 5000);
 }
 function renderLibrary(m) {
-  if (!m.error) libCache[m.section] = m;
+  if (!m.error) {
+    m.at = Date.now();
+    libCache[m.section] = m;
+    try { const j = JSON.stringify(m); if (j.length < 400000) localStorage.setItem(LIB_KEY + m.section, j); } catch {}
+  }
+  if (wantPlaylist && m.section === 'playlists') { wantPlaylist = false; if (!m.error) openPlaylistPick(); else toast("Couldn't load your playlists: " + m.error); }
   if (m.section !== libSection) return;
   clearTimeout(libTimer);
+  if (m.error && libCache[m.section]) return;   // keep showing the old list if a quiet refresh fails
   drawLibrary(m);
 }
 function drawLibrary(m) {
@@ -1400,6 +1452,7 @@ let refreshPending = false, refreshTimer = null;
 function forceRefresh() {
   buzz();
   for (const k of Object.keys(libCache)) delete libCache[k];
+  try { for (const k of Object.keys(localStorage)) if (k.startsWith(LIB_KEY)) localStorage.removeItem(k); } catch {}
   suggested = { query: '', items: [] };
   refreshPending = true;
   toast('Refreshing…');

@@ -17,7 +17,7 @@ const ALLOWED_CMDS = new Set([
   'search', 'play_video', 'play_next', 'queue_remove', 'yt_jump', 'yt_remove', 'yt_reorder',
   'queue_end', 'queue_clear', 'play_collection', 'collection_next', 'collection_end', 'open', 'library',
   'radio', 'health', 'related', 'suggest', 'block_current', 'block_remove', 'block_list', 'refresh', 'reload_tab', 'queue_restore', 'yt_remove_many', 'yt_move_many',
-  'like', 'dislike', 'shuffle', 'repeat', 'speed', 'skip', 'sleep', 'save_playlist',
+  'like', 'dislike', 'shuffle', 'repeat', 'speed', 'skip', 'sleep', 'save_playlist', 'skip_ad', 'add_to_playlist',
 ]);
 const MAX_MSG_BYTES = 65536;        // PC -> server (search results can be a few KB)
 const MAX_PHONE_MSG_BYTES = 1024;   // phone -> server (commands are tiny)
@@ -498,6 +498,10 @@ wss.on('connection', (ws, { token, role, ip, device }) => {
       } else if (msg.cmd === 'yt_reorder') {
         if (!QUEUE_MOVE_RE.test(String(msg.value))) return;
         out.value = String(msg.value);
+      } else if (msg.cmd === 'add_to_playlist') {
+        // "PLAYLISTID|VIDEOID", or "PLAYLISTID|current" for the song that is playing
+        if (!/^[A-Za-z0-9_-]{2,64}\|([A-Za-z0-9_-]{11}|current)$/.test(String(msg.value))) return;
+        out.value = String(msg.value);
       } else if (msg.cmd === 'save_playlist') {
         const name = text(String(msg.value || '').trim(), 60);
         if (!name) return;
@@ -537,6 +541,7 @@ wss.on('connection', (ws, { token, role, ip, device }) => {
         duration: Number.isFinite(s.duration) ? s.duration : null,
         art: safeHttps(s.art),
         site: s.site === 'yt' ? 'yt' : 'ytm',
+        ad: s.ad === 'ad' || s.ad === 'skip' ? s.ad : '',
         speed: Number.isFinite(s.speed) ? Math.min(2, Math.max(0.25, s.speed)) : 1,
         like: s.like === 'like' || s.like === 'dislike' ? s.like : '',
         repeat: s.repeat === 'all' || s.repeat === 'one' ? s.repeat : 'none',

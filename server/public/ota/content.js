@@ -250,9 +250,15 @@
     }
   }, 500);
 
+  function adState() {
+    const pl = q('#movie_player');
+    if (!pl || !(pl.classList.contains('ad-showing') || pl.classList.contains('ad-interrupting'))) return '';
+    return q('.ytp-skip-ad-button, .ytp-ad-skip-button, .ytp-ad-skip-button-modern, .ytp-skip-ad') ? 'skip' : 'ad';
+  }
   function extras() {
     const v = video();
     return {
+      ad: adState(),
       speed: v && isFinite(v.playbackRate) ? Math.round(v.playbackRate * 100) / 100 : 1,
       like: likeStatus(),
       repeat: repeatMode(),
@@ -291,6 +297,11 @@
       case 'skip': {
         const n = Number(value);
         if (v && isFinite(n) && isFinite(v.duration)) v.currentTime = Math.min(v.duration - 0.5, Math.max(0, v.currentTime + n));
+        break;
+      }
+      case 'skip_ad': {
+        const b = q('.ytp-skip-ad-button, .ytp-ad-skip-button, .ytp-ad-skip-button-modern, .ytp-skip-ad');
+        if (b) b.click();
         break;
       }
       case 'sleep': {
@@ -356,7 +367,7 @@
   function report(force) {
     const s = getState();
     if (!s) return;
-    const key = JSON.stringify([s.title, s.artist, s.playing, s.volume, s.duration, s.speed, s.like, s.repeat, s.shuffle, s.sleep == null ? null : s.sleep < 0 ? -1 : Math.ceil(s.sleep / 60)]);
+    const key = JSON.stringify([s.title, s.artist, s.playing, s.volume, s.duration, s.speed, s.like, s.repeat, s.shuffle, s.ad, s.sleep == null ? null : s.sleep < 0 ? -1 : Math.ceil(s.sleep / 60)]);
     let jumped = false;
     if (lastPos !== null && s.position !== null) {
       const expected = lastPos + (lastPlaying ? (Date.now() - lastPosAt) / 1000 : 0);
@@ -435,7 +446,7 @@
   }
 
   // Regular YouTube has no bar like YouTube Music: control the video itself.
-  async function runYt(cmd, value) {
+  async function runYt(cmd, value, by) {
     if (runExtra(cmd, value)) return;
     const v = video();
     const ytBtn = (sel) => { const el = q('#movie_player ' + sel); if (el && el.offsetParent !== null) { el.click(); return true; } return false; };
@@ -444,7 +455,7 @@
       case 'pause': if (v && !v.paused) v.pause(); break;
       case 'toggle': if (v) { v.paused ? v.play().catch(() => {}) : v.pause(); } break;
       case 'previous': if (!ytBtn('.ytp-prev-button') && v) v.currentTime = 0; break;
-      case 'next': ytBtn('.ytp-next-button'); break;
+      case 'next': if (await pageReady()) { toPage('next'); return; } ytBtn('.ytp-next-button'); break;
       case 'seek': { const n = Number(value); if (v && isFinite(n)) v.currentTime = n; break; }
       case 'volume': {
         const n = Number(value);
@@ -452,14 +463,19 @@
         if (await pageReady()) toPage('volume', n); else if (v) v.volume = Math.min(1, Math.max(0, n / 100));
         break;
       }
-      case 'play_video': if (/^[A-Za-z0-9_-]{11}$/.test(String(value))) location.assign('/watch?v=' + value); return;
+      case 'play_video': case 'play_next': case 'queue_end': case 'yt_jump': case 'yt_remove': case 'yt_remove_many': case 'yt_reorder':
+      case 'yt_move_many': case 'queue_clear': case 'queue_restore': case 'radio': case 'related':
+        if (await pageReady()) { toPage(cmd, value, by); return; }
+        if (cmd === 'play_video' && /^[A-Za-z0-9_-]{11}$/.test(String(value))) { location.assign('/watch?v=' + value); return; }
+        if (cmd === 'related') sendWs({ type: 'results', query: `related:${value}`, results: [], error: 'Reload the YouTube tab on the PC' });
+        else sendWs({ type: 'status', message: 'Reload the YouTube tab on the PC, then try again.' });
+        return;
       case 'search': case 'health': case 'suggest':
         if (!(await pageReady())) { sendWs({ type: 'status', message: 'Reload the YouTube tab on the PC, then try again.' }); return; }
         toPage(cmd, value);
         return;
       case 'library': sendWs({ type: 'library', section: value, items: [], error: 'The library is only available on YouTube Music' }); return;
       case 'open': sendWs({ type: 'results', query: `open:${value}`, results: [], error: 'Only available on YouTube Music' }); return;
-      case 'related': sendWs({ type: 'results', query: `related:${value}`, results: [], error: 'Only available on YouTube Music' }); return;
       case 'get_state': case 'refresh': break;
       case 'reload_tab': setTimeout(() => location.reload(), 300); return;
       default:
@@ -471,7 +487,7 @@
   }
 
   async function run(cmd, value, by) {
-    if (IS_YT) return runYt(cmd, value);
+    if (IS_YT) return runYt(cmd, value, by);
     if (runExtra(cmd, value)) return;
     const v = video();
     switch (cmd) {
@@ -520,6 +536,7 @@
       case 'queue_restore':
       case 'yt_remove_many':
       case 'yt_move_many':
+      case 'add_to_playlist':
       case 'save_playlist':
         if (!(await pageReady())) {
           sendWs({ type: 'status', message: 'Reload the YouTube Music tab on the PC, then try again.' });

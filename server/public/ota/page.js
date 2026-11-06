@@ -56,12 +56,192 @@
         for (const k in n) walk(n[k]);
       };
       walk(json);
+      remember(out);
       return out;
     };
+    // ---- Queue (regular YouTube has no phone-friendly queue, so we keep our own) ----
+    // The list lives in this page (and sessionStorage, so a reload keeps it). When a video ends,
+    // or Next is pressed, the first entry plays. Navigation uses YouTube's own in-page router, so
+    // the player never reloads; if that is refused, a normal page load is the fallback.
+    const QKEY = 'ytmr_ytq';
+    let queue = [];
+    try { const s = JSON.parse(sessionStorage.getItem(QKEY) || '[]'); if (Array.isArray(s)) queue = s.filter((x) => x && ID_RE.test(String(x.videoId))).slice(0, 200); } catch {}
+    const metaCache = new Map();   // videoId -> {videoId,title,subtitle,thumb}
+    const remember = (items) => { for (const it of items) { metaCache.delete(it.videoId); metaCache.set(it.videoId, it); } while (metaCache.size > 300) metaCache.delete(metaCache.keys().next().value); };
+    let autos = [], autosFor = '', lastKey = '';
+    const nowId = () => { try { return getPlayer()?.getVideoData?.()?.video_id || new URLSearchParams(location.search).get('v') || ''; } catch { return ''; } };
+    const saveQ = () => { try { sessionStorage.setItem(QKEY, JSON.stringify(queue)); } catch {} };
+    const slim = (x) => ({ videoId: x.videoId, title: x.title || '', subtitle: x.subtitle || '', thumb: x.thumb || '', by: x.by || '' });
+    const publishQ = (force) => {
+      const items = [...queue.map(slim), ...autos.filter((a) => !queue.some((x) => x.videoId === a.videoId)).slice(0, 10).map((a) => ({ ...slim(a), auto: true }))];
+      const key = JSON.stringify(items.map((i) => [i.videoId, i.title, i.auto ? 1 : 0, i.by]));
+      if (!force && key === lastKey) return;
+      lastKey = key;
+      post({ type: 'ytqueue', items });
+    };
+
+    const goTo = (id) => {
+      if (!ID_RE.test(id)) return;
+      const url = '/watch?v=' + id;
+      try {
+        document.querySelector('ytd-app')?.dispatchEvent(new CustomEvent('yt-navigate', { bubbles: true, composed: true, detail: {
+          endpoint: { commandMetadata: { webCommandMetadata: { url, webPageType: 'WEB_PAGE_TYPE_WATCH', rootVe: 3832 } }, watchEndpoint: { videoId: id } } } }));
+      } catch {}
+      // If the in-page router did nothing (or YouTube's own autoplay won the race), load it the plain way.
+      setTimeout(() => { if (nowId() !== id) location.assign(url); }, 3500);
+    };
+    const playFromQueue = () => {
+      const item = queue.shift();
+      saveQ(); publishQ(true);
+      if (!item) return false;
+      goTo(item.videoId);
+      return true;
+    };
+
+    const lookup = async (id) => {
+      const hit = metaCache.get(id);
+      if (hit) return hit;
+      try {
+        const res = await fetch('/oembed?format=json&url=' + encodeURIComponent('https://www.youtube.com/watch?v=' + id), { credentials: 'omit' });
+        if (res.ok) {
+          const j = await res.json();
+          const it = { videoId: id, title: String(j.title || ''), subtitle: String(j.author_name || ''), thumb: `https://i.ytimg.com/vi/${id}/hqdefault.jpg` };
+          remember([it]);
+          return it;
+        }
+      } catch {}
+      return { videoId: id, title: 'Video ' + id, subtitle: '', thumb: `https://i.ytimg.com/vi/${id}/hqdefault.jpg` };
+    };
+
+    // Related videos: shown as "Autoplay" suggestions and used for the Similar / Radio buttons.
+    const parseRelated = (json) => {
+      const out = [], seen = new Set();
+      const add = (it) => { if (it.videoId && ID_RE.test(it.videoId) && !seen.has(it.videoId) && out.length < 25) { seen.add(it.videoId); out.push(it); } };
+      const walk = (n) => {
+        if (!n || typeof n !== 'object' || out.length >= 25) return;
+        if (Array.isArray(n)) { n.forEach(walk); return; }
+        const c = n.compactVideoRenderer;
+        if (c) {
+          const arr = c.thumbnail?.thumbnails || [];
+          add({ videoId: c.videoId, title: c.title?.simpleText || runsText(c.title?.runs), subtitle: [runsText(c.longBylineText?.runs), c.lengthText?.simpleText].filter(Boolean).join(' • '),
+            thumb: arr.length ? arr[arr.length - 1].url : `https://i.ytimg.com/vi/${c.videoId}/hqdefault.jpg` });
+          return;
+        }
+        const l = n.lockupViewModel;
+        if (l && l.contentType === 'LOCKUP_CONTENT_TYPE_VIDEO') {
+          const m = l.metadata?.lockupMetadataViewModel;
+          const parts = (m?.metadata?.contentMetadataViewModel?.metadataRows || []).flatMap((r) => (r.metadataParts || []).map((x) => x.text?.content)).filter(Boolean);
+          add({ videoId: l.contentId, title: m?.title?.content || '', subtitle: parts[0] || '', thumb: `https://i.ytimg.com/vi/${l.contentId}/hqdefault.jpg` });
+          return;
+        }
+        for (const k in n) walk(n[k]);
+      };
+      walk(json);
+      return out;
+    };
+    const relatedFor = async (id) => {
+      const out = parseRelated(await innertube('next', { videoId: id }, 10000)).filter((x) => x.videoId !== id);
+      remember(out);
+      return out;
+    };
+    let relBusy = false;
+    const refreshAutos = async () => {
+      const id = nowId();
+      if (!id || id === autosFor || relBusy) return;
+      relBusy = true;
+      try { autos = await relatedFor(id); autosFor = id; } catch { autos = []; autosFor = id; }
+      relBusy = false;
+      publishQ(false);
+    };
+
+    // The queue is walked from the video that just ended.
+    document.addEventListener('ended', (e) => {
+      if (!(e.target instanceof HTMLVideoElement) || !queue.length) return;
+      const want = queue[0].videoId;
+      playFromQueue();
+      // YouTube's own autoplay may start its pick right after: check and correct once.
+      setTimeout(() => { if (nowId() !== want) goTo(want); }, 2500);
+    }, { capture: true, signal: sig.signal });
+
+    const posOf = (ref) => {
+      const [p, id] = String(ref).split(':');
+      const i = Number(p);
+      return queue[i] && queue[i].videoId === id ? i : queue.findIndex((x) => x.videoId === id);
+    };
+    const idsOf = (list) => String(list).split(',');
+
+    const queueCmd = async (cmd, value, by) => {
+      switch (cmd) {
+        case 'play_next': case 'queue_end': {
+          const it = { ...(await lookup(value)), by: by || '' };
+          if (cmd === 'play_next') queue.unshift(it); else queue.push(it);
+          if (queue.length > 200) queue.length = 200;
+          break;
+        }
+        case 'yt_jump': { const i = posOf(value); if (i < 0) return; const [item] = queue.splice(0, i + 1).slice(-1); saveQ(); publishQ(true); goTo(item.videoId); return; }
+        case 'yt_remove': { const i = posOf(value); if (i >= 0) queue.splice(i, 1); break; }
+        case 'yt_remove_many': {
+          const ids = new Set(idsOf(value).map((r) => { const i = posOf(r); return i >= 0 ? queue[i].videoId + '@' + i : ''; }).filter(Boolean));
+          queue = queue.filter((x, i) => !ids.has(x.videoId + '@' + i));
+          break;
+        }
+        case 'yt_reorder': {
+          const [from, id, to] = String(value).split(':');
+          const i = posOf(from + ':' + id);
+          if (i < 0) return;
+          const [it] = queue.splice(i, 1);
+          queue.splice(Math.min(Number(to), queue.length), 0, it);
+          break;
+        }
+        case 'yt_move_many': {
+          const [where, list] = String(value).split(';');
+          const ids = new Set(idsOf(list));
+          const moved = queue.filter((x) => ids.has(x.videoId)), rest = queue.filter((x) => !ids.has(x.videoId));
+          queue = where === 'top' ? [...moved, ...rest] : [...rest, ...moved];
+          break;
+        }
+        case 'queue_clear': queue = []; break;
+        case 'queue_restore': {
+          // "pos;id,id|pos;id" puts removed songs back where they were.
+          for (const group of String(value).split('|')) {
+            const [pos, list] = group.split(';');
+            const items = await Promise.all(idsOf(list).map(lookup));
+            queue.splice(Math.min(Number(pos), queue.length), 0, ...items);
+          }
+          if (queue.length > 200) queue.length = 200;
+          break;
+        }
+        default: return;
+      }
+      saveQ(); publishQ(true);
+    };
+
     window.addEventListener('message', async (ev) => {
       if (ev.source !== window || !ev.data || ev.data.source !== 'ytmr-ext') return;
       const { cmd, value } = ev.data;
       if (cmd === 'ping') post({ type: 'hello' });
+      else if (['play_next', 'queue_end', 'yt_jump', 'yt_remove', 'yt_remove_many', 'yt_reorder', 'yt_move_many', 'queue_clear', 'queue_restore'].includes(cmd)) await queueCmd(cmd, value, ev.data.by);
+      else if (cmd === 'play_video') goTo(String(value));
+      else if (cmd === 'next') {
+        if (!playFromQueue()) {
+          const b = document.querySelector('#movie_player .ytp-next-button');
+          if (b && b.offsetParent !== null) b.click(); else getPlayer()?.nextVideo?.();
+        }
+      }
+      else if (cmd === 'related') {
+        try { post({ type: 'results', query: `related:${value}`, results: await relatedFor(String(value)) }); }
+        catch (e) { post({ type: 'results', query: `related:${value}`, results: [], error: String((e && e.message) || e) }); }
+      } else if (cmd === 'radio') {
+        // A radio is the current (or chosen) video followed by what YouTube suggests next.
+        try {
+          const id = value === 'current' ? nowId() : String(value);
+          const rel = await relatedFor(id);
+          queue = rel.slice(0, 15).map((x) => ({ ...x }));
+          saveQ(); publishQ(true);
+          if (id !== nowId()) goTo(id);
+          status(rel.length ? 'Radio started: ' + rel.length + ' videos queued' : 'No related videos found');
+        } catch (e) { status('Could not start a radio: ' + String((e && e.message) || e)); }
+      }
       else if (cmd === 'volume') {
         const pl = getPlayer(); const n = Math.min(100, Math.max(0, Number(value)));
         if (typeof pl?.setVolume === 'function' && isFinite(n)) { if (n > 0 && pl.isMuted?.()) pl.unMute?.(); pl.setVolume(n); reportVol(true); }
@@ -78,10 +258,11 @@
         await test('Player', async () => { const pl = getPlayer(); return { ok: typeof pl?.getVideoData === 'function', detail: pl ? 'regular YouTube player found' : 'no player' }; });
         await test('Volume', async () => { const pl = getPlayer(); return { ok: typeof pl?.getVolume === 'function' && typeof pl?.setVolume === 'function', detail: 'getVolume/setVolume ' + (typeof pl?.setVolume === 'function' ? 'found' : 'missing') }; });
         await test('Search', async () => { const r = await searchVideos('love'); return { ok: r.length > 0, detail: `${r.length} videos found` }; });
+        await test('Queue and related videos', async () => { const app = !!document.querySelector('ytd-app'); const r = await relatedFor(nowId() || 'dQw4w9WgXcQ'); return { ok: r.length > 0, detail: `${r.length} related videos; in-page navigation ${app ? 'available' : 'not available (a page load is used)'}` }; });
         post({ type: 'health', checks });
-      } else if (cmd === 'get_state') reportVol(true);
+      } else if (cmd === 'get_state') { reportVol(true); publishQ(true); }
     }, sig);
-    const iv = setInterval(() => reportVol(false), 1500);
+    const iv = setInterval(() => { reportVol(false); refreshAutos(); publishQ(false); }, 1500);
     sig.signal.addEventListener('abort', () => clearInterval(iv));
     post({ type: 'hello' });
     reportVol(true);
@@ -1295,6 +1476,17 @@
       dequeue(value);
     } else if (cmd === 'next') {
       nextTrack();
+    } else if (cmd === 'add_to_playlist') {
+      try {
+        const [pl, vid] = String(value).split('|');
+        const id = vid === 'current' ? currentVideoId() : vid;
+        if (!ID_RE.test(id)) throw new Error('Nothing is playing');
+        const json = await innertube('browse/edit_playlist', { playlistId: pl.replace(/^VL/, ''), actions: [{ action: 'ACTION_ADD_VIDEO', addedVideoId: id }] }, 12000, true);
+        if (json?.status && json.status !== 'STATUS_SUCCEEDED') throw new Error('refused');
+        status('Added to the playlist');
+      } catch (e) {
+        status("Couldn't add it: " + (String((e && e.message) || e).includes('refused') || /\(40[0-9]\)/.test(String(e && e.message)) ? 'you can only add to playlists you own' : String((e && e.message) || e)));
+      }
     } else if (cmd === 'save_playlist') {
       await savePlaylist(String(value || ''));
     } else if (cmd === 'get_state') {
