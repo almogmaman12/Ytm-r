@@ -315,6 +315,32 @@ let port;
   assert.ok(/PC connected/.test(logText) && /phone disconnected/.test(logText), 'PC connection and disconnection logged');
   assert.ok(!logText.includes(lgTok), 'token never appears in the log');
 
+  // ---- Like, speed, skip and sleep timer commands are validated ----
+  const xTok = 'extraextraextraextra_7777';
+  const xPc = await open('pc', xTok);
+  const xPhone = await open('phone', xTok);
+  await wait(100);
+  const xSend = (cmd, value) => xPhone.send(JSON.stringify({ type: 'cmd', cmd, value }));
+  const xGot = (cmd) => xPc.msgs.filter((m) => m.cmd === cmd);
+  xSend('like'); xSend('shuffle'); xSend('repeat'); xSend('dislike');
+  await wait(1100);
+  xSend('speed', 1.5); xSend('speed', 9); xSend('speed', 'fast'); xSend('speed', 0.1);
+  xSend('skip', -10); xSend('skip', 500); xSend('skip', 'x');
+  await wait(1100);
+  xSend('sleep', '30'); xSend('sleep', 'end'); xSend('sleep', 'off'); xSend('sleep', '0'); xSend('sleep', '9999'); xSend('sleep', 'abc');
+  await wait(600);
+  assert(['like', 'shuffle', 'repeat', 'dislike'].every((c) => xGot(c).length === 1), 'like, shuffle, repeat, dislike are passed on');
+  assert.deepStrictEqual(xGot('speed').map((m) => m.value), [1.5], 'only sane speeds get through');
+  assert.deepStrictEqual(xGot('skip').map((m) => m.value), [-10], 'only skips within two minutes get through');
+  assert.deepStrictEqual(xGot('sleep').map((m) => m.value), ['30', 'end', 'off'], 'only valid sleep timers get through');
+  xPc.send(JSON.stringify({ type: 'state', state: { title: 'T', artist: 'A', playing: true, speed: 1.25, like: 'like', repeat: 'one', shuffle: true, sleep: 90 } }));
+  xPc.send(JSON.stringify({ type: 'state', state: { title: 'T', artist: 'A', playing: true, speed: 99, like: '<x>', repeat: 'weird', shuffle: 'yes', sleep: 'soon' } }));
+  await wait(200);
+  const sts = xPhone.msgs.filter((m) => m.type === 'state').map((m) => m.state);
+  assert(sts[0].speed === 1.25 && sts[0].like === 'like' && sts[0].repeat === 'one' && sts[0].shuffle === true && sts[0].sleep === 90, 'extra state reaches the phone');
+  assert(sts[1].speed === 2 && sts[1].like === '' && sts[1].repeat === 'none' && sts[1].shuffle === null && sts[1].sleep === null, 'bad extra state is cleaned');
+  [xPc, xPhone].forEach((w) => w.close());
+
   // ---- Access codes: a token alone is not enough ----
   const crypto2 = require('crypto');
   // PC helper: lets a phone ask the extension to reopen YouTube Music when no tab is connected

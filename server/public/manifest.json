@@ -5,6 +5,11 @@
   "display": "standalone",
   "background_color": "#0f0e14",
   "theme_color": "#0f0e14",
+  "shortcuts": [
+    { "name": "Search", "url": "/?view=search", "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml" }] },
+    { "name": "Library", "url": "/?view=library", "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml" }] },
+    { "name": "Up next", "url": "/?view=queue", "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml" }] }
+  ],
   "icons": [
     { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
   ]

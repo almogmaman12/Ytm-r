@@ -60,7 +60,7 @@
   .icon-btn:active { background: var(--surface); }
 
   /* ---- Now playing ---- */
-  #art { width: min(100%, 38dvh); aspect-ratio: 1; margin: 4px auto 0; border-radius: 22px;
+  #art { width: min(100%, 29dvh); aspect-ratio: 1; margin: 4px auto 0; border-radius: 22px;
          background: var(--surface) center / cover no-repeat; box-shadow: 0 18px 48px rgba(0,0,0,.45); }
   .meta { margin-top: 22px; }
   #title { margin: 0; font-size: clamp(26px, 8vw, 34px); font-weight: 750; line-height: 1.05;
@@ -76,7 +76,9 @@
 
   .controls { display: flex; align-items: center; justify-content: space-between; margin: 14px 4px 0; transition: opacity .2s; }
   #app[data-pc="off"] .controls, #app[data-pc="off"] .vol { opacity: .4; }
-  .ctl { width: 64px; height: 64px; display: grid; place-items: center; border-radius: 22px; }
+  .ctl { width: 56px; height: 64px; display: grid; place-items: center; border-radius: 22px; }
+  .ctl.sm { width: 44px; height: 56px; border-radius: 18px; color: var(--muted); }
+  .ctl.sm svg.i { width: 26px; height: 26px; }
   .ctl svg.i { width: 30px; height: 30px; }
   .ctl:active { background: var(--surface); }
   #toggle { display: grid; place-items: center; width: 92px; height: 84px; border-radius: 30px; background: var(--accent); color: var(--accent-ink); transition: transform .12s; }
@@ -212,12 +214,22 @@
   #healthList .d { color: var(--muted); display: block; font-size: 12.5px; }
   #wakeBtn { display: none; margin: 14px auto 0; padding: 12px 20px; border-radius: 999px; background: var(--accent, #8b9bff); color: #10131f; font-weight: 700; font-size: 15px; }
   #app[data-wake="on"] #wakeBtn { display: block; }
-  .pbtns { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 14px 0 0; }
+  .pbtns { display: flex; gap: 8px; margin: 12px 0 0; }
+  .pbtns button { flex: 1; min-width: 0; }
+  .pbtns button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
+  .pbtns button[aria-pressed="true"] svg.i.fillable { fill: currentColor; }
+  #app[data-site="yt"] #shuffleBtn { display: none; }
   .pbtns button { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 2px 8px; border-radius: 16px; background: var(--surface); color: var(--ink); font-weight: 600; font-size: 12.5px; line-height: 1.15; }
   .pbtns button svg.i { width: 22px; height: 22px; }
   .pbtns button:active { background: var(--surface-2); }
   #app[data-pc="off"] .pbtns { opacity: .4; pointer-events: none; }
   #wakeBtn { margin-top: 12px; }
+  dialog#picker { padding: 22px; }
+  .pickOpt[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
+  .chk { display: flex; gap: 12px; align-items: flex-start; padding: 8px 0; font-size: 15px; font-weight: 600; }
+  .chk input { width: 22px; height: 22px; flex: none; accent-color: var(--accent); margin-top: 1px; }
+  .chk small { display: block; font-weight: 400; color: var(--muted); font-size: 13px; margin-top: 2px; }
+  #volMax { width: 100%; accent-color: var(--accent); }
   #suggest { margin: 2px 0 6px; padding: 0; list-style: none; }
   #suggest li button { width: 100%; text-align: left; padding: 11px 6px; display: flex; gap: 10px; align-items: center; color: var(--ink); font-size: 16px; border-top: 1px solid var(--surface); }
   #suggest li button svg { width: 18px; height: 18px; flex: none; opacity: .6; }
@@ -263,6 +275,13 @@
     <symbol id="i-top" viewBox="0 0 24 24"><path d="M5 4h14M12 20V9M6 14l6-6 6 6"/></symbol>
     <symbol id="i-bottom" viewBox="0 0 24 24"><path d="M5 20h14M12 4v11M6 10l6 6 6-6"/></symbol>
     <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7"/></symbol>
+    <symbol id="i-heart" viewBox="0 0 24 24"><path d="M12 20.5s-8-4.9-8-11a4.6 4.6 0 018-3 4.6 4.6 0 018 3c0 6.1-8 11-8 11z"/></symbol>
+    <symbol id="i-shuffle" viewBox="0 0 24 24"><path d="M3 7h3.5c5 0 5 10 10 10H21M3 17h3.5c1.6 0 2.7-.8 3.6-2M13.9 9c.9-1.2 2-2 3.6-2H21M18.5 4.5L21 7l-2.5 2.5M18.5 14.5L21 17l-2.5 2.5"/></symbol>
+    <symbol id="i-repeat" viewBox="0 0 24 24"><path d="M4 11V9a3 3 0 013-3h12M16.5 3L19.5 6l-3 3M20 13v2a3 3 0 01-3 3H5M7.5 21L4.5 18l3-3"/></symbol>
+    <symbol id="i-speed" viewBox="0 0 24 24"><path d="M4.5 18a8.5 8.5 0 1115 0M12 13.5L16 8.5"/><circle cx="12" cy="14" r="1.2" fill="currentColor"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8.5 8.5 0 019.5 4a8.5 8.5 0 1010.5 10.5z"/></symbol>
+    <symbol id="i-back10" viewBox="0 0 24 24"><path d="M5 12a7 7 0 107-7H8"/><path d="M10.5 2.5L8 5l2.5 2.5"/><text x="12" y="15.2" font-size="7" font-weight="700" fill="currentColor" stroke="none" text-anchor="middle">10</text></symbol>
+    <symbol id="i-fwd10" viewBox="0 0 24 24"><path d="M19 12a7 7 0 11-7-7h4"/><path d="M13.5 2.5L16 5l-2.5 2.5"/><text x="12" y="15.2" font-size="7" font-weight="700" fill="currentColor" stroke="none" text-anchor="middle">10</text></symbol>
     <symbol id="i-block" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8"/></symbol>
     <symbol id="i-list" viewBox="0 0 24 24"><path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"/></symbol>
     <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
@@ -300,7 +319,9 @@
     <div class="times"><span id="cur">0:00</span><span id="dur">0:00</span></div>
     <div class="controls">
       <button id="prev" class="ctl" aria-label="Previous"><svg class="i"><use href="#i-prev"/></svg></button>
+      <button id="back10" class="ctl sm" aria-label="Back 10 seconds"><svg class="i"><use href="#i-back10"/></svg></button>
       <button id="toggle" aria-label="Play"><svg class="i"><use id="toggleIcon" href="#i-play"/></svg></button>
+      <button id="fwd10" class="ctl sm" aria-label="Forward 10 seconds"><svg class="i"><use href="#i-fwd10"/></svg></button>
       <button id="next" class="ctl" aria-label="Next"><svg class="i"><use href="#i-next"/></svg></button>
     </div>
     <div class="vol">
@@ -310,6 +331,13 @@
     </div>
     <p id="lastSeen" class="hint" aria-live="polite"></p>
     <button id="wakeBtn" type="button">Wake YouTube Music on the PC</button>
+    <div class="pbtns" id="quickRow">
+      <button id="likeBtn" type="button" aria-pressed="false"><svg class="i fillable"><use href="#i-heart"/></svg><span id="likeLbl">Like</span></button>
+      <button id="shuffleBtn" type="button" aria-pressed="false"><svg class="i"><use href="#i-shuffle"/></svg>Shuffle</button>
+      <button id="repeatBtn" type="button" aria-pressed="false"><svg class="i"><use href="#i-repeat"/></svg><span id="repeatLbl">Repeat</span></button>
+      <button id="speedBtn" type="button" aria-pressed="false"><svg class="i"><use href="#i-speed"/></svg><span id="speedLbl">1x</span></button>
+      <button id="sleepBtn" type="button" aria-pressed="false"><svg class="i"><use href="#i-moon"/></svg><span id="sleepLbl">Sleep</span></button>
+    </div>
     <div class="pbtns">
       <button id="radioBtn" type="button"><svg class="i"><use href="#i-radio"/></svg>Radio</button>
       <button id="relatedBtn" type="button"><svg class="i"><use href="#i-queue"/></svg>Similar</button>
@@ -414,6 +442,15 @@
       <p id="blockNote" class="small"></p>
     </details>
 
+    <details>
+      <summary>On this phone</summary>
+      <label class="chk"><input type="checkbox" id="optMedia"><span>Lock-screen and notification controls<small>Plays a silent sound so Android shows play, pause, skip and the song's cover. It can pause other audio on this phone.</small></span></label>
+      <label class="chk"><input type="checkbox" id="optKeepOn"><span>Keep the screen on while the app is open</span></label>
+      <label class="lbl" for="volMax" style="margin-top:10px">Volume limit: <span id="volMaxLbl">No limit</span></label>
+      <input type="range" id="volMax" min="20" max="100" step="5" value="100">
+      <p class="small" style="margin-top:6px">The volume slider on this phone will not go above this. The PC's own volume is not capped.</p>
+    </details>
+
     <details id="maint">
       <summary>Fix and check</summary>
       <div class="row">
@@ -439,6 +476,12 @@
     </details>
   </div>
   <div class="sheetFoot"><button id="closeSettings" class="secondary">Close</button></div>
+</dialog>
+
+<dialog id="picker">
+  <h2 id="pickTitle"></h2>
+  <div id="pickList" class="row"></div>
+  <div class="row" style="margin-top:12px"><button id="pickClose" class="secondary" type="button">Cancel</button></div>
 </dialog>
 
 <dialog id="blockDlg">
@@ -523,7 +566,12 @@ function show() {
   $('setup').hidden = !!token;
   $('app').hidden = !token;
   $('glow').hidden = !token;
-  if (token) { setView('playing'); connect(); }
+  if (token) {
+    setView('playing');
+    const want = new URLSearchParams(location.search).get('view');
+    if (['search', 'library', 'queue'].includes(want)) setView(want);
+    connect();
+  }
 }
 
 /* ---------- waking relay ---------- */
@@ -765,9 +813,74 @@ function render(s) {
   $('art').style.backgroundImage = bg;
   $('miniArt').style.backgroundImage = bg;
   applyColour(s.art || '');
-  if (s.volume != null && !volDragging) $('vol').value = s.volume;
+  if (s.volume != null && !volDragging) $('vol').value = Math.min(s.volume, Number($('vol').max) || 100);
+  renderExtras(s);
+  syncMedia();
   tick();
 }
+
+/* ---------- like, shuffle, repeat, speed, sleep ---------- */
+const setPressed = (id, on) => $(id).setAttribute('aria-pressed', String(!!on));
+function renderExtras(s) {
+  setPressed('likeBtn', s.like === 'like');
+  $('likeLbl').textContent = s.like === 'like' ? 'Liked' : 'Like';
+  setPressed('shuffleBtn', s.shuffle === true);
+  setPressed('repeatBtn', s.repeat && s.repeat !== 'none');
+  $('repeatLbl').textContent = s.repeat === 'one' ? 'Repeat 1' : s.repeat === 'all' ? 'Repeat all' : 'Repeat';
+  const sp = s.speed || 1;
+  $('speedLbl').textContent = (Math.round(sp * 100) / 100) + 'x';
+  setPressed('speedBtn', sp !== 1);
+  renderSleep();
+}
+function sleepLeft() {
+  if (!last || last.sleep == null) return null;
+  if (last.sleep < 0) return -1;
+  return Math.max(0, last.sleep - (Date.now() - lastAt) / 1000);
+}
+function renderSleep() {
+  const left = sleepLeft();
+  setPressed('sleepBtn', left !== null);
+  if (left === null) $('sleepLbl').textContent = 'Sleep';
+  else if (left < 0) $('sleepLbl').textContent = 'End of song';
+  else { const m = Math.floor(left / 60), sec = Math.floor(left % 60); $('sleepLbl').textContent = m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m}:${String(sec).padStart(2, '0')}`; }
+}
+setInterval(renderSleep, 1000);
+function pick(title, opts, cur, done) {
+  $('pickTitle').textContent = title;
+  const list = $('pickList'); list.textContent = '';
+  for (const o of opts) {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'secondary pickOpt'; b.textContent = o.label;
+    b.setAttribute('aria-pressed', String(o.value === cur));
+    b.onclick = () => { $('picker').close(); buzz(); done(o.value); };
+    list.append(b);
+  }
+  $('picker').showModal();
+}
+$('pickClose').onclick = () => $('picker').close();
+$('likeBtn').onclick = () => { buzz(); cmd('like'); };
+$('shuffleBtn').onclick = () => { buzz(); cmd('shuffle'); };
+$('repeatBtn').onclick = () => { buzz(); cmd('repeat'); };
+$('speedBtn').onclick = () => pick('Playback speed',
+  [0.75, 1, 1.25, 1.5, 1.75, 2].map((n) => ({ value: n, label: n === 1 ? 'Normal (1x)' : n + 'x' })), (last && last.speed) || 1,
+  (n) => cmd('speed', n));
+$('sleepBtn').onclick = () => {
+  const on = sleepLeft() !== null;
+  pick('Sleep timer', [
+    ...[15, 30, 45, 60, 90].map((m) => ({ value: String(m), label: m < 60 ? `${m} minutes` : m === 60 ? '1 hour' : '1.5 hours' })),
+    { value: 'end', label: 'After this song' },
+    ...(on ? [{ value: 'off', label: 'Turn off the timer' }] : []),
+  ], null, (v) => {
+    if (cmd('sleep', v)) toast(v === 'off' ? 'Sleep timer off' : v === 'end' ? 'Music stops after this song' : `Music fades out in ${v} minutes`);
+  });
+};
+function skipBy(n) {
+  if (!last || !last.duration) return;
+  last.position = Math.min(last.duration, Math.max(0, (last.position || 0) + (last.playing ? (Date.now() - lastAt) / 1000 : 0) + n)); lastAt = Date.now();
+  tick(); buzz(); cmd('skip', n);
+}
+$('back10').onclick = () => skipBy(-10);
+$('fwd10').onclick = () => skipBy(10);
 
 function tick() {
   if (!last || !last.duration) { $('fill').style.width = '0'; $('cur').textContent = '0:00'; $('dur').textContent = '0:00'; return; }
@@ -801,7 +914,7 @@ $('prev').onclick = () => { buzz(); cmd('previous'); };
 $('vol').oninput = (e) => {
   volDragging = true;
   clearTimeout(volTimer);
-  const value = Number(e.target.value);
+  const value = Math.min(Number(e.target.value), getVolMax());
   const send = () => { volSentAt = Date.now(); cmd('volume', value); };
   // At most about 8 updates a second while dragging, plus a final one when you stop.
   if (Date.now() - volSentAt >= 120) send(); else volTimer = setTimeout(send, 120);
@@ -1466,6 +1579,79 @@ function renderHealth(checks) {
 }
 $('healthQuick').onclick = () => runHealth(false);
 $('healthDeep').onclick = () => runHealth(true);
+
+/* ---------- options on this phone ---------- */
+const getOpt = (k) => { try { return localStorage.getItem('opt_' + k) === '1'; } catch { return false; } };
+const setOpt = (k, on) => { try { on ? localStorage.setItem('opt_' + k, '1') : localStorage.removeItem('opt_' + k); } catch {} };
+
+function getVolMax() { try { return Math.min(100, Math.max(20, Number(localStorage.getItem('volMax')) || 100)); } catch { return 100; } }
+function applyVolMax() {
+  const m = getVolMax();
+  $('vol').max = m; $('volMax').value = m;
+  $('volMaxLbl').textContent = m >= 100 ? 'No limit' : m + '%';
+  if (last && last.volume != null && !volDragging) $('vol').value = Math.min(last.volume, m);
+}
+$('volMax').oninput = (e) => { try { localStorage.setItem('volMax', e.target.value); } catch {} applyVolMax(); };
+
+// Keep the screen on
+let wakeLock = null;
+async function syncWake() {
+  try {
+    if (getOpt('keepOn') && document.visibilityState === 'visible' && 'wakeLock' in navigator && !wakeLock) {
+      wakeLock = await navigator.wakeLock.request('screen');
+      wakeLock.addEventListener('release', () => { wakeLock = null; });
+    } else if (!getOpt('keepOn') && wakeLock) { await wakeLock.release(); wakeLock = null; }
+  } catch { wakeLock = null; }
+}
+document.addEventListener('visibilitychange', syncWake);
+$('optKeepOn').onchange = (e) => { setOpt('keepOn', e.target.checked); syncWake(); };
+
+// Lock-screen / notification controls: Android shows them for a page that is playing sound, so a
+// silent loop plays while this is on. The buttons then drive the PC.
+let silent = null, mediaKey = '';
+function silentWav() {
+  const n = 8000, buf = new ArrayBuffer(44 + n), dv = new DataView(buf);
+  const w = (o, t) => { for (let i = 0; i < t.length; i++) dv.setUint8(o + i, t.charCodeAt(i)); };
+  w(0, 'RIFF'); dv.setUint32(4, 36 + n, true); w(8, 'WAVE'); w(12, 'fmt '); dv.setUint32(16, 16, true);
+  dv.setUint16(20, 1, true); dv.setUint16(22, 1, true); dv.setUint32(24, 8000, true); dv.setUint32(28, 8000, true);
+  dv.setUint16(32, 1, true); dv.setUint16(34, 8, true); w(36, 'data'); dv.setUint32(40, n, true);
+  new Uint8Array(buf, 44).fill(128);   // 8-bit silence
+  return new Blob([buf], { type: 'audio/wav' });
+}
+function setupMedia() {
+  const ms = navigator.mediaSession;
+  const on = (name, fn) => { try { ms.setActionHandler(name, fn); } catch {} };
+  on('play', () => cmd('play'));
+  on('pause', () => cmd('pause'));
+  on('previoustrack', () => cmd('previous'));
+  on('nexttrack', () => cmd('next'));
+  on('seekbackward', () => cmd('skip', -10));
+  on('seekforward', () => cmd('skip', 10));
+  on('seekto', (d) => { if (d && isFinite(d.seekTime)) cmd('seek', Math.round(d.seekTime)); });
+}
+function syncMedia() {
+  if (!('mediaSession' in navigator)) return;
+  if (!getOpt('media')) { if (silent && !silent.paused) silent.pause(); return; }
+  if (!silent) { silent = new Audio(URL.createObjectURL(silentWav())); silent.loop = true; setupMedia(); }
+  if (last && last.title && silent.paused) silent.play().catch(() => {});   // needs a tap first after a reload
+  if (!last) return;
+  const ms = navigator.mediaSession;
+  const key = [last.title, last.artist, last.art].join('|');
+  if (key !== mediaKey) {
+    mediaKey = key;
+    try { ms.metadata = new MediaMetadata({ title: last.title || 'Nothing playing', artist: last.artist || '', artwork: last.art ? [{ src: last.art, sizes: '512x512' }] : [] }); } catch {}
+  }
+  ms.playbackState = last.playing ? 'playing' : 'paused';
+  try { if (last.duration) ms.setPositionState({ duration: last.duration, position: Math.min(last.position || 0, last.duration), playbackRate: last.speed || 1 }); } catch {}
+}
+document.addEventListener('pointerdown', () => { if (getOpt('media') && silent && silent.paused && last && last.title) silent.play().catch(() => {}); }, { passive: true });
+$('optMedia').onchange = (e) => { setOpt('media', e.target.checked); syncMedia(); if (e.target.checked && !('mediaSession' in navigator)) toast('This browser has no lock-screen controls.'); };
+
+$('optMedia').checked = getOpt('media');
+$('optKeepOn').checked = getOpt('keepOn');
+applyVolMax();
+syncWake();
+
 $('closeSettings').onclick = () => $('settings').close();
 $('forget').onclick = () => {
   $('settings').close();

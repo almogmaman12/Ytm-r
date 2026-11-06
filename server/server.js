@@ -17,6 +17,7 @@ const ALLOWED_CMDS = new Set([
   'search', 'play_video', 'play_next', 'queue_remove', 'yt_jump', 'yt_remove', 'yt_reorder',
   'queue_end', 'queue_clear', 'play_collection', 'collection_next', 'collection_end', 'open', 'library',
   'radio', 'health', 'related', 'suggest', 'block_current', 'block_remove', 'block_list', 'refresh', 'reload_tab', 'queue_restore', 'yt_remove_many', 'yt_move_many',
+  'like', 'dislike', 'shuffle', 'repeat', 'speed', 'skip', 'sleep',
 ]);
 const MAX_MSG_BYTES = 65536;        // PC -> server (search results can be a few KB)
 const MAX_PHONE_MSG_BYTES = 1024;   // phone -> server (commands are tiny)
@@ -59,6 +60,7 @@ const SECURITY_HEADERS = {
     "img-src 'self' https: data:",
     "connect-src 'self' ws: wss:",
     "manifest-src 'self'",
+    "media-src 'self' blob:",
     "worker-src 'self'",
     "frame-ancestors 'none'",
     "base-uri 'none'",
@@ -496,6 +498,19 @@ wss.on('connection', (ws, { token, role, ip, device }) => {
       } else if (msg.cmd === 'yt_reorder') {
         if (!QUEUE_MOVE_RE.test(String(msg.value))) return;
         out.value = String(msg.value);
+      } else if (msg.cmd === 'speed') {
+        const v = Number(msg.value);
+        if (!Number.isFinite(v) || v < 0.25 || v > 2) return;
+        out.value = Math.round(v * 100) / 100;
+      } else if (msg.cmd === 'skip') {
+        const v = Number(msg.value);
+        if (!Number.isFinite(v) || Math.abs(v) > 120) return;
+        out.value = Math.round(v);
+      } else if (msg.cmd === 'sleep') {
+        // minutes (1 to 720), 'end' (after this song) or 'off'
+        const v = String(msg.value);
+        if (v !== 'end' && v !== 'off' && !(/^\d{1,3}$/.test(v) && Number(v) >= 1 && Number(v) <= 720)) return;
+        out.value = v;
       }
       if (TAG_CMDS.has(out.cmd)) out.by = name || device;
       if (LOG_COMMANDS && (process.env.LOG_ALL === '1' || !QUIET_CMDS.has(out.cmd))) {
@@ -518,6 +533,11 @@ wss.on('connection', (ws, { token, role, ip, device }) => {
         duration: Number.isFinite(s.duration) ? s.duration : null,
         art: safeHttps(s.art),
         site: s.site === 'yt' ? 'yt' : 'ytm',
+        speed: Number.isFinite(s.speed) ? Math.min(2, Math.max(0.25, s.speed)) : 1,
+        like: s.like === 'like' || s.like === 'dislike' ? s.like : '',
+        repeat: s.repeat === 'all' || s.repeat === 'one' ? s.repeat : 'none',
+        shuffle: typeof s.shuffle === 'boolean' ? s.shuffle : null,
+        sleep: Number.isFinite(s.sleep) ? Math.max(-1, Math.min(43200, Math.round(s.sleep))) : null,   // seconds left, -1 = end of song
       };
       room.phones.forEach((p) => send(p, { type: 'state', state: room.lastState }));
     } else if (msg.type === 'status' && typeof msg.message === 'string') {

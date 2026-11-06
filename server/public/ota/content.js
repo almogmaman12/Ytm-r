@@ -195,6 +195,117 @@
   const bar = () => q('ytmusic-player-bar');
   const video = () => q('video');
 
+  // ---- Extras: like, shuffle, repeat, speed, skip and the sleep timer ----
+  // These read and press the site's own buttons, so they are best effort: if the site changes its
+  // markup, the matching control simply does nothing (and says so on the phone).
+  const SHUFFLE_SEL = 'ytmusic-player-bar .shuffle, ytmusic-player-queue .shuffle, #queue-header .shuffle';
+  const likeBtn = (which) => IS_YT
+    ? q(which === 'like' ? 'like-button-view-model button, #segmented-like-button button' : 'dislike-button-view-model button, #segmented-dislike-button button')
+    : q(`ytmusic-player-bar ytmusic-like-button-renderer ${which === 'like' ? '#button-shape-like button, .like' : '#button-shape-dislike button, .dislike'}`);
+  function likeStatus() {
+    if (IS_YT) return likeBtn('like')?.getAttribute('aria-pressed') === 'true' ? 'like' : likeBtn('dislike')?.getAttribute('aria-pressed') === 'true' ? 'dislike' : '';
+    const st = String(q('ytmusic-player-bar ytmusic-like-button-renderer')?.getAttribute('like-status') || '').toUpperCase();
+    return st === 'LIKE' ? 'like' : st === 'DISLIKE' ? 'dislike' : '';
+  }
+  function repeatMode() {
+    if (IS_YT) return video()?.loop ? 'one' : 'none';
+    const b = bar();
+    const m = String((b && (b.getAttribute('repeat-mode_') || b.repeatMode_)) || '').toUpperCase();
+    return m === 'ALL' ? 'all' : m === 'ONE' ? 'one' : 'none';
+  }
+  function shuffleOn() {
+    if (IS_YT) return null;
+    const b = q(SHUFFLE_SEL);
+    if (!b) return null;
+    return b.getAttribute('aria-pressed') === 'true' || b.hasAttribute('active') || b.classList.contains('active');
+  }
+
+  let sleepAt = 0, sleepEnd = false, sleepVol = null;
+  const sleepLeft = () => (sleepEnd ? -1 : sleepAt ? Math.max(0, Math.round((sleepAt - Date.now()) / 1000)) : null);
+  const curVol = () => (pageVolume != null ? pageVolume : video() ? Math.round(video().volume * 100) : 50);
+  async function setVol(n) {
+    n = Math.round(Math.min(100, Math.max(0, n)));
+    if (await pageReady()) toPage('volume', n); else if (video()) video().volume = n / 100;
+  }
+  function endSleep(restore) {
+    const was = sleepVol;
+    sleepAt = 0; sleepEnd = false; sleepVol = null;
+    if (restore && was != null) setVol(was);
+  }
+  every(() => {
+    if (!sleepAt && !sleepEnd) return;
+    const v = video();
+    if (!v) return;
+    const remain = sleepEnd ? (isFinite(v.duration) ? v.duration - v.currentTime : 999) : (sleepAt - Date.now()) / 1000;
+    const fade = sleepEnd ? 6 : 20;
+    if (remain <= fade && !v.paused) {
+      if (sleepVol == null) sleepVol = curVol();
+      setVol(sleepVol * Math.max(0, remain) / fade);
+    }
+    if (remain <= (sleepEnd ? 0.9 : 0)) {
+      if (!v.paused) { if (IS_YT) v.pause(); else click('#play-pause-button'); }
+      setTimeout(() => endSleep(true), 800);   // bring the volume back once it has stopped
+      sleepAt = 0; sleepEnd = false;
+      report(true);
+    }
+  }, 500);
+
+  function extras() {
+    const v = video();
+    return {
+      speed: v && isFinite(v.playbackRate) ? Math.round(v.playbackRate * 100) / 100 : 1,
+      like: likeStatus(),
+      repeat: repeatMode(),
+      shuffle: shuffleOn(),
+      sleep: sleepLeft(),
+    };
+  }
+
+  // Returns true when the command was one of the extras (so the caller stops there).
+  function runExtra(cmd, value) {
+    const v = video();
+    const missing = (what) => sendWs({ type: 'status', message: `${what} isn't available on this page right now.` });
+    switch (cmd) {
+      case 'like': case 'dislike': {
+        const b = likeBtn(cmd);
+        if (b) b.click(); else missing(cmd === 'like' ? 'Like' : 'Dislike');
+        break;
+      }
+      case 'shuffle': {
+        if (IS_YT) { sendWs({ type: 'status', message: 'Shuffle only works on YouTube Music.' }); break; }
+        const b = q(SHUFFLE_SEL);
+        if (b) b.click(); else missing('Shuffle');
+        break;
+      }
+      case 'repeat': {
+        if (IS_YT) { if (v) v.loop = !v.loop; break; }
+        const b = q('ytmusic-player-bar .repeat');
+        if (b) b.click(); else missing('Repeat');
+        break;
+      }
+      case 'speed': {
+        const n = Number(value);
+        if (v && isFinite(n) && n >= 0.25 && n <= 2) v.playbackRate = n;
+        break;
+      }
+      case 'skip': {
+        const n = Number(value);
+        if (v && isFinite(n) && isFinite(v.duration)) v.currentTime = Math.min(v.duration - 0.5, Math.max(0, v.currentTime + n));
+        break;
+      }
+      case 'sleep': {
+        if (value === 'off') endSleep(true);
+        else if (value === 'end') { sleepAt = 0; sleepEnd = true; }
+        else { const m = Number(value); if (isFinite(m) && m >= 1 && m <= 720) { sleepEnd = false; sleepAt = Date.now() + m * 60000; } }
+        break;
+      }
+      default: return false;
+    }
+    report(true);
+    setTimeout(() => report(true), 300);
+    return true;
+  }
+
   // Regular YouTube: the video page's own title and channel.
   function getYtState() {
     const v = video();
@@ -204,6 +315,7 @@
     const channel = q('ytd-watch-metadata ytd-channel-name a, #owner ytd-channel-name a')?.textContent?.trim() || '';
     return {
       site: 'yt', title, artist: channel,
+      ...extras(),
       playing: !v.paused,
       volume: pageVolume != null ? pageVolume : Math.round(v.volume * 100),
       position: isFinite(v.currentTime) ? Math.floor(v.currentTime) : null,
@@ -222,6 +334,7 @@
     const art = b.querySelector('img#img')?.src || b.querySelector('.image')?.src || '';
     return {
       site: 'ytm',
+      ...extras(),
       title,
       artist: byline.split('•')[0].trim(),
       playing: v ? !v.paused : false,
@@ -243,7 +356,7 @@
   function report(force) {
     const s = getState();
     if (!s) return;
-    const key = JSON.stringify([s.title, s.artist, s.playing, s.volume, s.duration]);
+    const key = JSON.stringify([s.title, s.artist, s.playing, s.volume, s.duration, s.speed, s.like, s.repeat, s.shuffle, s.sleep == null ? null : s.sleep < 0 ? -1 : Math.ceil(s.sleep / 60)]);
     let jumped = false;
     if (lastPos !== null && s.position !== null) {
       const expected = lastPos + (lastPlaying ? (Date.now() - lastPosAt) / 1000 : 0);
@@ -322,6 +435,7 @@
 
   // Regular YouTube has no bar like YouTube Music: control the video itself.
   async function runYt(cmd, value) {
+    if (runExtra(cmd, value)) return;
     const v = video();
     const ytBtn = (sel) => { const el = q('#movie_player ' + sel); if (el && el.offsetParent !== null) { el.click(); return true; } return false; };
     switch (cmd) {
@@ -357,6 +471,7 @@
 
   async function run(cmd, value, by) {
     if (IS_YT) return runYt(cmd, value);
+    if (runExtra(cmd, value)) return;
     const v = video();
     switch (cmd) {
       case 'play': if (v && v.paused) click('#play-pause-button'); break;

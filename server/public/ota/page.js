@@ -1132,6 +1132,15 @@
       await sleep(200);
       return { ok: typeof v === 'number' && player.getVolume() === v, detail: `volume ${v}, set and read back` };
     });
+    await test('Like, repeat, shuffle', async () => {
+      const has = (sel) => !!document.querySelector(sel);
+      const found = [
+        has('ytmusic-player-bar ytmusic-like-button-renderer') && 'like',
+        has('ytmusic-player-bar .repeat') && 'repeat',
+        has('ytmusic-player-bar .shuffle, ytmusic-player-queue .shuffle, #queue-header .shuffle') && 'shuffle',
+      ].filter(Boolean);
+      return { ok: found.length === 3, detail: found.length === 3 ? 'all three buttons found' : `found: ${found.join(', ') || 'none'}` };
+    });
     await test('Page navigation', async () => {
       const app = document.querySelector('ytmusic-app');
       const fns = ['navigate', 'navigate_'].filter((n) => typeof app?.[n] === 'function');
