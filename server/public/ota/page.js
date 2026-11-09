@@ -11,6 +11,29 @@
   window.__ytmrAbort = ac;
   const sig = { signal: ac.signal };
 
+  // Switching sites, reloading or opening another video from the phone must never stop on Chrome's
+  // "Leave site? Changes you made may not be saved" prompt: nobody is at the PC to press the button.
+  // Chrome only shows it when a beforeunload handler cancels the event. Handlers that are already
+  // registered cannot be removed, so cancelling is made a no-op for that event instead.
+  try {
+    if (!window.__ytmrNoUnload) {
+      window.__ytmrNoUnload = true;
+      window.onbeforeunload = null;
+      Object.defineProperty(window, 'onbeforeunload', { configurable: true, get: () => null, set: () => {} });
+      const realPrevent = Event.prototype.preventDefault;
+      Event.prototype.preventDefault = function () { if (this.type === 'beforeunload') return undefined; return realPrevent.call(this); };
+      for (const proto of [window.BeforeUnloadEvent && BeforeUnloadEvent.prototype, Event.prototype]) {
+        const d = proto && Object.getOwnPropertyDescriptor(proto, 'returnValue');
+        if (!d || !d.configurable) continue;
+        Object.defineProperty(proto, 'returnValue', {
+          configurable: true,
+          get() { return this.type === 'beforeunload' ? '' : (d.get ? d.get.call(this) : undefined); },
+          set(v) { if (this.type !== 'beforeunload' && d.set) d.set.call(this, v); },
+        });
+      }
+    }
+  } catch { /* the prompt may still show on a very unusual page */ }
+
   const ID_RE = /^[A-Za-z0-9_-]{11}$/;
   // Search filter parameter that restricts results to "Songs".
   const SONGS_FILTER = 'EgWKAQIIAWoKEAkQBRAKEAMQBA==';

@@ -267,6 +267,9 @@
   #srcChip { border: 0; cursor: pointer; position: absolute; left: 10px; bottom: 10px; display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px 5px 6px; border-radius: 99px; background: rgba(0,0,0,.55); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); color: #fff; font-size: 13px; font-weight: 700; letter-spacing: .01em; }
   #srcChip svg.i { width: 18px; height: 18px; stroke: none; }
   #app:not([data-has="1"]) #srcChip { display: none; }
+  button, .chip { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+  #tip { position: fixed; left: 0; top: 0; z-index: 99999; max-width: min(86vw, 320px); padding: 8px 13px; border-radius: 10px; background: rgba(20, 20, 24, .97); color: #fff; font-size: 14px; font-weight: 500; line-height: 1.3; text-align: center; pointer-events: none; opacity: 0; transition: opacity .12s; border: 1px solid rgba(255,255,255,.16); box-shadow: 0 4px 16px rgba(0,0,0,.45); }
+  #tip.show { opacity: 1; }
   #adBar { display: none; align-items: center; justify-content: space-between; gap: 10px; margin: 10px 0 0; padding: 8px 8px 8px 14px; border-radius: 14px; background: var(--surface); font-size: 14px; font-weight: 600; }
   #adBar.on { display: flex; }
   #adBar button { padding: 6px 14px; border-radius: 99px; background: var(--accent); color: var(--accent-ink); font-weight: 700; font-size: 14px; }
@@ -1192,6 +1195,7 @@ $('editBtn').onclick = () => { buzz(); editing = !editing; if (editing) { select
 
 // Drag a row by its handle. Other rows slide out of the way; on release the new place is sent.
 function attachDrag(li, grip, from) {
+  grip.dataset.notip = '1';
   grip.onpointerdown = (e) => {
     if (e.button != null && e.button !== 0) return;
     e.preventDefault();
@@ -1712,6 +1716,71 @@ function renderHealth(checks) {
 }
 $('healthQuick').onclick = () => runHealth(false);
 $('healthDeep').onclick = () => runHealth(true);
+
+/* ---------- long-press hints (like Android's own) ---------- */
+// Hold a button for about half a second to read what it does. The tap that follows the hold is ignored.
+const TIPS = {
+  siteBtn: 'Open or switch YouTube and YouTube Music on the PC', refreshBtn: 'Force refresh: reload this page and the PC tab', settingsBtn: 'Settings',
+  srcChip: 'Which site is playing. Tap to open or switch', adSkip: 'Skip the ad', prev: 'Previous song', back10: 'Back 10 seconds', toggle: 'Play or pause',
+  fwd10: 'Forward 10 seconds', next: 'Next song', wakeBtn: 'Ask the PC to open or wake YouTube Music', likeBtn: 'Like this song', shuffleBtn: 'Shuffle the queue',
+  repeatBtn: 'Repeat: off, all or one song', speedBtn: 'Playback speed', sleepBtn: 'Sleep timer: stop the music after a while', radioBtn: 'Start a radio from this song',
+  relatedBtn: 'Show similar songs', artistBtn: "Open this artist's page", plBtn: 'Add this song to one of your playlists', blockBtn: 'Never play this song or artist',
+  libRefresh: 'Reload this list', clearBtn: 'Clear everything coming up', selectBtn: 'Select several songs at once', editBtn: 'Reorder songs by dragging',
+  saveQueue: 'Save the queue as a playlist in YouTube Music', miniToggle: 'Play or pause', miniNext: 'Next song', backBtn: 'Go back',
+  selTop: 'Move the selected songs to the top of the queue', selBottom: 'Move the selected songs to the end of the queue', selRemove: 'Remove the selected songs from the queue',
+  selDone: 'Finish selecting', healthQuick: 'Check that each part of the site is working', healthDeep: 'Longer check that also tries adding and removing a song',
+  reloadPage: 'Reload this phone page', reloadPc: "Reload the PC's YouTube tab", changeCode: 'Change the code this phone uses', forget: 'Forget this PC on this phone',
+};
+for (const [id, t] of Object.entries(TIPS)) { const el = $(id); if (el) el.dataset.tip = t; }
+const NAV_TIPS = { playing: 'Now playing', search: 'Search songs, albums, artists and playlists', library: 'Your playlists, albums and recommendations', queue: 'See and change what plays next' };
+document.querySelectorAll('#tabs button').forEach((b) => { b.dataset.tip = NAV_TIPS[b.dataset.view] || ''; });
+const KIND_TIPS = { song: 'Search for songs', album: 'Search for albums', artist: 'Search for artists', playlist: 'Search for playlists' };
+document.querySelectorAll('#kinds .chip').forEach((b) => { b.dataset.tip = KIND_TIPS[b.dataset.kind] || ''; });
+const SECTION_TIPS = { home: 'Recommendations made for you', playlists: 'Your playlists', albums: 'Your saved albums', history: 'Songs you played recently' };
+document.querySelectorAll('#libTabs .chip').forEach((b) => { b.dataset.tip = SECTION_TIPS[b.dataset.section] || ''; });
+
+const tipEl = document.createElement('div');
+tipEl.id = 'tip'; tipEl.setAttribute('role', 'tooltip');
+document.body.append(tipEl);
+let tipTimer = null, tipHide = null, pressEl = null, pressAt = null, heldEl = null;
+const tipText = (el) => el.dataset.tip || el.getAttribute('aria-label') || el.getAttribute('title') || '';
+function hideTip() { clearTimeout(tipHide); tipEl.classList.remove('show'); }
+function showTip(el, text) {
+  tipEl.textContent = text;
+  tipEl.classList.add('show');
+  const r = el.getBoundingClientRect(), w = tipEl.offsetWidth, h = tipEl.offsetHeight;
+  const x = Math.max(8, Math.min(window.innerWidth - w - 8, r.left + r.width / 2 - w / 2));
+  const y = r.top - h - 10 >= 8 ? r.top - h - 10 : r.bottom + 10;
+  tipEl.style.transform = `translate(${x}px, ${y}px)`;
+  clearTimeout(tipHide);
+  tipHide = setTimeout(hideTip, 2400);
+}
+function cancelPress() { clearTimeout(tipTimer); pressEl = null; }
+document.addEventListener('pointerdown', (e) => {
+  hideTip(); heldEl = null; cancelPress();
+  const el = e.target.closest && e.target.closest('button, [role="button"], .chip');
+  if (!el || el.disabled || el.dataset.notip) return;
+  const text = tipText(el);
+  if (!text) return;
+  pressEl = el; pressAt = [e.clientX, e.clientY];
+  tipTimer = setTimeout(() => {
+    if (pressEl !== el) return;
+    heldEl = el;
+    showTip(el, text);
+    if (navigator.vibrate) { try { navigator.vibrate(12); } catch {} }
+  }, 480);
+}, { passive: true });
+document.addEventListener('pointermove', (e) => {
+  if (pressEl && !heldEl && pressAt && Math.hypot(e.clientX - pressAt[0], e.clientY - pressAt[1]) > 10) cancelPress();
+}, { passive: true });
+for (const t of ['pointerup', 'pointercancel']) document.addEventListener(t, cancelPress, { passive: true });
+window.addEventListener('scroll', () => { cancelPress(); hideTip(); }, { passive: true, capture: true });
+// The release after a long press would otherwise count as a tap and do the button's job.
+document.addEventListener('click', (e) => {
+  if (heldEl && heldEl.contains(e.target)) { e.preventDefault(); e.stopImmediatePropagation(); }
+  heldEl = null;
+}, true);
+document.addEventListener('contextmenu', (e) => { if (e.target.closest && e.target.closest('button, .chip')) e.preventDefault(); });
 
 /* ---------- save the queue as a playlist ---------- */
 let saving = false;
