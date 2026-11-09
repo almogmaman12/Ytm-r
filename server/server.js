@@ -191,7 +191,7 @@ const rooms = new Map();
 function getRoom(token) {
   let room = rooms.get(token);
   if (!room) {
-    room = { pc: null, agent: null, version: '', lastSeen: 0, lastAgent: 0, lastWake: 0, phones: new Set(), lastState: null, lastYtQueue: null };
+    room = { pc: null, agent: null, agentYt: false, lastSite: 0, version: '', lastSeen: 0, lastAgent: 0, lastWake: 0, phones: new Set(), lastState: null, lastYtQueue: null };
     rooms.set(token, room);
   }
   return room;
@@ -201,6 +201,8 @@ function getRoom(token) {
 // small helper is, so the phone may ask it to reopen YouTube Music.
 const pcStatus = (room) => ({
   type: 'pc_status', online: !!room.pc, wake: !room.pc && !!room.agent, version: room.pc ? room.version || '' : '',
+  // The helper in the extension can open or switch sites; yt says whether regular YouTube is switched on there.
+  helper: !!room.agent, yt: !!room.agent && room.agentYt,
   // How long ago the YouTube Music tab was last connected (ms), or -1 if never since the relay started.
   // Sent as an age, not a timestamp, so phone and relay clocks never need to agree.
   ago: room.pc ? 0 : room.lastSeen ? Date.now() - room.lastSeen : -1,
@@ -432,7 +434,10 @@ wss.on('connection', (ws, { token, role, ip, device }) => {
     }
 
     // The helper only keeps the connection alive; it sends nothing else.
-    if (role === 'agent') return;
+    if (role === 'agent') {
+      if (msg.type === 'caps') { const yt = !!msg.yt; if (yt !== room.agentYt) { room.agentYt = yt; tellPhones(room); } }
+      return;
+    }
 
     if (role === 'phone') {
       if (raw.length > MAX_PHONE_MSG_BYTES || msg.type !== 'cmd') return;
@@ -444,6 +449,17 @@ wss.on('connection', (ws, { token, role, ip, device }) => {
         room.lastWake = now;
         if (LOG_COMMANDS) log(rid, `command open_music  from ${who}`);
         send(room.agent, { type: 'wake' });
+        return;
+      }
+      if (msg.cmd === 'open_site') {
+        // Open or switch between YouTube Music and YouTube on the PC (the helper does it). At most once per 2 s.
+        const v = String(msg.value);
+        const m = /^(swap_)?(ytm|yt)$/.exec(v);
+        const now = Date.now();
+        if (!m || !room.agent || now - room.lastSite < 2000) return;
+        room.lastSite = now;
+        if (LOG_COMMANDS) log(rid, `command open_site ${v}  from ${who}`);
+        send(room.agent, { type: 'site', site: m[2], swap: !!m[1] });
         return;
       }
       if (!ALLOWED_CMDS.has(msg.cmd)) { if (LOG_COMMANDS) log(rid, `unknown command ${clean(msg.cmd, 30)} refused  from ${who}`); return; }
@@ -603,7 +619,7 @@ wss.on('connection', (ws, { token, role, ip, device }) => {
     clearTimeout(authTimer);
     if (ws.joined) log(rid, `${role === 'pc' ? 'PC' : role === 'agent' ? 'PC helper' : 'phone'} disconnected: ${who}${code === 4000 ? ' (replaced by another PC)' : ''}`);
     if (role === 'agent') {
-      if (room.agent === ws) { room.agent = null; room.lastAgent = Date.now(); tellPhones(room); }
+      if (room.agent === ws) { room.agent = null; room.agentYt = false; room.lastAgent = Date.now(); tellPhones(room); }
     } else if (role === 'pc') {
       if (room.pc === ws) {
         room.pc = null;

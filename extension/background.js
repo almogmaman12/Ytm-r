@@ -295,6 +295,40 @@ async function openMusicTab() {
   setTimeout(() => { if (was && was.id !== t.id) chrome.tabs.update(was.id, { active: true }).catch(() => {}); }, 1200);
 }
 
+// The phone asked to open or switch the site. "swap" replaces the other site: its tab is reused
+// (same window and position, so a full-screen browser on a TV stays full-screen) or closed.
+// Tabs opened here are marked so their script connects to the relay at once instead of waiting.
+const claimTabs = new Map();   // tab id -> expiry
+const SITE_URL = { ytm: 'https://music.youtube.com/', yt: 'https://www.youtube.com/' };
+async function openSite(site, swap) {
+  if (site !== 'ytm' && site !== 'yt') return;
+  await getConfig().catch(() => {});                     // refreshes ytOn
+  if (site === 'yt' && !ytOn) return;                    // regular YouTube is off in the settings
+  const url = SITE_URL[site];
+  const mine = await chrome.tabs.query({ url: site === 'ytm' ? YTM : YT }).catch(() => []);
+  const others = swap ? await chrome.tabs.query({ url: site === 'ytm' ? YT : YTM }).catch(() => []) : [];
+  const claim = (id) => claimTabs.set(id, Date.now() + 60000);
+  let target = mine[0];
+  if (target) {
+    if (target.discarded) await chrome.tabs.reload(target.id).catch(() => {});
+  } else if (others.length) {
+    target = others.shift();
+    await chrome.tabs.update(target.id, { url }).catch(() => {});
+  } else {
+    try { target = await chrome.tabs.create({ url, active: true }); }
+    catch { const w = await chrome.windows.create({ url, focused: true }).catch(() => null); target = w && w.tabs && w.tabs[0]; }
+  }
+  if (target) {
+    claim(target.id);
+    await chrome.tabs.update(target.id, { active: true }).catch(() => {});
+    if (target.windowId != null) await chrome.windows.update(target.windowId, { focused: true }).catch(() => {});
+  }
+  if (swap) for (const t of others) chrome.tabs.remove(t.id).catch(() => {});
+}
+function sendCaps() {
+  if (agentWs && agentWs.readyState === 1) { try { agentWs.send(JSON.stringify({ type: 'caps', yt: ytOn })); } catch {} }
+}
+
 async function ensureAgent() {
   const { agent } = await chrome.storage.local.get('agent');
   const cfg = await getConfig();
@@ -317,8 +351,11 @@ async function ensureAgent() {
       clearInterval(agentPing);
       // A message every 20 s also keeps Chrome from stopping this worker.
       agentPing = setInterval(() => { try { ws.send('{"type":"ping"}'); } catch {} }, 20000);
+      sendCaps();
     } else if (m.type === 'wake') {
       openMusicTab();
+    } else if (m.type === 'site') {
+      openSite(m.site, !!m.swap).catch(() => {});
     }
   };
   ws.onclose = (ev) => {
@@ -343,7 +380,15 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 let lastPhoneCheck = 0;
 // Optional status messages from the running payload (shown on the settings page).
 if (chrome.runtime.onUserScriptMessage) {
-  chrome.runtime.onUserScriptMessage.addListener((msg) => {
+  chrome.runtime.onUserScriptMessage.addListener((msg, sender, sendResponse) => {
+    if (msg && msg.type === 'claim-check') {
+      // A YouTube tab waits for a video to play before taking the connection, unless we just opened it for the phone.
+      const id = sender && sender.tab && sender.tab.id;
+      const until = claimTabs.get(id) || 0;
+      if (until > Date.now()) claimTabs.delete(id);
+      sendResponse({ claim: until > Date.now() });
+      return true;
+    }
     if (msg && msg.type === 'ota-check') {
       // "Refresh" on the phone: look for an update now (at most every 30 seconds).
       if (Date.now() - lastPhoneCheck > 30000) { lastPhoneCheck = Date.now(); checkForUpdate({ force: false }); }
@@ -356,7 +401,7 @@ if (chrome.runtime.onUserScriptMessage) {
 }
 
 chrome.tabs.onRemoved.addListener(async () => {
-  const tabs = await chrome.tabs.query({ url: YTM }).catch(() => []);
+  const tabs = await chrome.tabs.query({ url: siteMatches() }).catch(() => []);
   if (!tabs.length) chrome.storage.local.set({ pcStatus: { state: 'no-tab', version: '', at: Date.now() } });
   ensureAgent().catch(() => {});
 });
@@ -372,7 +417,7 @@ chrome.permissions.onAdded.addListener(() => { ensureRegistered().catch(() => {}
 chrome.permissions.onRemoved.addListener(() => { ensureRegistered().catch(() => {}); });
 
 chrome.storage.onChanged.addListener((changes, area) => {
-  if (area === 'local' && changes.youtube) checkForUpdate({ force: true });
+  if (area === 'local' && changes.youtube) { checkForUpdate({ force: true }); getConfig().then(sendCaps).catch(() => {}); }
   if (area === 'local' && (changes.relayUrl || changes.token || changes.allowHttp || changes.pcCode)) checkForUpdate({ force: true });
   if (area === 'local' && (changes.relayUrl || changes.token || changes.allowHttp || changes.pcCode || changes.agent)) { stopAgent(); ensureAgent().catch(() => {}); }
 });

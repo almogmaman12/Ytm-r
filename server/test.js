@@ -353,6 +353,24 @@ let port;
   await wait(200);
   const sv = xPhone.msgs.find((m) => m.type === 'saved');
   assert(sv && sv.ok && sv.title === 'Road trip' && sv.count === 12, 'the result reaches the phone');
+  // Open or switch the site: only the helper hears it, and only well-formed values
+  const xAgent = await open('agent', xTok);
+  await wait(300);
+  xAgent.send(JSON.stringify({ type: 'caps', yt: true }));
+  await wait(250);
+  const stNow = () => xPhone.msgs.filter((m) => m.type === 'pc_status').pop();
+  assert(stNow().helper === true && stNow().yt === true, 'the phone is told the helper is there and YouTube is switched on');
+  await wait(1100);
+  xSend('open_site', 'swap_yt'); await wait(2100); xSend('open_site', 'ytm'); await wait(2100);
+  xSend('open_site', 'evil'); await wait(2100); xSend('open_site', 'swap_ytm;x');
+  await wait(400);
+  const siteMsgs = xAgent.msgs.filter((m) => m.type === 'site');
+  assert.deepStrictEqual(siteMsgs.map((m) => [m.site, m.swap]), [['yt', true], ['ytm', false]], 'the helper gets valid requests only');
+  assert(!xPc.msgs.some((m) => m.cmd === 'open_site'), 'the tab never sees open_site');
+  xAgent.send(JSON.stringify({ type: 'caps', yt: false }));
+  await wait(250);
+  assert(stNow().yt === false, 'turning YouTube off in the extension reaches the phone');
+  xAgent.close();
   [xPc, xPhone].forEach((w) => w.close());
 
   // ---- Access codes: a token alone is not enough ----

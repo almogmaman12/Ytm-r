@@ -579,7 +579,17 @@
 
   if (IS_YT) {
     // Don't take the connection from a YouTube Music tab just by being open: wait until a video plays here.
+    // The exception is a tab the phone just opened or switched to: the extension says so (claim-check).
     replaced = true;
+    const askClaim = async () => {
+      if (!active || !replaced || document.hidden) return;
+      try {
+        const r = await chrome.runtime.sendMessage({ type: 'claim-check' });
+        if (r && r.claim) reclaim(0);
+      } catch { /* messaging unavailable (older extension): wait for a video instead */ }
+    };
+    askClaim();
+    every(askClaim, 3000);
   } else {
     connect();
   }

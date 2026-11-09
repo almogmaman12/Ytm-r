@@ -80,15 +80,18 @@
       post({ type: 'ytqueue', items });
     };
 
+    let goTarget = '';
     const goTo = (id) => {
       if (!ID_RE.test(id)) return;
+      goTarget = id;
       const url = '/watch?v=' + id;
       try {
         document.querySelector('ytd-app')?.dispatchEvent(new CustomEvent('yt-navigate', { bubbles: true, composed: true, detail: {
           endpoint: { commandMetadata: { webCommandMetadata: { url, webPageType: 'WEB_PAGE_TYPE_WATCH', rootVe: 3832 } }, watchEndpoint: { videoId: id } } } }));
       } catch {}
       // If the in-page router did nothing (or YouTube's own autoplay won the race), load it the plain way.
-      setTimeout(() => { if (nowId() !== id) location.assign(url); }, 3500);
+      // Only the latest request may fall back: an older one must not reload the page after you moved on.
+      setTimeout(() => { if (goTarget === id && nowId() !== id) location.assign(url); }, 3500);
     };
     const playFromQueue = () => {
       const item = queue.shift();
@@ -160,7 +163,7 @@
       const want = queue[0].videoId;
       playFromQueue();
       // YouTube's own autoplay may start its pick right after: check and correct once.
-      setTimeout(() => { if (nowId() !== want) goTo(want); }, 2500);
+      setTimeout(() => { if (goTarget === want && nowId() !== want) goTo(want); }, 2500);
     }, { capture: true, signal: sig.signal });
 
     const posOf = (ref) => {

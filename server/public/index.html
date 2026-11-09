@@ -260,9 +260,11 @@
   #app[data-site="yt"] #siteNote { display: block; }
   #app[data-site="yt"] #artistBtn, #app[data-site="yt"] #blockBtn, #app[data-site="yt"] #plBtn { display: none; }
   #pickList { flex-direction: column; flex-wrap: nowrap; max-height: 55dvh; overflow-y: auto; }
-  #pickList .pickOpt { width: 100%; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #pickList .pickOpt { width: 100%; text-align: left; }
+  #pickList .pickOpt small { display: block; font-weight: 400; font-size: 13px; opacity: .75; margin-top: 2px; }
+  .pickOpt[aria-disabled="true"] { opacity: .55; }
   #art { position: relative; }
-  #srcChip { position: absolute; left: 10px; bottom: 10px; display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px 5px 6px; border-radius: 99px; background: rgba(0,0,0,.55); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); color: #fff; font-size: 13px; font-weight: 700; letter-spacing: .01em; }
+  #srcChip { border: 0; cursor: pointer; position: absolute; left: 10px; bottom: 10px; display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px 5px 6px; border-radius: 99px; background: rgba(0,0,0,.55); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); color: #fff; font-size: 13px; font-weight: 700; letter-spacing: .01em; }
   #srcChip svg.i { width: 18px; height: 18px; stroke: none; }
   #app:not([data-has="1"]) #srcChip { display: none; }
   #adBar { display: none; align-items: center; justify-content: space-between; gap: 10px; margin: 10px 0 0; padding: 8px 8px 8px 14px; border-radius: 14px; background: var(--surface); font-size: 14px; font-weight: 600; }
@@ -297,6 +299,7 @@
     <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
     <symbol id="i-srcytm" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#ff1744" stroke="none"/><circle cx="12" cy="12" r="6.2" fill="none" stroke="#fff" stroke-width="1.5"/><path d="M10.4 9.3v5.4l4.5-2.7z" fill="#fff" stroke="none"/></symbol>
     <symbol id="i-srcyt" viewBox="0 0 24 24"><rect x="1.5" y="4.5" width="21" height="15" rx="4.5" fill="#ff1744" stroke="none"/><path d="M10 8.9v6.2l5.3-3.1z" fill="#fff" stroke="none"/></symbol>
+    <symbol id="i-swap" viewBox="0 0 24 24"><rect x="3" y="4.5" width="18" height="12" rx="2.5"/><path d="M8.5 20h7M12 16.5V20M9 9.5h6M12.5 7l2.5 2.5-2.5 2.5"/></symbol>
     <symbol id="i-end" viewBox="0 0 24 24"><path d="M4 6h12M4 11h8M4 16h6"/><path d="M17.5 13.5v7M14 17h7"/></symbol>
     <symbol id="i-lib" viewBox="0 0 24 24"><rect x="4" y="5" width="4" height="14" rx="1"/><rect x="10" y="5" width="4" height="14" rx="1"/><path d="M16.5 6.5l3.5 12.5"/></symbol>
     <symbol id="i-radio" viewBox="0 0 24 24"><circle cx="12" cy="12" r="2"/><path d="M7.8 7.8a6 6 0 000 8.4M16.2 7.8a6 6 0 010 8.4M5 5a10 10 0 000 14M19 5a10 10 0 010 14"/></symbol>
@@ -334,10 +337,10 @@
   <section id="v-playing" class="view" aria-label="Now playing">
     <div class="top">
       <span class="pill"><span class="dot"></span><span id="status">Connecting…</span></span>
-      <div style="display:flex;gap:2px"><button id="refreshBtn" class="icon-btn" aria-label="Force refresh" title="Force refresh"><svg class="i"><use href="#i-refresh"/></svg></button>
+      <div style="display:flex;gap:2px"><button id="siteBtn" class="icon-btn" aria-label="Open or switch YouTube and YouTube Music on the PC" title="Open or switch site"><svg class="i"><use href="#i-swap"/></svg></button><button id="refreshBtn" class="icon-btn" aria-label="Force refresh" title="Force refresh"><svg class="i"><use href="#i-refresh"/></svg></button>
       <button id="settingsBtn" class="icon-btn" aria-label="Settings"><svg class="i"><use href="#i-sliders"/></svg></button></div>
     </div>
-    <div id="art" role="img" aria-label="Album art"><span id="srcChip"><svg class="i"><use id="srcIcon" href="#i-srcytm"/></svg><span id="srcName">YouTube Music</span></span></div>
+    <div id="art" role="img" aria-label="Album art"><button id="srcChip" type="button" aria-label="Open or switch site"><svg class="i"><use id="srcIcon" href="#i-srcytm"/></svg><span id="srcName">YouTube Music</span></button></div>
     <div class="meta">
       <h1 id="title">Nothing playing</h1>
       <p id="artist"></p>
@@ -667,7 +670,9 @@ function renderSeen() {
   }[seenWhy] || '');
 }
 setInterval(renderSeen, 30000);
-function setPc(online, wake, version, agoMs, why) {
+let helperOn = false, ytAllowed = false;
+function setPc(online, wake, version, agoMs, why, helper, yt) {
+  helperOn = !!helper; ytAllowed = !!yt;
   seenAt = agoMs >= 0 ? Date.now() - agoMs : 0;
   seenWhy = why || '';
   if (online && version && version !== pcVer) {
@@ -738,7 +743,7 @@ function connect() {
     if (ws !== sock) return;
     lastRx = Date.now();
     let m; try { m = JSON.parse(ev.data); } catch { return; }
-    if (m.type === 'pc_status') setPc(m.online, m.wake, m.version, m.ago, m.why);
+    if (m.type === 'pc_status') setPc(m.online, m.wake, m.version, m.ago, m.why, m.helper, m.yt);
     else if (m.type === 'state') render(m.state);
     else if (m.type === 'results') renderResults(m);
     else if (m.type === 'library') renderLibrary(m);
@@ -902,6 +907,8 @@ function pick(title, opts, cur, done) {
   for (const o of opts) {
     const b = document.createElement('button');
     b.type = 'button'; b.className = 'secondary pickOpt'; b.textContent = o.label;
+    if (o.sub) { const sm = document.createElement('small'); sm.textContent = o.sub; b.append(sm); }
+    if (o.disabled) b.setAttribute('aria-disabled', 'true');
     b.setAttribute('aria-pressed', String(o.value === cur));
     b.onclick = () => { $('picker').close(); buzz(); done(o.value); };
     list.append(b);
@@ -909,6 +916,37 @@ function pick(title, opts, cur, done) {
   $('picker').showModal();
 }
 $('pickClose').onclick = () => $('picker').close();
+/* ---------- open or switch YouTube and YouTube Music on the PC ---------- */
+function openSiteSheet() {
+  if (!helperOn) {
+    toast("The extension's helper isn't connected. Turn on “Let my phone wake YouTube Music…” in its options and reload the extension (version 2.2 or newer).");
+    return;
+  }
+  const cur = last && last.title ? last.site : '';
+  const name = { ytm: 'YouTube Music', yt: 'YouTube' };
+  const opts = [];
+  const add = (value, label, sub, site) => opts.push({ value, label, sub, disabled: site === 'yt' && !ytAllowed });
+  if (cur === 'ytm') {
+    add('swap_yt', 'Switch to YouTube', 'Replaces the YouTube Music tab', 'yt');
+    add('yt', 'Open YouTube as well', 'Keeps YouTube Music open', 'yt');
+  } else if (cur === 'yt') {
+    add('swap_ytm', 'Switch to YouTube Music', 'Replaces the YouTube tab', 'ytm');
+    add('ytm', 'Open YouTube Music as well', 'Keeps YouTube open', 'ytm');
+  } else {
+    add('ytm', 'Open YouTube Music', 'On the PC', 'ytm');
+    add('yt', 'Open YouTube', 'On the PC', 'yt');
+    add('swap_ytm', 'Switch to YouTube Music', 'Closes YouTube if it is open', 'ytm');
+    add('swap_yt', 'Switch to YouTube', 'Closes YouTube Music if it is open', 'yt');
+  }
+  pick(cur ? `Playing on ${name[cur]}` : 'Open on the PC', opts, null, (v) => {
+    const site = v.replace('swap_', '');
+    if (site === 'yt' && !ytAllowed) { toast('Regular YouTube is off. Tick “Also control regular YouTube” in the extension’s Advanced options.'); return; }
+    if (cmd('open_site', v)) toast((v.startsWith('swap_') ? 'Switching to ' : 'Opening ') + name[site] + ' on the PC…');
+  });
+}
+$('siteBtn').onclick = () => { buzz(); openSiteSheet(); };
+$('srcChip').onclick = () => { buzz(); openSiteSheet(); };
+
 let wantPlaylist = false;
 function openPlaylistPick() {
   const lib = libCache.playlists || storedLib('playlists');
