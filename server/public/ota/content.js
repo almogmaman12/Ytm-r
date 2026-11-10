@@ -199,13 +199,23 @@
   // These read and press the site's own buttons, so they are best effort: if the site changes its
   // markup, the matching control simply does nothing (and says so on the phone).
   const SHUFFLE_SEL = 'ytmusic-player-bar .shuffle, ytmusic-player-queue .shuffle, #queue-header .shuffle';
-  const likeBtn = (which) => IS_YT
-    ? q(which === 'like' ? 'like-button-view-model button, #segmented-like-button button' : 'dislike-button-view-model button, #segmented-dislike-button button')
-    : q(`ytmusic-player-bar ytmusic-like-button-renderer ${which === 'like' ? '#button-shape-like button, .like' : '#button-shape-dislike button, .dislike'}`);
+  const LIKE_ROOT = 'ytmusic-player-bar ytmusic-like-button-renderer';
+  const likeBtn = (which) => {
+    if (IS_YT) return q(which === 'like' ? 'like-button-view-model button, #segmented-like-button button' : 'dislike-button-view-model button, #segmented-dislike-button button');
+    const id = which === 'like' ? 'like' : 'dislike';
+    // Scoped on purpose: a bare ".like" could match something else on the page.
+    return q(`${LIKE_ROOT} #button-shape-${id} button`) || q(`${LIKE_ROOT} #${id}-button button`) ||
+      q(`${LIKE_ROOT} button.${id}`) || q(`${LIKE_ROOT} .${id}`) || q(`${LIKE_ROOT} [aria-label="${which === 'like' ? 'Like' : 'Dislike'}"]`);
+  };
+  const press = (el) => el.click();   // one plain click: extra pointer events could toggle twice
   function likeStatus() {
     if (IS_YT) return likeBtn('like')?.getAttribute('aria-pressed') === 'true' ? 'like' : likeBtn('dislike')?.getAttribute('aria-pressed') === 'true' ? 'dislike' : '';
-    const st = String(q('ytmusic-player-bar ytmusic-like-button-renderer')?.getAttribute('like-status') || '').toUpperCase();
-    return st === 'LIKE' ? 'like' : st === 'DISLIKE' ? 'dislike' : '';
+    const r = q(LIKE_ROOT);
+    const st = String(r?.getAttribute('like-status') || r?.likeStatus || '').toUpperCase();
+    if (st === 'LIKE' || st === 'DISLIKE') return st.toLowerCase();
+    if (likeBtn('like')?.getAttribute('aria-pressed') === 'true') return 'like';
+    if (likeBtn('dislike')?.getAttribute('aria-pressed') === 'true') return 'dislike';
+    return '';
   }
   function repeatMode() {
     if (IS_YT) return video()?.loop ? 'one' : 'none';
@@ -274,7 +284,7 @@
     switch (cmd) {
       case 'like': case 'dislike': {
         const b = likeBtn(cmd);
-        if (b) b.click(); else missing(cmd === 'like' ? 'Like' : 'Dislike');
+        if (b) { press(b); setTimeout(reportSoon, 400); setTimeout(reportSoon, 1200); } else missing(cmd === 'like' ? 'Like' : 'Dislike');
         break;
       }
       case 'shuffle': {
