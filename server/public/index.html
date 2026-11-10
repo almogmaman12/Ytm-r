@@ -1034,7 +1034,7 @@ $('vol').oninput = (e) => {
   // At most about 8 updates a second while dragging, plus a final one when you stop.
   if (Date.now() - volSentAt >= 120) send(); else volTimer = setTimeout(send, 120);
   clearTimeout($('vol')._done);
-  $('vol')._done = setTimeout(() => { volDragging = false; }, 600);
+  $('vol')._done = setTimeout(() => { volDragging = false; }, 2000);
 };
 
 /* ---------- lists ---------- */

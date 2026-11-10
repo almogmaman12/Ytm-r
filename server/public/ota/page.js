@@ -691,19 +691,16 @@
     try { player?.setVolume?.(vol); } catch { /* ignore */ }
     const v = document.querySelector('video');
     if (v && !player?.setVolume) v.volume = vol / 100;
-    // Move the site's own slider too, so what the PC shows matches.
-    const slider = document.querySelector('ytmusic-player-bar #volume-slider');
-    if (slider) {
-      try {
-        slider.value = vol;
-        slider.dispatchEvent(new Event('change', { bubbles: true }));
-      } catch { /* ignore */ }
-    }
-    reportVolume(true);
+    // Don't write to the site's own slider: its change handler re-applies a rounded value and
+    // that made the volume jump. The site follows the player's volumechange by itself.
+    volSetAt = Date.now();
+    clearTimeout(volConfirm);
+    volConfirm = setTimeout(() => reportVolume(true), 400);   // report once, after the burst
   }
 
-  let lastVol = null;
+  let lastVol = null, volSetAt = 0, volConfirm = null;
   function reportVolume(force) {
+    if (!force && Date.now() - volSetAt < 1500) return;   // ignore in-between values while the phone is dragging
     let vol = null;
     try { vol = getPlayer()?.getVolume?.(); } catch { /* ignore */ }
     if (typeof vol !== 'number' || !isFinite(vol)) return;
@@ -1525,3 +1522,4 @@
   publishQueue();
   reportVolume(true);
 })();
+

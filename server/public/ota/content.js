@@ -594,3 +594,5 @@
     connect();
   }
 })();
+
+window.__ytmrMarker = 2;
