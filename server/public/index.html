@@ -268,7 +268,7 @@
   #srcChip svg.i { width: 18px; height: 18px; stroke: none; }
   #app:not([data-has="1"]) #srcChip { display: none; }
   button, .chip { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
-  #tip { position: fixed; left: 0; top: 0; z-index: 99999; max-width: min(86vw, 320px); padding: 8px 13px; border-radius: 10px; background: rgba(20, 20, 24, .97); color: #fff; font-size: 14px; font-weight: 500; line-height: 1.3; text-align: center; pointer-events: none; opacity: 0; transition: opacity .12s; border: 1px solid rgba(255,255,255,.16); box-shadow: 0 4px 16px rgba(0,0,0,.45); }
+  #tip { position: fixed; left: 0; top: 0; z-index: 99999; max-width: min(92vw, 360px); white-space: pre-line; overflow-wrap: anywhere; padding: 8px 13px; border-radius: 10px; background: rgba(20, 20, 24, .97); color: #fff; font-size: 14px; font-weight: 500; line-height: 1.3; text-align: center; pointer-events: none; opacity: 0; transition: opacity .12s; border: 1px solid rgba(255,255,255,.16); box-shadow: 0 4px 16px rgba(0,0,0,.45); }
   #tip.show { opacity: 1; }
   #adBar { display: none; align-items: center; justify-content: space-between; gap: 10px; margin: 10px 0 0; padding: 8px 8px 8px 14px; border-radius: 14px; background: var(--surface); font-size: 14px; font-weight: 600; }
   #adBar.on { display: flex; }
@@ -1744,6 +1744,15 @@ tipEl.id = 'tip'; tipEl.setAttribute('role', 'tooltip');
 document.body.append(tipEl);
 let tipTimer = null, tipHide = null, pressEl = null, pressAt = null, heldEl = null;
 const tipText = (el) => el.dataset.tip || el.getAttribute('aria-label') || el.getAttribute('title') || '';
+// Titles that are cut off with "…": hold one to read it in full (title, then artist or details).
+const TRUNC_SEL = 'ul.tracks .t, ul.tracks .s, #title, #artist, #miniTitle, #miniArtist, #blockList li span';
+const isCut = (el) => el.scrollWidth > el.clientWidth + 1 || el.scrollHeight > el.clientHeight + 1;
+function fullText(el) {
+  const box = el.closest('ul.tracks li') || el.closest('#mini') || el.closest('.meta');
+  const pick = (sels) => sels.map((q) => box && box.querySelector(q)).filter(Boolean).map((n) => n.textContent.trim()).filter(Boolean);
+  const parts = el.closest('ul.tracks li') ? pick(['.t', '.s']) : el.closest('#mini') ? pick(['#miniTitle', '#miniArtist']) : el.closest('.meta') ? pick(['#title', '#artist']) : [el.textContent.trim()];
+  return (parts.length ? parts : [el.textContent.trim()]).join('\n');
+}
 function hideTip() { clearTimeout(tipHide); tipEl.classList.remove('show'); }
 function showTip(el, text) {
   tipEl.textContent = text;
@@ -1758,14 +1767,21 @@ function showTip(el, text) {
 function cancelPress() { clearTimeout(tipTimer); pressEl = null; }
 document.addEventListener('pointerdown', (e) => {
   hideTip(); heldEl = null; cancelPress();
-  const el = e.target.closest && e.target.closest('button, [role="button"], .chip');
-  if (!el || el.disabled || el.dataset.notip) return;
-  const text = tipText(el);
+  let el = e.target.closest && e.target.closest('button, [role="button"], .chip');
+  let text = '', holder = null;
+  if (el) {
+    if (el.disabled || el.dataset.notip) return;
+    text = tipText(el); holder = el;
+  } else {
+    const t = e.target.closest && e.target.closest(TRUNC_SEL);
+    if (!t || !isCut(t)) return;
+    el = t; text = fullText(t); holder = t.closest('ul.tracks li') || t;   // holding a cut-off title must not play the row
+  }
   if (!text) return;
   pressEl = el; pressAt = [e.clientX, e.clientY];
   tipTimer = setTimeout(() => {
     if (pressEl !== el) return;
-    heldEl = el;
+    heldEl = holder;
     showTip(el, text);
     if (navigator.vibrate) { try { navigator.vibrate(12); } catch {} }
   }, 480);
