@@ -185,6 +185,55 @@ setInterval(() => {
 }, 60000).unref();
 const cleanName = (v) => String(v == null ? '' : v).replace(/[^\p{L}\p{N} ._'’-]/gu, '').trim().slice(0, 24);
 
+// ---- Pairing a second phone with a short code ----
+// A phone that is already in (it knows the token) can ask for a one-time code that lasts 2 minutes.
+// A new phone types it and gets its own device key; after that it connects with the key alone, with
+// no token and no access code. The owner can list those phones and remove any of them. Paired
+// phones can use the remote but cannot pair or remove phones. Keys are kept as hashes. The room
+// token is stored in the devices file next to them, so protect that file like the environment
+// variables. Set DEVICES_FILE to a path on a persistent disk to keep pairings across redeploys.
+const DEVICES_FILE = process.env.DEVICES_FILE || path.join(__dirname, 'devices.json');
+const PAIR_TTL_MS = 120000;
+const PAIR_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';   // no 0/O/1/I, so it is easy to read out
+const MAX_DEVICES_PER_ROOM = 8;
+const pairCodes = new Map();      // code -> { token, exp }
+const devices = new Map();        // id -> { id, name, hash, token, created, lastSeen }
+try {
+  const saved = JSON.parse(fs.readFileSync(DEVICES_FILE, 'utf8'));
+  for (const d of Array.isArray(saved) ? saved : []) {
+    if (d && /^[0-9a-f]{16}$/.test(d.id) && /^[0-9a-f]{64}$/.test(d.hash) && typeof d.token === 'string') devices.set(d.id, d);
+  }
+} catch { /* none yet */ }
+let devSaveTimer = null;
+function saveDevices() {
+  clearTimeout(devSaveTimer);
+  devSaveTimer = setTimeout(() => {
+    try {
+      const tmp = DEVICES_FILE + '.tmp';
+      fs.writeFileSync(tmp, JSON.stringify([...devices.values()]), { mode: 0o600 });
+      fs.renameSync(tmp, DEVICES_FILE);
+    } catch (e) { console.warn('Could not save paired phones:', e.message); }
+  }, 300);
+}
+const sha = (v) => crypto.createHash('sha256').update(v).digest('hex');
+function newPairCode(token) {
+  for (const [c, v] of pairCodes) if (v.token === token || v.exp < Date.now()) pairCodes.delete(c);   // one live code per room
+  let code = '';
+  for (let i = 0; i < 8; i++) code += PAIR_ALPHABET[crypto.randomInt(PAIR_ALPHABET.length)];
+  pairCodes.set(code, { token, exp: Date.now() + PAIR_TTL_MS });
+  return code;
+}
+function deviceFromKey(key) {
+  const m = /^([0-9a-f]{16})\.([A-Za-z0-9_-]{20,64})$/.exec(String(key || ''));
+  const d = m && devices.get(m[1]);
+  if (!d) return null;
+  const a = Buffer.from(sha(m[2])), b = Buffer.from(d.hash);
+  return a.length === b.length && crypto.timingSafeEqual(a, b) ? d : null;
+}
+const deviceList = (token) => [...devices.values()].filter((d) => d.token === token)
+  .map((d) => ({ id: d.id, name: d.name || 'Phone', created: d.created, ago: Date.now() - (d.lastSeen || d.created) }));
+setInterval(() => { const n = Date.now(); for (const [c, v] of pairCodes) if (v.exp < n) pairCodes.delete(c); }, 30000).unref();
+
 // token -> { pc: ws|null, phones: Set<ws>, lastState: object|null }
 const rooms = new Map();
 
@@ -321,6 +370,17 @@ server.on('upgrade', (req, socket, head) => {
 
   const token = url.searchParams.get('token') || '';
   const role = url.searchParams.get('role');
+  const pair = String(url.searchParams.get('pair') || '').toUpperCase();
+  const devKey = url.searchParams.get('device') || '';
+  if (role === 'phone' && (pair || devKey) && !token) {
+    // A new phone joining with a short code, or a paired phone using its device key.
+    if (isBlocked(clientIp(req))) return rejectUpgrade(socket, 429, 'Too Many Requests');
+    if (!(pair ? /^[A-Z2-9]{8}$/.test(pair) : /^[0-9a-f]{16}\.[A-Za-z0-9_-]{20,64}$/.test(devKey))) return rejectUpgrade(socket, 400, 'Bad Request');
+    if (wss.clients.size >= MAX_CLIENTS) return rejectUpgrade(socket, 503, 'Service Unavailable');
+    return wss.handleUpgrade(req, socket, head, (ws) => {
+      wss.emit('connection', ws, { token: '', role, pair, devKey, ip: clientIp(req), device: deviceLabel(String(req.headers['user-agent'] || '')) });
+    });
+  }
   if (token.length < MIN_TOKEN_LEN || token.length > 200 || !/^[A-Za-z0-9_-]+$/.test(token) ||
       (role !== 'pc' && role !== 'phone' && role !== 'agent')) {
     if (LOG_COMMANDS) console.log(`${new Date().toISOString()} [rejected] bad connection request from ${clientIp(req)} (${deviceLabel(String(req.headers['user-agent'] || ''))})`);
@@ -339,7 +399,38 @@ server.on('upgrade', (req, socket, head) => {
   });
 });
 
-wss.on('connection', (ws, { token, role, ip, device }) => {
+wss.on('connection', (ws, info) => {
+  let { token } = info;
+  const { role, ip, device } = info;
+  ws.on('error', () => {});
+  if (info.pair) {
+    // Claim a pairing code: hand out a device key, then close. The phone reconnects with the key.
+    const entry = pairCodes.get(info.pair);
+    if (!entry || entry.exp < Date.now()) {
+      const f = noteBadCode(ip);
+      console.log(`${new Date().toISOString()} [pairing] wrong or expired code from ${device}, ${ip}  (${f.n} of ${MAX_BAD_CODES}${f.until ? ', now blocked for 15 minutes' : ''})`);
+      return ws.close(4006, 'bad pair code');
+    }
+    pairCodes.delete(info.pair);
+    if (deviceList(entry.token).length >= MAX_DEVICES_PER_ROOM) return ws.close(4007, 'too many paired phones');
+    const id = crypto.randomBytes(8).toString('hex');
+    const secret = crypto.randomBytes(24).toString('base64url');
+    devices.set(id, { id, name: '', hash: sha(secret), token: entry.token, created: Date.now(), lastSeen: Date.now() });
+    saveDevices();
+    log(roomId(entry.token), `phone paired with a code: ${device}, ${ip}`);
+    send(ws, { type: 'paired', device: `${id}.${secret}` });
+    const r = rooms.get(entry.token);
+    if (r) r.phones.forEach((p) => { if (!p.dev) send(p, { type: 'devices', list: deviceList(entry.token) }); });
+    return setTimeout(() => ws.close(1000, 'paired'), 200);
+  }
+  let viaDevice = null;
+  if (info.devKey) {
+    viaDevice = deviceFromKey(info.devKey);
+    if (!viaDevice) { const f = noteBadCode(ip); log('------', `unknown or removed device key from ${device}, ${ip}  (${f.n} of ${MAX_BAD_CODES})`); return ws.close(4005, 'removed'); }
+    token = viaDevice.token;
+    viaDevice.lastSeen = Date.now();
+    ws.dev = viaDevice;
+  }
   const rid = roomId(token);
   let name = '';
   let who = `${device}, ${ip}`;
@@ -395,7 +486,7 @@ wss.on('connection', (ws, { token, role, ip, device }) => {
     send(ws, { type: 'authed', guarded: !!codeFor(role) });
   };
 
-  const code = codeFor(role);
+  const code = viaDevice ? '' : codeFor(role);
   if (!code) {
     join();
   } else {
@@ -429,6 +520,7 @@ wss.on('connection', (ws, { token, role, ip, device }) => {
     if (role === 'phone' && msg.type === 'name') {
       const before = who;
       setName(msg.name);
+      if (viaDevice && name && viaDevice.name !== name) { viaDevice.name = name; saveDevices(); }
       if (who !== before) log(rid, `phone renamed: ${before} -> ${who}`);
       return;
     }
@@ -442,6 +534,31 @@ wss.on('connection', (ws, { token, role, ip, device }) => {
     if (role === 'phone') {
       if (raw.length > MAX_PHONE_MSG_BYTES || msg.type !== 'cmd') return;
       if (overLimit(MAX_CMDS_PER_SEC)) return;
+      if (msg.cmd === 'pair_start' || msg.cmd === 'device_list' || msg.cmd === 'device_revoke' || msg.cmd === 'device_leave') {
+        if (msg.cmd === 'device_leave') {
+          if (viaDevice) { devices.delete(viaDevice.id); saveDevices(); log(rid, `paired phone signed itself out: ${who}`); ws.close(4005, 'removed'); }
+          return;
+        }
+        if (viaDevice) return;                     // paired phones cannot manage other phones
+        if (msg.cmd === 'device_list') return send(ws, { type: 'devices', list: deviceList(token) });
+        if (msg.cmd === 'device_revoke') {
+          const id = String(msg.value || '');
+          const d = devices.get(id);
+          if (d && d.token === token) {
+            devices.delete(id); saveDevices();
+            room.phones.forEach((p) => { if (p.dev && p.dev.id === id) p.close(4005, 'removed'); });
+            log(rid, `paired phone removed by ${who}: ${d.name || id}`);
+          }
+          return send(ws, { type: 'devices', list: deviceList(token) });
+        }
+        // pair_start
+        const now = Date.now();
+        if (now - (room.lastPair || 0) < 3000) return;
+        room.lastPair = now;
+        if (deviceList(token).length >= MAX_DEVICES_PER_ROOM) return send(ws, { type: 'status', message: `You can pair up to ${MAX_DEVICES_PER_ROOM} phones. Remove one first.` });
+        log(rid, `pairing code created by ${who}`);
+        return send(ws, { type: 'pair_code', code: newPairCode(token), ttl: PAIR_TTL_MS / 1000 });
+      }
       if (msg.cmd === 'open_music') {
         // Ask the extension to reopen YouTube Music when no tab is connected. At most once per 10 s.
         const now = Date.now();

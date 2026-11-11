@@ -225,6 +225,14 @@
   dialog .row.two { flex-direction: row; }
   dialog .row.two > button { flex: 1; }
   #healthList { list-style: none; margin: 0 0 16px; padding: 0; font-size: 14px; }
+  #pairCode { font: 700 34px/1.1 ui-monospace, Menlo, Consolas, monospace; letter-spacing: .12em; text-align: center; padding: 14px 8px; margin: 10px 0 4px; border-radius: 14px; background: var(--surface); user-select: all; }
+  #devList { list-style: none; margin: 8px 0 0; padding: 0; }
+  #devList li { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-top: 1px solid var(--surface); }
+  #devList li .n { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #devList li .n small { display: block; color: var(--muted); font-size: 12px; }
+  #pairBox { margin-top: 14px; }
+  #pairBox .field { margin-bottom: 10px; }
+  #pairInput { text-transform: uppercase; letter-spacing: .1em; }
   #healthList li { display: flex; gap: 8px; padding: 6px 0; border-top: 1px solid var(--surface); }
   #healthList .ok { color: #7fe3a1; flex: none; width: 1.2em; } #healthList .bad { color: #ff8a8a; flex: none; width: 1.2em; }
   #healthList .d { color: var(--muted); display: block; font-size: 12.5px; }
@@ -332,6 +340,12 @@
   <p>Paste the secret token from the extension's settings.</p>
   <div class="field"><input id="tokenInput" type="text" placeholder="Secret token" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Secret token"></div>
   <button id="saveToken" class="primary">Connect</button>
+  <button id="pairToggle" class="secondary" style="margin-top:12px;width:100%">I have a pairing code</button>
+  <div id="pairBox" hidden>
+    <p style="margin-bottom:10px">On a phone that is already connected, open Settings, then Phones, then Pair another phone. Type the code it shows.</p>
+    <div class="field"><input id="pairInput" type="text" placeholder="ABCD-EFGH" maxlength="9" autocomplete="off" autocapitalize="characters" spellcheck="false" aria-label="Pairing code"></div>
+    <button id="pairGo" class="primary">Pair this phone</button>
+  </div>
 </div>
 
 <div id="glow"></div>
@@ -504,6 +518,23 @@
       <ul id="healthList"></ul>
     </details>
 
+    <details id="phonesSec">
+      <summary>Phones</summary>
+      <div id="ownerPhones">
+        <div class="row"><button id="pairNew" class="secondary">Pair another phone</button></div>
+        <div id="pairShow" hidden>
+          <div id="pairCode" aria-live="polite"></div>
+          <p id="pairHelp" class="small"></p>
+        </div>
+        <ul id="devList"></ul>
+        <p class="small" style="margin-top:10px">A paired phone connects with its own key, so it never needs the token or access code. Paired phones can control the music but cannot pair or remove phones. Remove one here at any time.</p>
+      </div>
+      <div id="pairedInfo" hidden>
+        <p class="small">This phone was paired with a code.</p>
+        <div class="row"><button id="devLeave" class="secondary danger">Sign out of this phone</button></div>
+      </div>
+    </details>
+
     <details>
       <summary>Security</summary>
       <div class="row">
@@ -572,6 +603,8 @@ function getToken() {
 function cssUrl(u) {
   return 'url("' + String(u).replace(/["\\\n\r()]/g, (c) => '%' + c.charCodeAt(0).toString(16).padStart(2, '0')) + '")';
 }
+const getDevice = () => { try { const d = localStorage.getItem('device'); return d && /^[0-9a-f]{16}\.[A-Za-z0-9_-]{20,64}$/.test(d) ? d : ''; } catch { return ''; } };
+function setDevice(d) { try { d ? localStorage.setItem('device', d) : localStorage.removeItem('device'); } catch {} }
 function setToken(t) { try { t ? localStorage.setItem('token', t) : localStorage.removeItem('token'); } catch {} }
 function buzz() { try { navigator.vibrate && navigator.vibrate(8); } catch {} }
 function fmt(s) { s = Math.max(0, Math.floor(s || 0)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); }
@@ -611,7 +644,7 @@ document.querySelectorAll('#tabs button').forEach((b) => { b.onclick = () => { b
 $('miniCard').onclick = (e) => { if (!e.target.closest('button')) setView('playing'); };
 
 function show() {
-  token = getToken();
+  token = getToken() || (getDevice() ? 'paired' : null);
   $('setup').hidden = !!token;
   $('app').hidden = !token;
   $('glow').hidden = !token;
@@ -733,7 +766,8 @@ function connect() {
   if (!token) return;
   if (ws && ws.readyState <= 1) return;
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-  const sock = new WebSocket(`${proto}://${location.host}/ws?role=phone&token=${encodeURIComponent(token)}`);
+  const dev = !getToken() && getDevice();
+  const sock = new WebSocket(`${proto}://${location.host}/ws?role=phone&${dev ? 'device=' + encodeURIComponent(dev) : 'token=' + encodeURIComponent(token)}`);
   ws = sock;
   // Each handler ignores sockets we have already replaced, so an old connection can never
   // restart a retry loop or overwrite the status of the current one.
@@ -757,6 +791,8 @@ function connect() {
     else if (m.type === 'saved') savedResult(m);
     else if (m.type === 'suggest') renderSuggest(m);
     else if (m.type === 'blocklist') renderBlocklist(m.items);
+    else if (m.type === 'pair_code') showPairCode(m);
+    else if (m.type === 'devices') renderDevices(m.list);
     else if (m.type === 'challenge') answerChallenge(sock, m.nonce);
     else if (m.type === 'authed') { needCode = false; sendName(); }
   };
@@ -764,6 +800,13 @@ function connect() {
     if (ws !== sock) return;
     ws = null;
     $('app').dataset.pc = 'off';
+    if (ev.code === 4005) {
+      // This phone was removed (or signed out): forget the key and go back to the start screen.
+      setDevice(null); token = null; last = null; artUrl = '';
+      resetColour(); show();
+      toast('This phone was removed. Pair it again to use it.');
+      return;
+    }
     if (ev.code === 4003) {
       // The relay wants an access code and we have none, or it was wrong. Retrying can't help.
       const wrong = ev.reason === 'wrong code';
@@ -1443,6 +1486,67 @@ $('searchForm').onsubmit = (e) => {
   }, 10000);
 };
 
+/* ---------- pairing ---------- */
+function rawCmd(c, value) {   // like cmd(), but works while the PC is offline
+  if (!ws || ws.readyState !== 1) { toast('Not connected. Reconnecting…'); return false; }
+  ws.send(JSON.stringify({ type: 'cmd', cmd: c, value }));
+  return true;
+}
+let pairTimer = null;
+function showPairCode(m) {
+  clearInterval(pairTimer);
+  const code = String(m.code || '');
+  $('pairCode').textContent = code.slice(0, 4) + '-' + code.slice(4);
+  $('pairShow').hidden = false;
+  let left = Number(m.ttl) || 120;
+  const tick = () => {
+    if (left <= 0) { clearInterval(pairTimer); $('pairShow').hidden = true; return; }
+    $('pairHelp').textContent = `On the other phone, open ${location.host}, tap "I have a pairing code" and type this. It works once and expires in ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}.`;
+    left--;
+  };
+  tick(); pairTimer = setInterval(tick, 1000);
+}
+function ago(ms) {
+  const m = Math.round(ms / 60000);
+  return m < 2 ? 'just now' : m < 90 ? m + ' min ago' : m < 2880 ? Math.round(m / 60) + ' h ago' : Math.round(m / 1440) + ' days ago';
+}
+function renderDevices(list) {
+  const ul = $('devList');
+  ul.textContent = '';
+  for (const d of list || []) {
+    const li = document.createElement('li');
+    const n = document.createElement('div'); n.className = 'n';
+    n.textContent = d.name;
+    const sm = document.createElement('small'); sm.textContent = 'Last seen ' + ago(d.ago);
+    n.append(sm);
+    const b = document.createElement('button'); b.className = 'secondary danger'; b.textContent = 'Remove';
+    b.onclick = () => { if (confirm(`Remove "${d.name}"? It will be signed out.`)) rawCmd('device_revoke', d.id); };
+    li.append(n, b); ul.append(li);
+  }
+  if (!list || !list.length) { const li = document.createElement('li'); li.className = 'small'; li.textContent = 'No paired phones yet.'; ul.append(li); }
+}
+$('pairNew').onclick = () => rawCmd('pair_start');
+$('devLeave').onclick = () => { if (confirm('Sign out of this phone? You will need a new pairing code.')) { rawCmd('device_leave'); setTimeout(() => { setDevice(null); drop(); token = null; $('settings').close(); show(); }, 400); } };
+$('pairToggle').onclick = () => { $('pairBox').hidden = !$('pairBox').hidden; if (!$('pairBox').hidden) setTimeout(() => $('pairInput').focus(), 50); };
+$('pairGo').onclick = () => {
+  const code = $('pairInput').value.toUpperCase().replace(/[^A-Z2-9]/g, '');
+  if (code.length !== 8) return toast('The code has 8 letters and numbers.');
+  $('pairGo').disabled = true;
+  let ok = false;
+  const sock = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws?role=phone&pair=${code}`);
+  sock.onmessage = (ev) => {
+    let m; try { m = JSON.parse(ev.data); } catch { return; }
+    if (m.type === 'paired' && m.device) { ok = true; setDevice(m.device); $('pairInput').value = ''; show(); toast('Paired. This phone is connected.'); }
+  };
+  sock.onclose = (ev) => {
+    $('pairGo').disabled = false;
+    if (ok) return;
+    toast(ev.code === 4006 ? 'That code is wrong or has expired.' : ev.code === 4007 ? 'Too many phones are paired. Remove one first.' : 'Could not pair. Check the code and your connection.');
+  };
+  sock.onerror = () => { try { sock.close(); } catch {} };
+};
+$('pairInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('pairGo').click(); });
+
 /* ---------- setup + settings ---------- */
 $('saveToken').onclick = () => {
   const t = $('tokenInput').value.trim();
@@ -1450,7 +1554,7 @@ $('saveToken').onclick = () => {
   setToken(t); show();
 };
 $('tokenInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('saveToken').click(); });
-$('settingsBtn').onclick = () => { $('deviceName').value = getName(); cmd('block_list'); $('settings').showModal(); $('deviceName').blur(); };
+$('settingsBtn').onclick = () => { const paired = !getToken() && !!getDevice(); $('ownerPhones').hidden = paired; $('pairedInfo').hidden = !paired; $('forget').hidden = paired; $('changeCode').hidden = paired; if (!paired) rawCmd('device_list'); $('deviceName').value = getName(); cmd('block_list'); $('settings').showModal(); $('deviceName').blur(); };
 $('deviceName').onchange = () => {
   const n = $('deviceName').value.replace(/[^\p{L}\p{N} ._'’-]/gu, '').trim().slice(0, 24);
   $('deviceName').value = n;

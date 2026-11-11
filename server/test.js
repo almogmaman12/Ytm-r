@@ -5,6 +5,8 @@ const WebSocket = require('ws');
 const logLines = [];
 const realLog = console.log;
 console.log = (...a) => { logLines.push(a.join(' ')); };
+const DEV_FILE = require('path').join(require('os').tmpdir(), 'ytmr-devices-test-' + process.pid + '.json');
+process.env.DEVICES_FILE = DEV_FILE;
 const { server } = require('./server');
 
 const TOKEN = 'abcdefghijklmnopqrstuvwx_1234';
@@ -548,6 +550,74 @@ let port;
   elsewhere.w.close(); phoneOk.w.close(); pcOk.w.close();
   delete process.env.ACCESS_CODE; delete process.env.PC_CODE;
   await wait(100);
+
+  // ---- Pairing a second phone with a short code ----
+  {
+    const PT = 'pairpairpairpairpairpair_1';
+    const pcP = await open('pc', PT);
+    const owner = await open('phone', PT);
+    await wait(100);
+    owner.send(JSON.stringify({ type: 'cmd', cmd: 'pair_start' }));
+    await wait(150);
+    const pcMsg = owner.msgs.find((m) => m.type === 'pair_code');
+    assert.ok(pcMsg && /^[A-Z2-9]{8}$/.test(pcMsg.code) && pcMsg.ttl === 120, 'owner gets an 8-character pairing code');
+    const claim = (code, ip) => new Promise((resolve) => {
+      const w = new WebSocket(`ws://localhost:${port}/ws?role=phone&pair=${code}`, { headers: ip ? { 'x-forwarded-for': ip } : {} });
+      const out = { msgs: [], code: 0 };
+      w.on('message', (d) => out.msgs.push(JSON.parse(d.toString())));
+      w.on('close', (c) => { out.code = c; resolve(out); });
+      w.on('error', (e) => { out.err = String(e.message); resolve(out); });
+    });
+    const bad = await claim('AAAAAAAA', '198.51.100.7');
+    assert.strictEqual(bad.code, 4006, 'a wrong pairing code is refused');
+    const good = await claim(pcMsg.code);
+    const key = good.msgs.find((m) => m.type === 'paired')?.device;
+    assert.ok(key && /^[0-9a-f]{16}\.[A-Za-z0-9_-]{20,}$/.test(key), 'the right code gives a device key');
+    assert.strictEqual((await claim(pcMsg.code)).code, 4006, 'a code works only once');
+    await wait(100);
+    assert.ok(owner.msgs.some((m) => m.type === 'devices' && m.list.length === 1), 'owner is told about the new phone');
+    // The key alone (no token, no code) joins the room and can send commands
+    const dev = await new Promise((resolve, reject) => {
+      const w = new WebSocket(`ws://localhost:${port}/ws?role=phone&device=${encodeURIComponent(key)}`);
+      w.msgs = []; w.on('message', (d) => w.msgs.push(JSON.parse(d.toString()))); w.on('open', () => resolve(w)); w.on('error', reject);
+      w.on('close', (c) => { w.closed = c; });
+    });
+    await wait(150);
+    assert.ok(dev.msgs.some((m) => m.type === 'pc_status' && m.online), 'paired phone sees the PC');
+    dev.send(JSON.stringify({ type: 'cmd', cmd: 'next' }));
+    await wait(100);
+    assert.ok(pcP.msgs.some((m) => m.cmd === 'next'), 'paired phone can control the PC');
+    dev.send(JSON.stringify({ type: 'cmd', cmd: 'pair_start' }));
+    dev.send(JSON.stringify({ type: 'cmd', cmd: 'device_list' }));
+    await wait(150);
+    assert.ok(!dev.msgs.some((m) => m.type === 'pair_code' || m.type === 'devices'), 'a paired phone cannot pair or list phones');
+    // Wrong key
+    const wrongKey = await new Promise((resolve) => {
+      const w = new WebSocket(`ws://localhost:${port}/ws?role=phone&device=${key.slice(0, 17)}${'A'.repeat(32)}`);
+      w.on('close', (c) => resolve(c)); w.on('error', () => {});
+    });
+    assert.strictEqual(wrongKey, 4005, 'a wrong device key is refused');
+    // Owner removes it
+    owner.send(JSON.stringify({ type: 'cmd', cmd: 'device_list' }));
+    await wait(100);
+    const id = owner.msgs.filter((m) => m.type === 'devices').pop().list[0].id;
+    owner.send(JSON.stringify({ type: 'cmd', cmd: 'device_revoke', value: id }));
+    await wait(200);
+    assert.strictEqual(dev.closed, 4005, 'a removed phone is disconnected at once');
+    assert.strictEqual(owner.msgs.filter((m) => m.type === 'devices').pop().list.length, 0, 'the list is empty after removing');
+    const again = await new Promise((resolve) => {
+      const w = new WebSocket(`ws://localhost:${port}/ws?role=phone&device=${encodeURIComponent(key)}`);
+      w.on('close', (c) => resolve(c)); w.on('error', () => {});
+    });
+    assert.strictEqual(again, 4005, 'a removed key no longer works');
+    // Pairing codes are brute-force protected like access codes
+    let last = 0;
+    for (let i = 0; i < 6; i++) last = (await claim('BBBBBBBB', '198.51.100.9')).err ? 429 : 0;
+    assert.strictEqual(last, 429, 'too many wrong pairing codes blocks the address');
+    assert.ok(!logLines.some((l) => l.includes(pcMsg.code) || l.includes(key)), 'codes and keys are never logged');
+    owner.close(); pcP.close();
+    try { require('fs').unlinkSync(DEV_FILE); } catch {}
+  }
 
   // An oversized message used to crash the whole relay (unhandled socket error)
   const big = await open('phone', 'bigbigbigbigbigbigbigbig_1');

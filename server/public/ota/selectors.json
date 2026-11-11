@@ -1,0 +1,5 @@
+{
+  "version": "1",
+  "_note": "Optional overrides for the page elements content.js presses and reads. Each key takes one CSS selector or a list tried in order. Keys: likeRoot, like, dislike, ytLike, ytDislike, shuffle, repeat, adSkip, ytmTitle, ytmByline, ytmArt, ytTitle, ytChannel, playPause. Leave \"selectors\" empty to use the built-in ones. Changes apply within 10 minutes on open tabs, with no extension update. Bump \"version\" when you change something.",
+  "selectors": {}
+}

@@ -86,6 +86,10 @@ What the extension checks before it runs anything:
 - only `https` relays are accepted (plain `http` only for localhost, or if you tick the advanced box);
 - if the relay is down or an update is refused, the last good copy keeps running.
 
+**Site selectors update live.** The page elements the PC script presses and reads (like, shuffle, repeat, skip-ad, titles) have built-in defaults. `server/public/ota/selectors.json` can override any of them (see the note inside the file): edit it, push, and open YouTube Music tabs pick it up within 10 minutes, or at once when you press the refresh arrow on the phone. No extension update, no tab reload. Bad entries are ignored.
+
+**What cannot be over the air.** Everything the phone shows, the relay, and everything that runs on the YouTube and YouTube Music pages is already updated this way. What stays in `extension/` is the part that uses Chrome's own tab, window and storage APIs (opening and waking tabs, the settings page, the update checker itself). Chrome does not allow downloaded code to run there, so changing it needs a reload.
+
 If you change the extension shell itself (anything in `extension/`), reload it in `chrome://extensions`. A payload can declare `"requiresShell": N` in `ota.json`; a shell older than that holds the update back and tells you to update the extension folder.
 
 ## Trust model: read this
@@ -100,6 +104,11 @@ Anything pushed to the branch your relay deploys becomes code that runs in your 
 - Turn on Dependabot alerts and security updates, and keep secret scanning and push protection on.
 - Make sure Render (or your host) deploys only the branch you trust.
 - Git stores your email in every commit and the repo is public. Turn on "Keep my email addresses private" and "Block command line pushes that expose my email" in GitHub's email settings, and commit with your `…@users.noreply.github.com` address.
+
+## Pair a second phone with a short code
+On a phone that is already connected: **Settings, Phones, Pair another phone**. It shows a code like `ABCD-EFGH` that works once and lasts 2 minutes. On the other phone open your relay's address, tap **I have a pairing code** and type it. That phone gets its own key, so it never needs the token or the access code. The Phones list shows each paired phone and when it was last seen, and **Remove** signs one out immediately. Paired phones can control the music but cannot pair or remove other phones. Up to 8 phones; wrong codes count towards the same address block as wrong access codes.
+
+Paired phones are kept in `devices.json` next to the server (keys as hashes, plus the room token, so treat it like your environment variables). On a host with a temporary disk (Render's free plan) it is lost on redeploy and each phone must be paired again; set `DEVICES_FILE` to a path on a persistent disk to keep them.
 
 ## If someone finds your token (access codes)
 A token alone can be stolen (a screenshot, a shared link). Set two codes as **environment variables** on your host (on Render: your service → **Environment**). The codes are never sent over the wire: the relay and each device prove they know them with a one-time challenge (HMAC-SHA256), so a stolen token is useless without them.

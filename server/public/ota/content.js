@@ -191,26 +191,77 @@
   }, 20000);
 
   // ---- Reading the player ----
-  const q = (sel) => document.querySelector(sel);
+  // ---- Site selectors (updatable without a new payload) ----
+  // The page elements this script reads and presses. The values below are the built-in ones. The
+  // relay's /ota/selectors.json can replace any of them while the tab is open: when the site
+  // changes its markup, fixing it is a one-line edit there, no code release and no reload.
+  // Each value is one CSS selector or a list tried in order.
+  const SEL = {
+    likeRoot: 'ytmusic-player-bar ytmusic-like-button-renderer',
+    like: ['#button-shape-like button', '#like-button button', 'button.like', '.like', '[aria-label="Like"]'],
+    dislike: ['#button-shape-dislike button', '#dislike-button button', 'button.dislike', '.dislike', '[aria-label="Dislike"]'],
+    ytLike: ['like-button-view-model button', '#segmented-like-button button'],
+    ytDislike: ['dislike-button-view-model button', '#segmented-dislike-button button'],
+    shuffle: ['ytmusic-player-bar .shuffle', 'ytmusic-player-queue .shuffle', '#queue-header .shuffle'],
+    repeat: ['ytmusic-player-bar .repeat'],
+    adSkip: ['.ytp-skip-ad-button', '.ytp-ad-skip-button', '.ytp-ad-skip-button-modern', '.ytp-skip-ad'],
+    ytmTitle: ['.title'],
+    ytmByline: ['.byline'],
+    ytmArt: ['img#img', '.image'],
+    ytTitle: ['h1.ytd-watch-metadata'],
+    ytChannel: ['ytd-watch-metadata ytd-channel-name a', '#owner ytd-channel-name a'],
+    playPause: ['#play-pause-button'],
+  };
+  const selList = (k) => (Array.isArray(SEL[k]) ? SEL[k] : [SEL[k]]);
+  function applySelectors(o) {
+    if (!o || typeof o !== 'object' || Array.isArray(o)) return 0;
+    let n = 0;
+    for (const [k, v] of Object.entries(o)) {
+      if (!Object.prototype.hasOwnProperty.call(SEL, k)) continue;
+      const list = (Array.isArray(v) ? v : [v]).filter((x) => typeof x === 'string' && x.trim() && x.length <= 200).slice(0, 12);
+      if (!list.length || list.length !== (Array.isArray(v) ? v : [v]).length) continue;
+      try { list.forEach((x) => document.createDocumentFragment().querySelector(x)); } catch { continue; }   // not a valid selector
+      SEL[k] = k === 'likeRoot' ? list[0] : list;
+      n++;
+    }
+    return n;
+  }
+  let selVersion = '';
+  async function loadSelectors() {
+    try {
+      const r = await fetch(`${CFG.relay}/ota/selectors.json`, { cache: 'no-store', credentials: 'omit' });
+      if (!r.ok) return;
+      const j = await r.json();
+      const body = j && (j.selectors || j);
+      const tag = String((j && j.version) || '') + JSON.stringify(body).length;
+      if (tag === selVersion) return;
+      selVersion = tag;
+      if (applySelectors(body)) reportSoon();
+    } catch { /* offline or blocked: the built-in selectors stay */ }
+  }
+  // Tries each selector of a key in order (optionally inside a root element); a bad one is skipped.
+  function qk(key, root) {
+    for (const sel of selList(key)) {
+      try { const el = (root || document).querySelector(sel); if (el) return el; } catch { /* skip */ }
+    }
+    return null;
+  }
+  const q = (sel) => { try { return document.querySelector(sel); } catch { return null; } };
   const bar = () => q('ytmusic-player-bar');
   const video = () => q('video');
 
   // ---- Extras: like, shuffle, repeat, speed, skip and the sleep timer ----
   // These read and press the site's own buttons, so they are best effort: if the site changes its
   // markup, the matching control simply does nothing (and says so on the phone).
-  const SHUFFLE_SEL = 'ytmusic-player-bar .shuffle, ytmusic-player-queue .shuffle, #queue-header .shuffle';
-  const LIKE_ROOT = 'ytmusic-player-bar ytmusic-like-button-renderer';
-  const likeBtn = (which) => {
-    if (IS_YT) return q(which === 'like' ? 'like-button-view-model button, #segmented-like-button button' : 'dislike-button-view-model button, #segmented-dislike-button button');
-    const id = which === 'like' ? 'like' : 'dislike';
-    // Scoped on purpose: a bare ".like" could match something else on the page.
-    return q(`${LIKE_ROOT} #button-shape-${id} button`) || q(`${LIKE_ROOT} #${id}-button button`) ||
-      q(`${LIKE_ROOT} button.${id}`) || q(`${LIKE_ROOT} .${id}`) || q(`${LIKE_ROOT} [aria-label="${which === 'like' ? 'Like' : 'Dislike'}"]`);
+    const likeBtn = (which) => {
+    if (IS_YT) return qk(which === 'like' ? 'ytLike' : 'ytDislike');
+    const root = q(SEL.likeRoot);
+    return root ? qk(which === 'like' ? 'like' : 'dislike', root) : null;
   };
   const press = (el) => el.click();   // one plain click: extra pointer events could toggle twice
   function likeStatus() {
     if (IS_YT) return likeBtn('like')?.getAttribute('aria-pressed') === 'true' ? 'like' : likeBtn('dislike')?.getAttribute('aria-pressed') === 'true' ? 'dislike' : '';
-    const r = q(LIKE_ROOT);
+    const r = q(SEL.likeRoot);
     const st = String(r?.getAttribute('like-status') || r?.likeStatus || '').toUpperCase();
     if (st === 'LIKE' || st === 'DISLIKE') return st.toLowerCase();
     if (likeBtn('like')?.getAttribute('aria-pressed') === 'true') return 'like';
@@ -225,7 +276,7 @@
   }
   function shuffleOn() {
     if (IS_YT) return null;
-    const b = q(SHUFFLE_SEL);
+    const b = qk('shuffle');
     if (!b) return null;
     return b.getAttribute('aria-pressed') === 'true' || b.hasAttribute('active') || b.classList.contains('active');
   }
@@ -253,7 +304,7 @@
       setVol(sleepVol * Math.max(0, remain) / fade);
     }
     if (remain <= (sleepEnd ? 0.9 : 0)) {
-      if (!v.paused) { if (IS_YT) v.pause(); else click('#play-pause-button'); }
+      if (!v.paused) { if (IS_YT) v.pause(); else (qk('playPause', bar())?.click()); }
       setTimeout(() => endSleep(true), 800);   // bring the volume back once it has stopped
       sleepAt = 0; sleepEnd = false;
       report(true);
@@ -263,7 +314,7 @@
   function adState() {
     const pl = q('#movie_player');
     if (!pl || !(pl.classList.contains('ad-showing') || pl.classList.contains('ad-interrupting'))) return '';
-    return q('.ytp-skip-ad-button, .ytp-ad-skip-button, .ytp-ad-skip-button-modern, .ytp-skip-ad') ? 'skip' : 'ad';
+    return qk('adSkip') ? 'skip' : 'ad';
   }
   function extras() {
     const v = video();
@@ -289,13 +340,13 @@
       }
       case 'shuffle': {
         if (IS_YT) { sendWs({ type: 'status', message: 'Shuffle only works on YouTube Music.' }); break; }
-        const b = q(SHUFFLE_SEL);
+        const b = qk('shuffle');
         if (b) b.click(); else missing('Shuffle');
         break;
       }
       case 'repeat': {
         if (IS_YT) { if (v) v.loop = !v.loop; break; }
-        const b = q('ytmusic-player-bar .repeat');
+        const b = qk('repeat');
         if (b) b.click(); else missing('Repeat');
         break;
       }
@@ -310,7 +361,7 @@
         break;
       }
       case 'skip_ad': {
-        const b = q('.ytp-skip-ad-button, .ytp-ad-skip-button, .ytp-ad-skip-button-modern, .ytp-skip-ad');
+        const b = qk('adSkip');
         if (b) b.click();
         break;
       }
@@ -332,8 +383,8 @@
     const v = video();
     const id = new URLSearchParams(location.search).get('v') || '';
     if (!v || !/^[A-Za-z0-9_-]{11}$/.test(id) || !isFinite(v.duration)) return null;
-    const title = q('h1.ytd-watch-metadata')?.textContent?.trim() || document.title.replace(/\s*-\s*YouTube\s*$/, '').replace(/^\(\d+\)\s*/, '');
-    const channel = q('ytd-watch-metadata ytd-channel-name a, #owner ytd-channel-name a')?.textContent?.trim() || '';
+    const title = qk('ytTitle')?.textContent?.trim() || document.title.replace(/\s*-\s*YouTube\s*$/, '').replace(/^\(\d+\)\s*/, '');
+    const channel = qk('ytChannel')?.textContent?.trim() || '';
     return {
       site: 'yt', title, artist: channel,
       ...extras(),
@@ -350,9 +401,9 @@
     const b = bar();
     const v = video();
     if (!b) return null;
-    const title = b.querySelector('.title')?.textContent?.trim() || '';
-    const byline = b.querySelector('.byline')?.textContent?.trim() || '';
-    const art = b.querySelector('img#img')?.src || b.querySelector('.image')?.src || '';
+    const title = qk('ytmTitle', b)?.textContent?.trim() || '';
+    const byline = qk('ytmByline', b)?.textContent?.trim() || '';
+    const art = qk('ytmArt', b)?.src || '';
     return {
       site: 'ytm',
       ...extras(),
@@ -448,6 +499,8 @@
     }
   }, { signal: ac.signal });
   toPage('ping'); // find out whether page.js is already running
+  loadSelectors();
+  every(loadSelectors, 10 * 60 * 1000);
 
   // ---- Commands from the phone ----
   function click(sel) {
@@ -501,9 +554,9 @@
     if (runExtra(cmd, value)) return;
     const v = video();
     switch (cmd) {
-      case 'play': if (v && v.paused) click('#play-pause-button'); break;
-      case 'pause': if (v && !v.paused) click('#play-pause-button'); break;
-      case 'toggle': click('#play-pause-button'); break;
+      case 'play': if (v && v.paused) (qk('playPause', bar())?.click()); break;
+      case 'pause': if (v && !v.paused) (qk('playPause', bar())?.click()); break;
+      case 'toggle': (qk('playPause', bar())?.click()); break;
       case 'previous': click('.previous-button'); break;
       case 'volume': {
         const n = Number(value);
@@ -570,6 +623,7 @@
         // Everything again: version, state, queue, volume, block list. And ask the extension to look for an update.
         try { const p = chrome.runtime.sendMessage({ type: 'ota-check' }); if (p && p.catch) p.catch(() => {}); } catch { /* messaging unavailable */ }
         sendWs({ type: 'version', version: String(CFG.version || '') });
+        loadSelectors();   // also pick up new site selectors now
         if (await pageReady()) { toPage('get_state'); toPage('refresh'); }
         break;
       case 'reload_tab':
