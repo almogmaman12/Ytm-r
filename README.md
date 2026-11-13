@@ -105,6 +105,11 @@ Anything pushed to the branch your relay deploys becomes code that runs in your 
 - Make sure Render (or your host) deploys only the branch you trust.
 - Git stores your email in every commit and the repo is public. Turn on "Keep my email addresses private" and "Block command line pushes that expose my email" in GitHub's email settings, and commit with your `…@users.noreply.github.com` address.
 
+## Volume boost and artist radio
+**Boost** (button next to Like/Shuffle/Repeat) plays louder than the site's 100%: 125, 150, 200 or 300%. It runs the sound through a gain stage with a limiter behind it, so loud parts are squashed instead of crackling, but 200% and above can still sound harsh. Lower your phone and speakers first. The browser only allows this once you have clicked on the YouTube Music tab on the PC at least once; if not, the phone says so instead of changing anything. Boost works on YouTube and YouTube Music and is remembered between songs.
+
+**Artist radio**: tap **Radio** on Now Playing and choose Artist radio (it uses the artist of the playing song), or open an artist from Search and tap **Start artist radio**. It starts the artist's own Radio from their YouTube Music page. YouTube Music only.
+
 ## Pair a second phone with a short code
 On a phone that is already connected: **Settings, Phones, Pair another phone**. It shows a code like `ABCD-EFGH` that works once and lasts 2 minutes. On the other phone open your relay's address, tap **I have a pairing code** and type it. That phone gets its own key, so it never needs the token or the access code. The Phones list shows each paired phone and when it was last seen, and **Remove** signs one out immediately. Paired phones can control the music but cannot pair or remove other phones. Up to 8 phones; wrong codes count towards the same address block as wrong access codes.
 

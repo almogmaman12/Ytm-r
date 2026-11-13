@@ -619,6 +619,30 @@ let port;
     try { require('fs').unlinkSync(DEV_FILE); } catch {}
   }
 
+  // ---- boost and artist radio are validated ----
+  {
+    const BT = 'boostboostboostboost_1';
+    const pcB = await open('pc', BT);
+    const ph = await open('phone', BT);
+    await wait(100);
+    const tryCmd = async (cmd, value) => { const n = pcB.msgs.length; ph.send(JSON.stringify({ type: 'cmd', cmd, value })); await wait(130); return pcB.msgs.length > n ? pcB.msgs[pcB.msgs.length - 1] : null; };
+    assert.strictEqual((await tryCmd('boost', 200))?.value, 200, 'boost 200 is forwarded');
+    assert.strictEqual(await tryCmd('boost', 900), null, 'boost above 300 is refused');
+    assert.strictEqual(await tryCmd('boost', 50), null, 'boost below 100 is refused');
+    assert.strictEqual(await tryCmd('boost', 'loud'), null, 'a non-number boost is refused');
+    assert.strictEqual((await tryCmd('artist_radio', 'current'))?.value, 'current', 'artist radio of the current song is forwarded');
+    assert.strictEqual((await tryCmd('artist_radio', 'UCartistAAAAAAAAAAAAAAAA'))?.value, 'UCartistAAAAAAAAAAAAAAAA', 'artist radio by artist id is forwarded');
+    assert.strictEqual(await tryCmd('artist_radio', 'MPREb_albumAAAAA1'), null, 'artist radio refuses a non-artist id');
+    assert.strictEqual(await tryCmd('artist_radio', 'UC"><script>'), null, 'artist radio refuses odd characters');
+    pcB.send(JSON.stringify({ type: 'state', state: { title: 't', artist: 'a', playing: true, volume: 50, boost: 250 } }));
+    await wait(100);
+    assert.strictEqual(ph.msgs.filter((m) => m.type === 'state').pop().state.boost, 250, 'boost is part of the state');
+    pcB.send(JSON.stringify({ type: 'state', state: { title: 't', playing: true, boost: 9999 } }));
+    await wait(100);
+    assert.strictEqual(ph.msgs.filter((m) => m.type === 'state').pop().state.boost, 300, 'a silly boost in the state is clamped');
+    ph.close(); pcB.close();
+  }
+
   // An oversized message used to crash the whole relay (unhandled socket error)
   const big = await open('phone', 'bigbigbigbigbigbigbigbig_1');
   const closed = new Promise((r) => big.on('close', r));

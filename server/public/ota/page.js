@@ -1335,6 +1335,47 @@
     await playCollection(playlistId);   // same thing, started from the list instead
   }
 
+  // ---- Artist radio: endless songs by an artist and similar ones (the artist page's own "Radio") ----
+  function currentArtistLink() {
+    const links = [...document.querySelectorAll('ytmusic-player-bar .byline a[href*="channel/"]')];
+    const a = links.find((l) => /channel\/UC[\w-]+/.test(l.getAttribute('href') || ''));
+    return a ? { id: /channel\/(UC[\w-]+)/.exec(a.getAttribute('href'))[1], name: a.textContent.trim() } : null;
+  }
+  async function artistRadio(value) {
+    let browseId = String(value);
+    let name = '';
+    if (browseId === 'current') {
+      const link = currentArtistLink();
+      if (link) { browseId = link.id; name = link.name; }
+      else {
+        // Not linked in the player bar: look the artist up by name instead.
+        name = (document.querySelector('ytmusic-player-bar .byline')?.textContent || '').split('•')[0].split(/\s*(?:,|&| and )\s*/i)[0].trim();
+        if (!name) { status('Nothing is playing to start an artist radio from.'); return; }
+        try { browseId = (await search(name, 'artist'))[0]?.browseId || ''; } catch { browseId = ''; }
+      }
+    }
+    if (!/^UC[\w-]{4,60}$/.test(browseId)) { status("Couldn't find the artist's page."); return; }
+    let json;
+    try { json = await innertube('browse', { browseId }, 12000); } catch (e) { status("Couldn't open the artist page: " + String((e && e.message) || e)); return; }
+    // The artist page header has a Radio button; its endpoint is a watchPlaylistEndpoint with an RD… list.
+    const eps = [];
+    const walk = (n, depth) => {
+      if (!n || typeof n !== 'object' || depth > 40 || eps.length > 40) return;
+      if (Array.isArray(n)) { n.forEach((x) => walk(x, depth + 1)); return; }
+      if (n.watchPlaylistEndpoint && /^[A-Za-z0-9_-]{10,}$/.test(n.watchPlaylistEndpoint.playlistId || '')) eps.push(n.watchPlaylistEndpoint);
+      for (const k in n) walk(n[k], depth + 1);
+    };
+    const header = findKey(json, 'musicImmersiveHeaderRenderer') || findKey(json, 'musicVisualHeaderRenderer') || findKey(json, 'musicHeaderRenderer');
+    const radioBtn = header && findKey(header, 'startRadioButton');
+    if (radioBtn) walk(radioBtn, 0);
+    if (!eps.length && header) walk(header, 0);
+    const ep = eps.find((e) => /^RD(EM|AO|AMPL)/.test(e.playlistId)) || eps[0];
+    if (!ep) { status("This artist doesn't have a radio on YouTube Music."); return; }
+    const followed = () => new URLSearchParams(location.search).get('list') === ep.playlistId;
+    if (await tryNavigate({ watchPlaylistEndpoint: { playlistId: ep.playlistId, params: ep.params } }, followed)) { status('Artist radio started' + (name ? ': ' + name : '')); return; }
+    await playCollection(ep.playlistId);
+  }
+
   // ---- Health check: which parts of the site integration still work ----
   async function healthCheck(deep) {
     const checks = [];
@@ -1469,6 +1510,8 @@
       postBlocked();
     } else if (cmd === 'radio') {
       await startRadio(value);
+    } else if (cmd === 'artist_radio') {
+      await artistRadio(value);
     } else if (cmd === 'related') {
       await relatedSongs(String(value));
     } else if (cmd === 'suggest') {

@@ -316,10 +316,60 @@
     if (!pl || !(pl.classList.contains('ad-showing') || pl.classList.contains('ad-interrupting'))) return '';
     return qk('adSkip') ? 'skip' : 'ad';
   }
+  // ---- Volume boost: more than 100% ----
+  // The site's own volume stops at 100. A boost runs the sound through a Web Audio gain stage with a
+  // limiter behind it (so loud parts are squashed instead of crackling). The audio graph is only
+  // built when the sound context is really running: once a video element is connected to a graph
+  // it cannot be disconnected, and a suspended context would mute it.
+  let boost = 100, boostCtx = null, boostGain = null, boostEl = null, boostBusy = false;
+  try { const b = Number(localStorage.getItem('ytmr_boost')); if (b >= 100 && b <= 300) boost = b; } catch { /* ignore */ }
+  async function applyBoost() {
+    if (boostBusy) return;
+    boostBusy = true;
+    try {
+      const v = video();
+      if (!v) return;
+      if (boostGain && boostEl === v && boostCtx && boostCtx.state === 'running') { boostGain.gain.value = boost / 100; return; }
+      if (boost <= 100 && !boostGain) return;                     // nothing to do, and nothing was ever connected
+      if (!boostCtx) {
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if (!AC) { sendWs({ type: 'status', message: 'Volume boost is not supported by this browser.' }); boost = 100; return; }
+        boostCtx = new AC();
+      }
+      if (boostCtx.state !== 'running') { try { await boostCtx.resume(); } catch { /* ignore */ } }
+      if (boostCtx.state !== 'running') {
+        if (boostGain) { if (Date.now() - (applyBoost.warned || 0) > 60000) { applyBoost.warned = Date.now(); sendWs({ type: 'status', message: 'Sound is paused by the browser. Click once on the YouTube Music tab on the PC.' }); } }
+        else if (!boostGain) { sendWs({ type: 'status', message: 'Volume boost needs you to click once on the YouTube Music tab on the PC first (the browser blocks audio effects until then).' }); boost = 100; reportSoon(); }
+        return;
+      }
+      if (boostEl !== v) {
+        if (boostEl) return;                                       // the video element was swapped; keep the old graph untouched
+        const src = boostCtx.createMediaElementSource(v);
+        boostGain = boostCtx.createGain();
+        const lim = boostCtx.createDynamicsCompressor();
+        lim.threshold.value = -6; lim.knee.value = 0; lim.ratio.value = 20; lim.attack.value = 0.003; lim.release.value = 0.2;
+        src.connect(boostGain); boostGain.connect(lim); lim.connect(boostCtx.destination);
+        boostEl = v;
+      }
+      boostGain.gain.value = boost / 100;
+    } catch (e) {
+      boost = 100;
+      sendWs({ type: 'status', message: 'Volume boost could not start: ' + String((e && e.message) || e).slice(0, 100) });
+    } finally { boostBusy = false; }
+  }
+  function setBoost(n) {
+    boost = Math.min(300, Math.max(100, Math.round(Number(n) || 100)));
+    try { localStorage.setItem('ytmr_boost', String(boost)); } catch { /* ignore */ }
+    applyBoost().then(reportSoon);
+  }
+  // Keeps the boost alive across songs; if the sound context stops, say so instead of staying silent.
+  every(() => { if (boost > 100 || boostGain) applyBoost(); }, 2000);
+
   function extras() {
     const v = video();
     return {
       ad: adState(),
+      boost,
       speed: v && isFinite(v.playbackRate) ? Math.round(v.playbackRate * 100) / 100 : 1,
       like: likeStatus(),
       repeat: repeatMode(),
@@ -333,6 +383,7 @@
     const v = video();
     const missing = (what) => sendWs({ type: 'status', message: `${what} isn't available on this page right now.` });
     switch (cmd) {
+      case 'boost': setBoost(value); break;
       case 'like': case 'dislike': {
         const b = likeBtn(cmd);
         if (b) { press(b); setTimeout(reportSoon, 400); setTimeout(reportSoon, 1200); } else missing(cmd === 'like' ? 'Like' : 'Dislike');
@@ -533,6 +584,7 @@
         if (cmd === 'related') sendWs({ type: 'results', query: `related:${value}`, results: [], error: 'Reload the YouTube tab on the PC' });
         else sendWs({ type: 'status', message: 'Reload the YouTube tab on the PC, then try again.' });
         return;
+      case 'artist_radio': sendWs({ type: 'status', message: 'Artist radio only works on YouTube Music. Use Radio to play videos like this one.' }); return;
       case 'search': case 'health': case 'suggest':
         if (!(await pageReady())) { sendWs({ type: 'status', message: 'Reload the YouTube tab on the PC, then try again.' }); return; }
         toPage(cmd, value);
@@ -590,6 +642,7 @@
       case 'open':
       case 'library':
       case 'radio':
+      case 'artist_radio':
       case 'health':
       case 'related':
       case 'suggest':

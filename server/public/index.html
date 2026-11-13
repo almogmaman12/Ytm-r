@@ -321,6 +321,7 @@
     <symbol id="i-heart" viewBox="0 0 24 24"><path d="M12 20.5s-8-4.9-8-11a4.6 4.6 0 018-3 4.6 4.6 0 018 3c0 6.1-8 11-8 11z"/></symbol>
     <symbol id="i-shuffle" viewBox="0 0 24 24"><path d="M3 7h3.5c5 0 5 10 10 10H21M3 17h3.5c1.6 0 2.7-.8 3.6-2M13.9 9c.9-1.2 2-2 3.6-2H21M18.5 4.5L21 7l-2.5 2.5M18.5 14.5L21 17l-2.5 2.5"/></symbol>
     <symbol id="i-repeat" viewBox="0 0 24 24"><path d="M4 11V9a3 3 0 013-3h12M16.5 3L19.5 6l-3 3M20 13v2a3 3 0 01-3 3H5M7.5 21L4.5 18l3-3"/></symbol>
+    <symbol id="i-boost" viewBox="0 0 24 24"><path d="M13 3L5.5 13.5H11L10 21l7.5-10.5H12z"/></symbol>
     <symbol id="i-speed" viewBox="0 0 24 24"><path d="M4.5 18a8.5 8.5 0 1115 0M12 13.5L16 8.5"/><circle cx="12" cy="14" r="1.2" fill="currentColor"/></symbol>
     <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8.5 8.5 0 019.5 4a8.5 8.5 0 1010.5 10.5z"/></symbol>
     <symbol id="i-back10" viewBox="0 0 24 24"><path d="M5 12a7 7 0 107-7H8"/><path d="M10.5 2.5L8 5l2.5 2.5"/><text x="12" y="15.2" font-size="7" font-weight="700" fill="currentColor" stroke="none" text-anchor="middle">10</text></symbol>
@@ -385,6 +386,7 @@
       <button id="likeBtn" type="button" aria-pressed="false"><svg class="i fillable"><use href="#i-heart"/></svg><span id="likeLbl">Like</span></button>
       <button id="shuffleBtn" type="button" aria-pressed="false"><svg class="i"><use href="#i-shuffle"/></svg>Shuffle</button>
       <button id="repeatBtn" type="button" aria-pressed="false"><svg class="i"><use href="#i-repeat"/></svg><span id="repeatLbl">Repeat</span></button>
+      <button id="boostBtn" type="button" aria-pressed="false"><svg class="i"><use href="#i-boost"/></svg><span id="boostLbl">Boost</span></button>
       <button id="speedBtn" type="button" aria-pressed="false"><svg class="i"><use href="#i-speed"/></svg><span id="speedLbl">1x</span></button>
       <button id="sleepBtn" type="button" aria-pressed="false"><svg class="i"><use href="#i-moon"/></svg><span id="sleepLbl">Sleep</span></button>
     </div>
@@ -414,6 +416,7 @@
       <button class="chip" data-kind="playlist" aria-pressed="false">Playlists</button>
     </div>
     <button id="backBtn" class="back" hidden>‹ Back to results</button>
+    <button id="artistRadioBtn" class="secondary" hidden style="width:100%;margin:6px 0"><svg class="i"><use href="#i-radio"/></svg> Start artist radio</button>
     <div id="searchMsg" class="hint"></div>
     <div id="searchEmpty" class="empty"><strong>Find something to play</strong>Search for songs, albums, artists or playlists. Tap a result to play it now, or use the buttons to play it next or add it to the end of the queue.</div>
     <ul id="results" class="tracks"></ul>
@@ -932,6 +935,9 @@ function renderExtras(s) {
   const sp = s.speed || 1;
   $('speedLbl').textContent = (Math.round(sp * 100) / 100) + 'x';
   setPressed('speedBtn', sp !== 1);
+  const bo = s.boost || 100;
+  $('boostLbl').textContent = bo > 100 ? bo + '%' : 'Boost';
+  setPressed('boostBtn', bo > 100);
   renderSleep();
 }
 function sleepLeft() {
@@ -1013,6 +1019,11 @@ $('adSkip').onclick = () => { buzz(); cmd('skip_ad'); };
 $('likeBtn').onclick = () => { buzz(); cmd('like'); };
 $('shuffleBtn').onclick = () => { buzz(); cmd('shuffle'); };
 $('repeatBtn').onclick = () => { buzz(); cmd('repeat'); };
+$('boostBtn').onclick = () => pick('Volume boost',
+  [{ value: 100, label: 'Off (100%)', sub: 'Normal volume' },
+   ...[125, 150, 200, 300].map((n) => ({ value: n, label: n + '%', sub: n === 125 ? 'A little louder' : n === 150 ? 'Quiet recordings' : n === 200 ? 'Very loud. Lower your phone and speakers first' : 'Maximum. Can distort and may be painful' }))],
+  (last && last.boost) || 100,
+  (n) => { if (cmd('boost', n)) toast(n === 100 ? 'Boost off' : 'Boost ' + n + '%. Lower the volume if it distorts.'); });
 $('speedBtn').onclick = () => pick('Playback speed',
   [0.75, 1, 1.25, 1.5, 1.75, 2].map((n) => ({ value: n, label: n === 1 ? 'Normal (1x)' : n + 'x' })), (last && last.speed) || 1,
   (n) => cmd('speed', n));
@@ -1350,6 +1361,7 @@ function renderResults(m) {
   currentResults = m.results || [];
   $('searchEmpty').hidden = true;
   $('backBtn').hidden = !prevSearch;
+  $('artistRadioBtn').hidden = !(m.query.startsWith('open:UC') && !m.error && (m.results || []).length);
   if (m.error) { autoArtist = ''; $('searchMsg').textContent = 'Search failed: ' + m.error; return; }
   if (autoArtist && m.query === lastQuery) {
     const want = autoArtist.toLowerCase();
@@ -1476,6 +1488,7 @@ $('searchForm').onsubmit = (e) => {
   lastQuery = `${searchKind}|${q}`;
   prevSearch = null;
   $('backBtn').hidden = true;
+  $('artistRadioBtn').hidden = true;
   $('results').textContent = '';
   $('searchEmpty').hidden = true;
   $('searchMsg').textContent = 'Searching…';
@@ -1576,12 +1589,25 @@ $('wakeBtn').onclick = () => {
   ws.send(JSON.stringify({ type: 'cmd', cmd: 'open_music' }));
   toast('Asking your PC to wake YouTube Music…');
 };
-$('radioBtn').onclick = () => { buzz(); if (cmd('radio', 'current')) toast('Starting a radio…'); };
+$('radioBtn').onclick = () => {
+  buzz();
+  const yt = last && last.site === 'yt';
+  pick('Start a radio', [
+    { value: 'song', label: 'Song radio', sub: 'Songs like the one playing' },
+    { value: 'artist', label: 'Artist radio', sub: yt ? 'Only on YouTube Music' : 'This artist and similar ones', disabled: yt },
+  ], null, (v) => { if (cmd(v === 'artist' ? 'artist_radio' : 'radio', 'current')) toast(v === 'artist' ? 'Starting artist radio…' : 'Starting a radio…'); });
+};
+$('artistRadioBtn').onclick = () => {
+  buzz();
+  const id = String(lastQuery || '').slice(5);
+  if (/^UC/.test(id) && cmd('artist_radio', id)) { toast('Starting artist radio…'); setView('playing'); }
+};
 $('relatedBtn').onclick = () => {
   buzz();
   setView('search');
   lastQuery = 'related:current'; prevSearch = null; autoArtist = '';
   $('backBtn').hidden = true;
+  $('artistRadioBtn').hidden = true;
   $('results').textContent = '';
   $('searchEmpty').hidden = true;
   $('searchMsg').textContent = 'Finding songs similar to the one playing…';
@@ -1827,7 +1853,7 @@ const TIPS = {
   siteBtn: 'Open or switch YouTube and YouTube Music on the PC', refreshBtn: 'Force refresh: reload this page and the PC tab', settingsBtn: 'Settings',
   srcChip: 'Which site is playing. Tap to open or switch', adSkip: 'Skip the ad', prev: 'Previous song', back10: 'Back 10 seconds', toggle: 'Play or pause',
   fwd10: 'Forward 10 seconds', next: 'Next song', wakeBtn: 'Ask the PC to open or wake YouTube Music', likeBtn: 'Like this song', shuffleBtn: 'Shuffle the queue',
-  repeatBtn: 'Repeat: off, all or one song', speedBtn: 'Playback speed', sleepBtn: 'Sleep timer: stop the music after a while', radioBtn: 'Start a radio from this song',
+  repeatBtn: 'Repeat: off, all or one song', speedBtn: 'Playback speed', sleepBtn: 'Sleep timer: stop the music after a while', radioBtn: 'Start a radio from this song or artist', boostBtn: 'Volume boost: louder than 100%',
   relatedBtn: 'Show similar songs', artistBtn: "Open this artist's page", plBtn: 'Add this song to one of your playlists', blockBtn: 'Never play this song or artist',
   libRefresh: 'Reload this list', clearBtn: 'Clear everything coming up', selectBtn: 'Select several songs at once', editBtn: 'Reorder songs by dragging',
   saveQueue: 'Save the queue as a playlist in YouTube Music', miniToggle: 'Play or pause', miniNext: 'Next song', backBtn: 'Go back',
