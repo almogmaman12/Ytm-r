@@ -640,7 +640,11 @@ let port;
     pcB.send(JSON.stringify({ type: 'state', state: { title: 't', playing: true, boost: 9999 } }));
     await wait(100);
     assert.strictEqual(ph.msgs.filter((m) => m.type === 'state').pop().state.boost, 300, 'a silly boost in the state is clamped');
-    ph.close(); pcB.close();
+    pcB.close(); await wait(100);
+    const pcB2 = await open('pc', BT);
+    await wait(150);
+    assert.ok(pcB2.msgs.some((m) => m.type === 'cmd' && m.cmd === 'boost' && m.value === 200), 'a PC tab that connects later gets the boost you set');
+    ph.close(); pcB2.close();
   }
 
   // An oversized message used to crash the whole relay (unhandled socket error)

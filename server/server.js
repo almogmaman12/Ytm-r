@@ -473,6 +473,7 @@ wss.on('connection', (ws, info) => {
       room.pc = ws;
       ws.who = who;
       log(rid, `PC connected: ${who}`);
+      if (room.boost != null) send(ws, { type: 'cmd', cmd: 'boost', value: room.boost });
       tellPhones(room);
     } else {
       room.phones.add(ws);
@@ -660,6 +661,7 @@ wss.on('connection', (ws, info) => {
         if (v !== 'end' && v !== 'off' && !(/^\d{1,3}$/.test(v) && Number(v) >= 1 && Number(v) <= 720)) return;
         out.value = v;
       }
+      if (out.cmd === 'boost') room.boost = out.value;      // remembered here and re-sent to every PC tab that connects
       if (TAG_CMDS.has(out.cmd)) out.by = name || device;
       if (LOG_COMMANDS && (process.env.LOG_ALL === '1' || !QUIET_CMDS.has(out.cmd))) {
         log(rid, `command ${out.cmd}${out.value != null && out.value !== '' ? ' ' + clean(out.value) : ''}  from ${who}${room.pc ? '' : '  (PC offline, not delivered)'}`);
@@ -682,6 +684,7 @@ wss.on('connection', (ws, info) => {
         art: safeHttps(s.art),
         site: s.site === 'yt' ? 'yt' : 'ytm',
         ad: s.ad === 'ad' || s.ad === 'skip' ? s.ad : '',
+        boostPending: s.boostPending === true,
         boost: Number.isFinite(s.boost) ? Math.min(300, Math.max(100, Math.round(s.boost))) : 100,
         speed: Number.isFinite(s.speed) ? Math.min(2, Math.max(0.25, s.speed)) : 1,
         like: s.like === 'like' || s.like === 'dislike' ? s.like : '',

@@ -936,8 +936,8 @@ function renderExtras(s) {
   $('speedLbl').textContent = (Math.round(sp * 100) / 100) + 'x';
   setPressed('speedBtn', sp !== 1);
   const bo = s.boost || 100;
-  $('boostLbl').textContent = bo > 100 ? bo + '%' : 'Boost';
-  setPressed('boostBtn', bo > 100);
+  $('boostLbl').textContent = bo > 100 ? bo + '%' + (s.boostPending ? '…' : '') : 'Boost';
+  setPressed('boostBtn', bo > 100 && !s.boostPending);
   renderSleep();
 }
 function sleepLeft() {

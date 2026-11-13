@@ -337,11 +337,7 @@
         boostCtx = new AC();
       }
       if (boostCtx.state !== 'running') { try { await boostCtx.resume(); } catch { /* ignore */ } }
-      if (boostCtx.state !== 'running') {
-        if (boostGain) { if (Date.now() - (applyBoost.warned || 0) > 60000) { applyBoost.warned = Date.now(); sendWs({ type: 'status', message: 'Sound is paused by the browser. Click once on the YouTube Music tab on the PC.' }); } }
-        else if (!boostGain) { sendWs({ type: 'status', message: 'Volume boost needs you to click once on the YouTube Music tab on the PC first (the browser blocks audio effects until then).' }); boost = 100; reportSoon(); }
-        return;
-      }
+      if (boostCtx.state !== 'running') return;     // the browser has not allowed sound effects yet; retried every 2 s and on any click or key
       if (boostEl !== v) {
         if (boostEl) return;                                       // the video element was swapped; keep the old graph untouched
         const src = boostCtx.createMediaElementSource(v);
@@ -357,6 +353,7 @@
       sendWs({ type: 'status', message: 'Volume boost could not start: ' + String((e && e.message) || e).slice(0, 100) });
     } finally { boostBusy = false; }
   }
+  const boostLive = () => !!(boostGain && boostCtx && boostCtx.state === 'running' && boostEl === video());
   function setBoost(n) {
     boost = Math.min(300, Math.max(100, Math.round(Number(n) || 100)));
     try { localStorage.setItem('ytmr_boost', String(boost)); } catch { /* ignore */ }
@@ -364,12 +361,14 @@
   }
   // Keeps the boost alive across songs; if the sound context stops, say so instead of staying silent.
   every(() => { if (boost > 100 || boostGain) applyBoost(); }, 2000);
+  for (const t of ['pointerdown', 'keydown']) document.addEventListener(t, () => { if (boost > 100 && !boostLive()) applyBoost(); }, { capture: true, passive: true });
 
   function extras() {
     const v = video();
     return {
       ad: adState(),
       boost,
+      boostPending: boost > 100 && !boostLive(),
       speed: v && isFinite(v.playbackRate) ? Math.round(v.playbackRate * 100) / 100 : 1,
       like: likeStatus(),
       repeat: repeatMode(),
