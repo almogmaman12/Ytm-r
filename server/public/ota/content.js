@@ -57,6 +57,7 @@
   let backoff = 1000;
   let lastRx = 0;
   let replaced = false;
+  let playWish = 0;   // when the phone last asked for play
   let refused = false;
   let lastReclaim = 0;
 
@@ -564,9 +565,9 @@
     const v = video();
     const ytBtn = (sel) => { const el = q('#movie_player ' + sel); if (el && el.offsetParent !== null) { el.click(); return true; } return false; };
     switch (cmd) {
-      case 'play': if (v && v.paused) v.play().catch(() => {}); break;
+      case 'play': playWish = Date.now(); if (v && v.paused) v.play().catch(() => {}); break;
       case 'pause': if (v && !v.paused) v.pause(); break;
-      case 'toggle': if (v) { v.paused ? v.play().catch(() => {}) : v.pause(); } break;
+      case 'toggle': if (v) { if (v.paused) playWish = Date.now(); v.paused ? v.play().catch(() => {}) : v.pause(); } break;
       case 'previous': if (!ytBtn('.ytp-prev-button') && v) v.currentTime = 0; break;
       case 'next': if (await pageReady()) { toPage('next'); return; } ytBtn('.ytp-next-button'); break;
       case 'seek': { const n = Number(value); if (v && isFinite(n)) v.currentTime = n; break; }
@@ -605,9 +606,9 @@
     if (runExtra(cmd, value)) return;
     const v = video();
     switch (cmd) {
-      case 'play': if (v && v.paused) (qk('playPause', bar())?.click()); break;
+      case 'play': playWish = Date.now(); if (v && v.paused) (qk('playPause', bar())?.click()); break;
       case 'pause': if (v && !v.paused) (qk('playPause', bar())?.click()); break;
-      case 'toggle': (qk('playPause', bar())?.click()); break;
+      case 'toggle': if (v && v.paused) playWish = Date.now(); (qk('playPause', bar())?.click()); break;
       case 'previous': click('.previous-button'); break;
       case 'volume': {
         const n = Number(value);
@@ -692,6 +693,43 @@
     report(true);
     setTimeout(() => report(true), 250);
   }
+
+  // ---- Sound in a tab nobody has clicked ----
+  // Chrome keeps a tab silent until it has had a real click or key press. For a tab the phone opened,
+  // ask the extension (if the person allowed it in settings) to send one real click to a spot that is
+  // not a button, link or the player. The extension limits this to once per 30 s per tab.
+  const hasActivation = () => !navigator.userActivation || navigator.userActivation.hasBeenActive;
+  function safePoint() {
+    const W = innerWidth, H = innerHeight;
+    const bad = 'a,button,input,textarea,select,video,audio,[role=button],[role=link],[role=slider],[role=menuitem],[tabindex],ytmusic-player,ytmusic-player-bar,ytmusic-player-page,ytd-player,#movie_player,.html5-video-player,ytmusic-menu-popup-renderer,tp-yt-paper-dialog';
+    for (const fy of [0.5, 0.35, 0.65, 0.2, 0.8, 0.12, 0.9]) {
+      for (const fx of [0.5, 0.3, 0.7, 0.15, 0.85, 0.05, 0.95]) {
+        const x = Math.round(W * fx), y = Math.round(H * fy);
+        let el = document.elementFromPoint(x, y);
+        if (!el) continue;
+        let ok = !el.closest(bad);
+        for (let n = el; ok && n && n !== document.documentElement; n = n.parentElement) if (getComputedStyle(n).cursor === 'pointer') ok = false;
+        if (ok) return { x, y };
+      }
+    }
+    return null;
+  }
+  let actTries = 0;
+  async function wantActivation() {
+    if (hasActivation() || replaced || !(sock && sock.readyState === WebSocket.OPEN) || actTries >= 6) return;
+    const p = safePoint();
+    if (!p) return;
+    actTries++;
+    try {
+      const r = await chrome.runtime.sendMessage({ type: 'activate', x: p.x, y: p.y });
+      if (r && r.ok) {
+        await new Promise((r) => setTimeout(r, 400));
+        if (playWish && Date.now() - playWish < 90000) { const v = video(); if (v && v.paused) { (IS_YT ? v.play() : qk('playPause', bar())?.click()); } }
+        reportSoon();
+      }
+    } catch { /* an older extension, or the setting is off */ }
+  }
+  every(wantActivation, 3000);
 
   if (IS_YT) {
     // Don't take the connection from a YouTube Music tab just by being open: wait until a video plays here.

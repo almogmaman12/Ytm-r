@@ -68,8 +68,9 @@ async function refresh() {
 }
 
 async function load() {
-  const c = await chrome.storage.local.get(['relayUrl', 'token', 'allowHttp', 'pcCode', 'agent']);
+  const c = await chrome.storage.local.get(['relayUrl', 'token', 'allowHttp', 'pcCode', 'agent', 'youtube', 'sound']);
   $('agent').checked = c.agent !== false;
+  $('sound').checked = !!c.sound && await chrome.permissions.contains({ permissions: ['debugger'] }).catch(() => false);
   $('youtube').checked = !!c.youtube && await chrome.permissions.contains({ origins: ['https://www.youtube.com/*'] }).catch(() => false);
   $('pccode').value = c.pcCode || '';
   if (c.pcCode) $('pcdetails').open = true;
@@ -79,6 +80,17 @@ async function load() {
   refresh();
 }
 
+$('sound').onchange = async () => {
+  const permissions = ['debugger'];
+  if ($('sound').checked) {
+    const ok = await chrome.permissions.request({ permissions }).catch(() => false);
+    $('sound').checked = ok;
+    await chrome.storage.local.set({ sound: ok });
+  } else {
+    await chrome.storage.local.set({ sound: false });
+    await chrome.permissions.remove({ permissions }).catch(() => {});
+  }
+};
 $('youtube').onchange = async () => {
   const origins = ['https://www.youtube.com/*'];
   if ($('youtube').checked) {

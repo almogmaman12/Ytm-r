@@ -377,6 +377,24 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type === 'ota-status') { summary().then(sendResponse, () => sendResponse(null)); return true; }
 });
 
+const lastActivation = new Map();   // tabId -> time, so one tab gets at most one synthetic click per 30 s
+async function giveActivation(tabId, x, y) {
+  const now = Date.now();
+  if (now - (lastActivation.get(tabId) || 0) < 30000) return false;
+  const { sound } = await chrome.storage.local.get('sound');
+  if (!sound || !(await chrome.permissions.contains({ permissions: ['debugger'] }).catch(() => false))) return false;
+  lastActivation.set(tabId, now);
+  const target = { tabId };
+  try { await chrome.debugger.attach(target, '1.3'); } catch { return false; }   // e.g. DevTools is already open on that tab
+  try {
+    const send = (method, params) => chrome.debugger.sendCommand(target, method, params);
+    await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
+    await send('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', buttons: 1, clickCount: 1 });
+    await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', buttons: 0, clickCount: 1 });
+    return true;
+  } catch { return false; }
+  finally { chrome.debugger.detach(target).catch(() => {}); }
+}
 let lastPhoneCheck = 0;
 // Optional status messages from the running payload (shown on the settings page).
 if (chrome.runtime.onUserScriptMessage) {
@@ -388,6 +406,18 @@ if (chrome.runtime.onUserScriptMessage) {
       if (until > Date.now()) claimTabs.delete(id);
       sendResponse({ claim: until > Date.now() });
       return true;
+    }
+    if (msg && msg.type === 'activate') {
+      // Chrome only lets a tab play sound after a real click or key press in it. A tab opened from the
+      // phone has had none, so (only if the person turned this on in settings) send one real click.
+      const tab = sender && sender.tab;
+      const x = Number(msg.x), y = Number(msg.y);
+      if (tab && /^https:\/\/(music|www)\.youtube\.com\//.test(tab.url || '') && Number.isFinite(x) && Number.isFinite(y) && x >= 0 && y >= 0 && x < 10000 && y < 10000) {
+        giveActivation(tab.id, x, y).then((ok) => { try { sendResponse({ ok }); } catch { /* gone */ } });
+        return true;
+      }
+      sendResponse({ ok: false });
+      return;
     }
     if (msg && msg.type === 'ota-check') {
       // "Refresh" on the phone: look for an update now (at most every 30 seconds).
