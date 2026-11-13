@@ -1370,9 +1370,19 @@
       }
     };
     walk(json, 0, '');
+    // The page's own Radio button: use its endpoint exactly as the site would, whatever shape it has.
+    const rb = findKey(json, 'startRadioButton');
+    const rbEp = rb && (rb.buttonRenderer?.navigationEndpoint || rb.buttonRenderer?.command || rb.navigationEndpoint);
+    if (rbEp && (rbEp.watchPlaylistEndpoint || rbEp.watchEndpoint)) {
+      const before = new URLSearchParams(location.search).get('list') || '';
+      const moved = () => { const l = new URLSearchParams(location.search).get('list') || ''; return l && l !== before && /^RD/.test(l); };
+      const wantList = (rbEp.watchPlaylistEndpoint || rbEp.watchEndpoint).playlistId;
+      if (await tryNavigate(rbEp, () => (wantList ? new URLSearchParams(location.search).get('list') === wantList : moved()))) { status('Artist radio started' + (name ? ': ' + name : '')); return; }
+    }
+    const rbInfo = rb ? 'radio button: ' + JSON.stringify(rb).slice(0, 130) : 'no radio button';
     // What the page offers, for the message below when no artist radio is found.
     const seenLists = [...new Set(found.map((f) => f.ep.playlistId.replace(/[A-Za-z0-9_-]{8,}$/, '').slice(0, 6) || f.ep.playlistId.slice(0, 6)))].slice(0, 6);
-    const seen = `header: ${Object.keys(json.header || {}).join('/') || 'none'}; lists: ${seenLists.join(', ') || 'none'}`;
+    const seen = `${rbInfo}; header keys: ${Object.keys((json.header && Object.values(json.header)[0]) || {}).slice(0, 9).join('/')}; lists: ${seenLists.join(', ') || 'none'}`;
     const isMix = (id) => /^RD/.test(id) && !/^RDAMVM/.test(id) && !/^RDCLAK/.test(id) && !/^RDAMPL/.test(id);
     const pick = found.find((f) => f.via === 'radio' && /^RD/.test(f.ep.playlistId)) || found.find((f) => /^RDEM/.test(f.ep.playlistId)) || found.find((f) => /^RDAO/.test(f.ep.playlistId)) || found.find((f) => isMix(f.ep.playlistId));
     if (!pick) {
