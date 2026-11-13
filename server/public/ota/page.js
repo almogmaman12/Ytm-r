@@ -1370,16 +1370,20 @@
       }
     };
     walk(json, 0, '');
-    const pick = found.find((f) => f.via === 'radio') || found.find((f) => /^RDEM/.test(f.ep.playlistId)) || found.find((f) => /^RDAO/.test(f.ep.playlistId));
+    // What the page offers, for the message below when no artist radio is found.
+    const seenLists = [...new Set(found.map((f) => f.ep.playlistId.replace(/[A-Za-z0-9_-]{8,}$/, '').slice(0, 6) || f.ep.playlistId.slice(0, 6)))].slice(0, 6);
+    const seen = `header: ${Object.keys(json.header || {}).join('/') || 'none'}; lists: ${seenLists.join(', ') || 'none'}`;
+    const isMix = (id) => /^RD/.test(id) && !/^RDAMVM/.test(id) && !/^RDCLAK/.test(id) && !/^RDAMPL/.test(id);
+    const pick = found.find((f) => f.via === 'radio' && /^RD/.test(f.ep.playlistId)) || found.find((f) => /^RDEM/.test(f.ep.playlistId)) || found.find((f) => /^RDAO/.test(f.ep.playlistId)) || found.find((f) => isMix(f.ep.playlistId));
     if (!pick) {
       // No artist radio on the page: fall back to a radio from the artist's first song, and say so.
       const song = found.map((f) => f.ep.videoId).find((v) => ID_RE.test(v || ''));
       if (song) {
         const playlistId = `RDAMVM${song}`;
         const followed2 = () => new URLSearchParams(location.search).get('list') === playlistId;
-        if (await tryNavigate({ watchEndpoint: { videoId: song, playlistId } }, followed2)) { status("No artist radio found, so this is a radio from one of their songs" + (name ? ': ' + name : '')); return; }
+        if (await tryNavigate({ watchEndpoint: { videoId: song, playlistId } }, followed2)) { status("No artist radio found on their page, so this is a radio from one of their songs (" + seen + ")"); return; }
       }
-      status("Couldn't find an artist radio on this page. Found: " + (found.slice(0, 5).map((f) => f.ep.playlistId.slice(0, 6)).join(', ') || 'no playable lists'));
+      status("Couldn't find an artist radio on their page (" + seen + ")");
       return;
     }
     const ep = pick.ep;
