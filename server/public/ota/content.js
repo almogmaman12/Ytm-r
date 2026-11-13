@@ -322,15 +322,47 @@
   // limiter behind it (so loud parts are squashed instead of crackling). The audio graph is only
   // built when the sound context is really running: once a video element is connected to a graph
   // it cannot be disconnected, and a suspended context would mute it.
-  let boost = 100, boostCtx = null, boostGain = null, boostEl = null, boostBusy = false;
-  try { const b = Number(localStorage.getItem('ytmr_boost')); if (b >= 100 && b <= 300) boost = b; } catch { /* ignore */ }
+  // BOOST-CHAIN-START
+  // Loud modern recordings already peak near full scale, so plain gain plus a limiter adds almost no
+  // loudness: the extra level is just cut off again. A real boost makes the quiet parts louder too:
+  // gain, then a compressor that evens out the level, then make-up gain and a soft clipper, then a hard limiter at -2 dB
+  // so nothing clips. The stronger the boost, the stronger the compression.
+  function buildBoostChain(ctx, g) {
+    const pre = ctx.createGain();
+    const comp = ctx.createDynamicsCompressor();
+    const makeup = ctx.createGain();
+    const shaper = ctx.createWaveShaper();
+    shaper.oversample = '2x';
+    const limiter = ctx.createDynamicsCompressor();
+    comp.attack.value = 0.003; comp.release.value = 0.15; comp.knee.value = 12;
+    limiter.threshold.value = -2; limiter.knee.value = 0; limiter.ratio.value = 20; limiter.attack.value = 0.001; limiter.release.value = 0.1;
+    pre.connect(comp); comp.connect(makeup); makeup.connect(shaper); shaper.connect(limiter);
+    const chain = { input: pre, pre, comp, makeup, shaper, limiter, output: limiter };
+    setBoostChain(chain, g);
+    return chain;
+  }
+  function setBoostChain(chain, g) {
+    const over = Math.max(0, g - 1);
+    chain.pre.gain.value = g;
+    chain.comp.threshold.value = g <= 1 ? 0 : Math.max(-45, -12 - 10 * over);
+    chain.comp.ratio.value = g <= 1 ? 1 : Math.min(20, 3 + 3 * over);
+    chain.makeup.gain.value = g <= 1 ? 1 : 1 + 0.8 * over;
+    // Soft clipping rounds off the peaks so the whole signal can be pushed louder; it adds some warmth, then distortion.
+    const k = g <= 1 ? 0 : Math.min(5, 1 + 1.5 * over);
+    const curve = new Float32Array(1025);
+    for (let i = 0; i < curve.length; i++) { const x = (i / 512) - 1; curve[i] = k === 0 ? x : Math.tanh(k * x) / Math.tanh(k); }
+    chain.shaper.curve = curve;
+  }
+  // BOOST-CHAIN-END
+  let boost = 100, boostCtx = null, boostGain = null, boostChain = null, boostEl = null, boostBusy = false;
+  try { const b = Number(localStorage.getItem('ytmr_boost')); if (b >= 100 && b <= 500) boost = b; } catch { /* ignore */ }
   async function applyBoost() {
     if (boostBusy) return;
     boostBusy = true;
     try {
       const v = video();
       if (!v) return;
-      if (boostGain && boostEl === v && boostCtx && boostCtx.state === 'running') { boostGain.gain.value = boost / 100; return; }
+      if (boostGain && boostEl === v && boostCtx && boostCtx.state === 'running') { setBoostChain(boostChain, boost / 100); return; }
       if (boost <= 100 && !boostGain) return;                     // nothing to do, and nothing was ever connected
       if (!boostCtx) {
         const AC = window.AudioContext || window.webkitAudioContext;
@@ -342,13 +374,12 @@
       if (boostEl !== v) {
         if (boostEl) return;                                       // the video element was swapped; keep the old graph untouched
         const src = boostCtx.createMediaElementSource(v);
-        boostGain = boostCtx.createGain();
-        const lim = boostCtx.createDynamicsCompressor();
-        lim.threshold.value = -6; lim.knee.value = 0; lim.ratio.value = 20; lim.attack.value = 0.003; lim.release.value = 0.2;
-        src.connect(boostGain); boostGain.connect(lim); lim.connect(boostCtx.destination);
+        boostChain = buildBoostChain(boostCtx, boost / 100);
+        boostGain = boostChain.pre;
+        src.connect(boostChain.input); boostChain.output.connect(boostCtx.destination);
         boostEl = v;
       }
-      boostGain.gain.value = boost / 100;
+      setBoostChain(boostChain, boost / 100);
     } catch (e) {
       boost = 100;
       sendWs({ type: 'status', message: 'Volume boost could not start: ' + String((e && e.message) || e).slice(0, 100) });
@@ -356,7 +387,7 @@
   }
   const boostLive = () => !!(boostGain && boostCtx && boostCtx.state === 'running' && boostEl === video());
   function setBoost(n) {
-    boost = Math.min(300, Math.max(100, Math.round(Number(n) || 100)));
+    boost = Math.min(500, Math.max(100, Math.round(Number(n) || 100)));
     try { localStorage.setItem('ytmr_boost', String(boost)); } catch { /* ignore */ }
     applyBoost().then(reportSoon);
   }

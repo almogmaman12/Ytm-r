@@ -642,7 +642,7 @@ wss.on('connection', (ws, info) => {
         out.value = name;
       } else if (msg.cmd === 'boost') {
         const v = Number(msg.value);
-        if (!Number.isFinite(v) || v < 100 || v > 300) return;
+        if (!Number.isFinite(v) || v < 100 || v > 500) return;
         out.value = Math.round(v);
       } else if (msg.cmd === 'artist_radio') {
         if (msg.value !== 'current' && !/^UC[A-Za-z0-9_-]{4,60}$/.test(String(msg.value))) return;
@@ -685,7 +685,7 @@ wss.on('connection', (ws, info) => {
         site: s.site === 'yt' ? 'yt' : 'ytm',
         ad: s.ad === 'ad' || s.ad === 'skip' ? s.ad : '',
         boostPending: s.boostPending === true,
-        boost: Number.isFinite(s.boost) ? Math.min(300, Math.max(100, Math.round(s.boost))) : 100,
+        boost: Number.isFinite(s.boost) ? Math.min(500, Math.max(100, Math.round(s.boost))) : 100,
         speed: Number.isFinite(s.speed) ? Math.min(2, Math.max(0.25, s.speed)) : 1,
         like: s.like === 'like' || s.like === 'dislike' ? s.like : '',
         repeat: s.repeat === 'all' || s.repeat === 'one' ? s.repeat : 'none',

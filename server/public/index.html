@@ -1021,7 +1021,7 @@ $('shuffleBtn').onclick = () => { buzz(); cmd('shuffle'); };
 $('repeatBtn').onclick = () => { buzz(); cmd('repeat'); };
 $('boostBtn').onclick = () => pick('Volume boost',
   [{ value: 100, label: 'Off (100%)', sub: 'Normal volume' },
-   ...[125, 150, 200, 300].map((n) => ({ value: n, label: n + '%', sub: n === 125 ? 'A little louder' : n === 150 ? 'Quiet recordings' : n === 200 ? 'Very loud. Lower your phone and speakers first' : 'Maximum. Can distort and may be painful' }))],
+   ...[125, 150, 200, 300, 400, 500].map((n) => ({ value: n, label: n + '%', sub: n === 125 ? 'A little louder' : n === 150 ? 'Clearly louder' : n === 200 ? 'Twice as strong' : n === 300 ? 'Very loud. Lower your speakers first' : n === 400 ? 'Extreme. Quiet parts come up a lot' : 'Maximum. Heavy compression, can hurt your ears' }))],
   (last && last.boost) || 100,
   (n) => { if (cmd('boost', n)) toast(n === 100 ? 'Boost off' : 'Boost ' + n + '%. Lower the volume if it distorts.'); });
 $('speedBtn').onclick = () => pick('Playback speed',
