@@ -1357,22 +1357,35 @@
     if (!/^UC[\w-]{4,60}$/.test(browseId)) { status("Couldn't find the artist's page."); return; }
     let json;
     try { json = await innertube('browse', { browseId }, 12000); } catch (e) { status("Couldn't open the artist page: " + String((e && e.message) || e)); return; }
-    // The artist page header has a Radio button; its endpoint is a watchPlaylistEndpoint with an RD… list.
-    const eps = [];
-    const walk = (n, depth) => {
-      if (!n || typeof n !== 'object' || depth > 40 || eps.length > 40) return;
-      if (Array.isArray(n)) { n.forEach((x) => walk(x, depth + 1)); return; }
-      if (n.watchPlaylistEndpoint && /^[A-Za-z0-9_-]{10,}$/.test(n.watchPlaylistEndpoint.playlistId || '')) eps.push(n.watchPlaylistEndpoint);
-      for (const k in n) walk(n[k], depth + 1);
+    // Collect every play/radio endpoint on the artist page. The artist's own radio is a list whose id
+    // starts with RDEM (older layouts keep it in the header's "startRadioButton", newer ones elsewhere).
+    const found = [];
+    const walk = (n, depth, via) => {
+      if (!n || typeof n !== 'object' || depth > 60 || found.length > 200) return;
+      if (Array.isArray(n)) { n.forEach((x) => walk(x, depth + 1, via)); return; }
+      for (const k in n) {
+        const v = n[k];
+        if ((k === 'watchPlaylistEndpoint' || k === 'watchEndpoint') && v && typeof v === 'object' && /^[A-Za-z0-9_-]{10,}$/.test(v.playlistId || '')) found.push({ ep: v, kind: k, via });
+        walk(v, depth + 1, k === 'startRadioButton' ? 'radio' : via);
+      }
     };
-    const header = findKey(json, 'musicImmersiveHeaderRenderer') || findKey(json, 'musicVisualHeaderRenderer') || findKey(json, 'musicHeaderRenderer');
-    const radioBtn = header && findKey(header, 'startRadioButton');
-    if (radioBtn) walk(radioBtn, 0);
-    if (!eps.length && header) walk(header, 0);
-    const ep = eps.find((e) => /^RD(EM|AO|AMPL)/.test(e.playlistId)) || eps[0];
-    if (!ep) { status("This artist doesn't have a radio on YouTube Music."); return; }
+    walk(json, 0, '');
+    const pick = found.find((f) => f.via === 'radio') || found.find((f) => /^RDEM/.test(f.ep.playlistId)) || found.find((f) => /^RDAO/.test(f.ep.playlistId));
+    if (!pick) {
+      // No artist radio on the page: fall back to a radio from the artist's first song, and say so.
+      const song = found.map((f) => f.ep.videoId).find((v) => ID_RE.test(v || ''));
+      if (song) {
+        const playlistId = `RDAMVM${song}`;
+        const followed2 = () => new URLSearchParams(location.search).get('list') === playlistId;
+        if (await tryNavigate({ watchEndpoint: { videoId: song, playlistId } }, followed2)) { status("No artist radio found, so this is a radio from one of their songs" + (name ? ': ' + name : '')); return; }
+      }
+      status("Couldn't find an artist radio on this page. Found: " + (found.slice(0, 5).map((f) => f.ep.playlistId.slice(0, 6)).join(', ') || 'no playable lists'));
+      return;
+    }
+    const ep = pick.ep;
     const followed = () => new URLSearchParams(location.search).get('list') === ep.playlistId;
-    if (await tryNavigate({ watchPlaylistEndpoint: { playlistId: ep.playlistId, params: ep.params } }, followed)) { status('Artist radio started' + (name ? ': ' + name : '')); return; }
+    const target = ep.videoId ? { watchEndpoint: { videoId: ep.videoId, playlistId: ep.playlistId, params: ep.params } } : { watchPlaylistEndpoint: { playlistId: ep.playlistId, params: ep.params } };
+    if (await tryNavigate(target, followed)) { status('Artist radio started' + (name ? ': ' + name : '')); return; }
     await playCollection(ep.playlistId);
   }
 
