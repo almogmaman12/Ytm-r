@@ -71,7 +71,10 @@ async function load() {
   const c = await chrome.storage.local.get(['relayUrl', 'token', 'allowHttp', 'pcCode', 'agent', 'youtube', 'sound', 'calendar']);
   $('agent').checked = c.agent !== false;
   $('calendar').checked = !!c.calendar && await chrome.permissions.contains({ origins: ['https://calendar.google.com/*'] }).catch(() => false);
-  $('sound').checked = !!c.sound && await chrome.permissions.contains({ permissions: ['debugger'] }).catch(() => false);
+  const soundAvailable = await chrome.permissions.contains({ permissions: ['debugger'] }).catch(() => false);
+  $('sound').checked = !!c.sound && soundAvailable;
+  $('sound').disabled = !soundAvailable;
+  $('soundHelp').textContent = soundAvailable ? 'Chrome debugging permission is available. Automatic activation is off unless you enable it here.' : 'Reload or re-enable the updated extension in chrome://extensions to approve its debugging permission.';
   $('youtube').checked = !!c.youtube && await chrome.permissions.contains({ origins: ['https://www.youtube.com/*'] }).catch(() => false);
   $('pccode').value = c.pcCode || '';
   if (c.pcCode) $('pcdetails').open = true;
@@ -99,15 +102,18 @@ $('calendarOpen').onclick = async () => {
   if (!res?.ok) say('Enable Calendar access first.', 'warn');
 };
 $('sound').onchange = async () => {
-  const permissions = ['debugger'];
-  if ($('sound').checked) {
-    const ok = await chrome.permissions.request({ permissions }).catch(() => false);
-    $('sound').checked = ok;
-    await chrome.storage.local.set({ sound: ok });
-  } else {
-    await chrome.storage.local.set({ sound: false });
-    await chrome.permissions.remove({ permissions }).catch(() => {});
-  }
+  const input = $('sound');
+  const enabled = input.checked;
+  input.disabled = true;
+  try {
+    const available = await chrome.permissions.contains({ permissions: ['debugger'] });
+    if (!available) { input.checked = false; say('Chrome has not granted the debugging permission. Reload or re-enable the extension.', 'warn'); return; }
+    await chrome.storage.local.set({ sound: enabled });
+    say(enabled ? 'Automatic sound activation enabled.' : 'Automatic sound activation disabled.', 'ok');
+  } catch (error) {
+    input.checked = !enabled;
+    say('Could not save sound setting: ' + (error.message || 'Unknown error'), 'bad');
+  } finally { input.disabled = false; }
 };
 $('youtube').onchange = async () => {
   const origins = ['https://www.youtube.com/*'];

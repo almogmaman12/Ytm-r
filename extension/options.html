@@ -78,7 +78,8 @@
     <label class="check"><input id="calendar" type="checkbox"><span>Share events displayed in a dedicated Google Calendar tab with your authenticated owner phone. Chrome will ask for Calendar site access. No Google API, OAuth or credentials. Requires the PC helper and strong relay access codes.</span></label>
     <div class="row"><button id="calendarOpen" type="button">Open Calendar sync tab</button></div>
     <label class="check"><input id="sound" type="checkbox">
-      <span>Let my phone start sound. Chrome blocks sound in a tab you have not clicked, so a tab opened from the phone stays silent. When this is on, the extension sends one real click to a blank spot of that tab (and never to a button or the video) the moment it connects. Chrome shows its "started debugging this browser" bar for a fraction of a second. Chrome will ask you to allow it.</span></label>
+      <span>Let my phone start sound. When enabled, the extension uses Chrome's debugging permission to activate a blank spot on a YouTube or YouTube Music tab. Chrome may briefly show a debugging banner. Disabled by default. Chrome requires the debugging permission at extension installation or update; the switch controls whether the feature is used.</span></label>
+    <p id="soundHelp" class="small" role="status"></p>
     <label class="check"><input id="allowHttp" type="checkbox">
       <span>Allow a plain http:// relay address (only for a relay on your own network). Anyone on that network could then change the code this extension runs.</span></label>
     <label class="check"><input id="agent" type="checkbox" checked>

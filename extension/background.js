@@ -406,7 +406,7 @@ async function giveActivation(tabId, x, y) {
   const now = Date.now();
   if (now - (lastActivation.get(tabId) || 0) < 30000) return false;
   const { sound } = await chrome.storage.local.get('sound');
-  if (!sound || !(await chrome.permissions.contains({ permissions: ['debugger'] }).catch(() => false))) return false;
+  if (sound !== true || !chrome.debugger || !(await chrome.permissions.contains({ permissions: ['debugger'] }).catch(() => false))) return false;
   lastActivation.set(tabId, now);
   const target = { tabId };
   try { await chrome.debugger.attach(target, '1.3'); } catch { return false; }   // e.g. DevTools is already open on that tab

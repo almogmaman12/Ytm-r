@@ -210,6 +210,49 @@
   dialog label.lbl { display: block; margin: 0 0 6px; font-weight: 600; font-size: 15px; }
   dialog input[type=text], dialog input[type=password] { width: 100%; height: 48px; border-radius: 14px; border: 0; padding: 0 14px; margin-bottom: 8px; background: var(--surface-2); color: var(--ink); font-size: 17px; }
   dialog p.small { font-size: 13px; margin: 0 0 18px; }
+  /* Calendar agenda: full-height mobile sheet, independent of the player. */
+  #calendarDlg { padding: 0; width: min(100%, 480px); height: 100dvh; max-height: 100dvh; max-width: 100%; margin: auto; border-radius: 24px; background: var(--bg); }
+  #calendarDlg[open] { display: flex; flex-direction: column; }
+  #calendarDlg .cal-head { padding: max(16px, env(safe-area-inset-top)) 20px 12px; flex: none; border-bottom: 1px solid var(--line); }
+  .cal-top { display: flex; align-items: center; gap: 10px; }
+  .cal-top h2 { font-size: 27px; margin: 0; flex: 1; letter-spacing: -.035em; }
+  #calendarRange { margin: 9px 0 11px; font-size: 15px; color: var(--muted); font-weight: 600; }
+  #calendarDays { display: grid; grid-template-columns: repeat(7,minmax(0,1fr)); gap: 4px; }
+  .cal-day { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; min-height: 66px; border-radius: 14px; padding: 6px 0; color: var(--muted); }
+  .cal-day span { font-size: 11px; }
+  .cal-day strong { color: var(--ink); font-size: 19px; font-weight: 650; }
+  .cal-day i { height: 5px; width: 5px; background: transparent; border-radius: 50%; }
+  .cal-day.has-events i { background: var(--accent); }
+  .cal-day.today { box-shadow: inset 0 0 0 1px var(--accent); }
+  .cal-day[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
+  .cal-day[aria-pressed="true"] strong { color: inherit; }
+  .cal-day[aria-pressed="true"].has-events i { background: currentColor; }
+  .cal-nav { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+  .cal-nav button { font-size: 13px; font-weight: 650; border-radius: 12px; padding: 8px 11px; min-height: 38px; background: var(--surface); color: var(--ink); }
+  .cal-nav button:disabled { opacity: .35; cursor: default; }
+  .cal-nav #calendarAll { margin-left: auto; }
+  .cal-nav #calendarAll[aria-pressed="true"] { color: var(--accent); background: var(--surface-2); }
+  .cal-scroll { flex: 1; overflow: auto; overscroll-behavior: contain; padding: 14px 20px; }
+  #calendarStatus { font-size: 13px; color: var(--muted); margin: 0 0 15px; }
+  #calendarStatus[data-state="ok"] { color: var(--ok); }
+  #calendarItems { display: flex; flex-direction: column; gap: 17px; }
+  .cal-group h3 { font-size: 15px; color: var(--muted); font-weight: 650; margin: 0 0 9px; }
+  .cal-group.today h3 { color: var(--accent); }
+  .cal-event { display: flex; align-items: stretch; gap: 11px; padding: 12px 13px; background: var(--surface); border-radius: 15px; margin-bottom: 7px; }
+  .cal-event::before { content: ''; flex: 0 0 3px; border-radius: 9px; background: var(--accent); }
+  .cal-event.past { opacity: .60; }
+  .cal-event .cal-info { min-width: 0; flex: 1; }
+  .cal-event strong { display: block; font-size: 16px; line-height: 1.35; overflow-wrap: anywhere; }
+  .cal-event small { display: block; font-size: 12px; color: var(--muted); margin-top: 5px; }
+  .cal-empty { text-align: center; border: 1px dashed var(--line); border-radius: 18px; padding: 25px 16px; color: var(--muted); }
+  .cal-empty strong { display: block; color: var(--ink); margin-bottom: 5px; }
+  .cal-reminders { margin-top: 22px; padding: 15px; background: var(--surface); border-radius: 18px; }
+  .cal-reminders h3 { font-size: 16px; margin: 0 0 5px; }
+  .cal-reminders p { font-size: 12px; margin: 0 0 12px; }
+  .cal-reminders .row { gap: 7px; }
+  .cal-reminders button { min-height: 42px; }
+  .cal-footer { flex: none; padding: 10px 20px calc(12px + var(--safe-b)); border-top: 1px solid var(--line); color: var(--muted); font-size: 11px; text-align: center; }
+  @media(max-width: 500px) { #calendarDlg { border-radius: 0; } }
   dialog#settings { padding: 0; max-height: 90dvh; }
   dialog#settings[open] { display: flex; flex-direction: column; }
   .sheetBody { overflow-y: auto; padding: 22px 22px 6px; overscroll-behavior: contain; }
@@ -483,16 +526,36 @@
   </div>
 </div>
 
-<dialog id="calendarDlg" aria-label="Calendar" style="max-height:85dvh;overflow:auto">
-  <h2>Calendar</h2><p id="calendarStatus" class="small" role="status"></p>
-  <ul id="calendarItems" style="list-style:none;padding:0;margin:0 0 16px"></ul>
-  <div class="row">
-    <button id="calendarEnablePush" class="secondary">Enable push notifications</button>
-    <button id="calendarTestPush" class="secondary" hidden>Send test notification</button>
-    <button id="calendarDisablePush" class="secondary" hidden>Disable notifications</button>
-    <p id="calendarPushStatus" class="small" role="status">Reminders 10 minutes before readable timed events. Requires an active Calendar sync tab on the PC.</p>
-    <button id="calendarRefresh" class="secondary">Refresh</button><button id="calendarClose" class="secondary">Close</button>
+<dialog id="calendarDlg" aria-labelledby="calendarHeading">
+  <header class="cal-head">
+    <div class="cal-top">
+      <button id="calendarClose" class="icon-btn" aria-label="Close calendar"><svg class="i" viewBox="0 0 24 24"><path d="M19 12H5m7-7-7 7 7 7"/></svg></button>
+      <h2 id="calendarHeading">Calendar</h2>
+      <button id="calendarRefresh" class="icon-btn" aria-label="Refresh calendar"><svg class="i"><use href="#i-refresh"/></svg></button>
+    </div>
+    <p id="calendarRange"></p>
+    <div id="calendarDays" aria-label="Week dates"></div>
+    <div class="cal-nav">
+      <button id="calendarPrev" aria-label="Previous week">‹</button>
+      <button id="calendarToday">Today</button>
+      <button id="calendarNext" aria-label="Next week">›</button>
+      <button id="calendarAll" aria-pressed="true">All events</button>
+    </div>
+  </header>
+  <div class="cal-scroll">
+    <p id="calendarStatus" role="status" aria-live="polite"></p>
+    <div id="calendarItems"></div>
+    <section class="cal-reminders" aria-label="Notifications">
+      <h3>Event reminders</h3>
+      <p id="calendarPushStatus" role="status">Get a push notification 10 minutes before readable timed events.</p>
+      <div class="row">
+        <button id="calendarEnablePush" class="secondary">Enable notifications</button>
+        <button id="calendarTestPush" class="secondary" hidden>Send test notification</button>
+        <button id="calendarDisablePush" class="secondary" hidden>Turn off notifications</button>
+      </div>
+    </section>
   </div>
+  <footer class="cal-footer">Read-only · Events from the open Google Calendar tab on your PC</footer>
 </dialog>
 <dialog id="settings">
   <div class="sheetBody">
@@ -1516,21 +1579,79 @@ $('searchForm').onsubmit = (e) => {
 
 /* ---------- Google Calendar grabber and Web Push ---------- */
 let calendarKey = '', calendarSub = null, calendarAllowed = false, calendarEpoch = 0;
+let calendarData = null, calendarSelected = '', calendarWeek = '', calendarFreshTimer = null;
+const calDayKey = d => [d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-');
+function calDate(key) { const [y,m,d]=key.split('-').map(Number); return new Date(y,m-1,d,12); }
+function calAdd(key,n) { const d=calDate(key); d.setDate(d.getDate()+n); return calDayKey(d); }
+function calWeek(key) { const d=calDate(key); return calAdd(key,-d.getDay()); }
+const calToday = () => calDayKey(new Date());
+function calItems() {
+  return (calendarData?.status === 'ok' && Array.isArray(calendarData.items) ? calendarData.items : [])
+    .filter(x=>x && typeof x.title==='string' && /^\d{4}-\d{2}-\d{2}$/.test(x.date) && calDayKey(calDate(x.date))===x.date)
+    .slice(0,80).sort((a,b)=>a.date.localeCompare(b.date)||(a.start??0)-(b.start??0));
+}
+function drawCalendar() {
+  if (!calendarAllowed || !$('calendarDlg').open) return;
+  const today=calToday(), items=calItems(), week=calendarWeek||calWeek(today), end=calAdd(week,6);
+  const weeks=[calWeek(today),...items.map(x=>calWeek(x.date))].sort();
+  const low=weeks[0], high=weeks[weeks.length-1];
+  const shortDay=new Intl.DateTimeFormat(undefined,{weekday:'short'});
+  const dateLabel=new Intl.DateTimeFormat(undefined,{month:'short',day:'numeric'});
+  const longDay=new Intl.DateTimeFormat(undefined,{weekday:'long',month:'short',day:'numeric'});
+  const clock=new Intl.DateTimeFormat(undefined,{hour:'numeric',minute:'2-digit'});
+  $('calendarRange').textContent=dateLabel.format(calDate(week))+' – '+dateLabel.format(calDate(end))+' · '+calDate(end).getFullYear();
+  $('calendarPrev').disabled=week<=low;
+  $('calendarNext').disabled=week>=high;
+  $('calendarAll').setAttribute('aria-pressed',String(!calendarSelected));
+  const days=$('calendarDays'); days.textContent='';
+  for(let i=0;i<7;i++){
+    const date=calAdd(week,i), d=calDate(date), btn=document.createElement('button');
+    btn.type='button'; btn.className='cal-day'+(date===today?' today':'')+(items.some(e=>e.date===date)?' has-events':'');
+    btn.setAttribute('aria-label',longDay.format(d)+(date===today?', today':''));
+    btn.setAttribute('aria-pressed',String(calendarSelected===date));
+    const name=document.createElement('span'), number=document.createElement('strong'), dot=document.createElement('i');
+    name.textContent=shortDay.format(d); number.textContent=d.getDate();
+    dot.setAttribute('aria-hidden','true'); btn.append(name,number,dot);
+    btn.onclick=()=>{calendarSelected=calendarSelected===date?'':date;drawCalendar();}; days.append(btn);
+  }
+  const status=$('calendarStatus'), list=$('calendarItems'); list.textContent='';
+  const fresh=calendarData?.status==='ok' && Number.isFinite(calendarData.at) && Date.now()-calendarData.at<180000;
+  status.dataset.state=fresh?'ok':'';
+  status.textContent=fresh?'● Synced from your PC · '+items.length+' '+(items.length===1?'event':'events'):
+    calendarData?.status==='unsupported'?'Calendar layout could not be read. Open Week view on your PC.':
+    calendarData?.status==='ok'?'Last sync is stale. Refresh or check the PC tab.':
+    calendarData?'No fresh Calendar data. Open the Calendar sync tab on your PC.':'Waiting for calendar data…';
+  const shown=items.filter(x=>calendarSelected?x.date===calendarSelected:x.date>=week&&x.date<=end);
+  if(!shown.length){
+    const empty=document.createElement('div'), title=document.createElement('strong'), desc=document.createElement('div');
+    empty.className='cal-empty'; title.textContent=calendarSelected?longDay.format(calDate(calendarSelected)):'No events in this view';
+    desc.textContent=calendarData?.status==='ok'?'No readable events for '+(calendarSelected?'this day.':'this week.'): 'Connect your Calendar sync tab to see events here.';
+    empty.append(title,desc);list.append(empty);return;
+  }
+  let lastDate='', group;
+  for(const event of shown){
+    if(event.date!==lastDate){
+      lastDate=event.date; group=document.createElement('section');group.className='cal-group'+(lastDate===today?' today':'');
+      const heading=document.createElement('h3');heading.textContent=(lastDate===today?'Today · ':'')+longDay.format(calDate(lastDate));group.append(heading);list.append(group);
+    }
+    const row=document.createElement('article'), info=document.createElement('div'), title=document.createElement('strong'), when=document.createElement('small');
+    const timed=Number.isFinite(event.start)&&Number.isFinite(+new Date(event.start));
+    row.className='cal-event'+(timed&&event.start<Date.now()?' past':'');info.className='cal-info';
+    title.textContent=event.title||'Untitled event';
+    when.textContent=timed?clock.format(new Date(event.start)):(event.time||'Time unavailable');
+    if(timed&&event.start>=Date.now()&&event.start-Date.now()<600000)when.textContent+=' · Starting soon';
+    info.append(title,when);row.append(info);group.append(row);
+  }
+}
 function renderCalendar(m) {
   if (!calendarAllowed || !$('calendarDlg').open) return;
-  const list = $('calendarItems'); list.textContent = '';
-  $('calendarStatus').textContent = m.status === 'ok' ? 'Events currently displayed in the PC calendar.' :
-    m.status === 'unsupported' ? 'Calendar layout could not be read. Open the Week view on the PC.' :
-    'No fresh Calendar data. Enable Calendar in extension settings and open its sync tab.';
-  if (m.status !== 'ok') return;
-  for (const event of m.items || []) {
-    const li = document.createElement('li'); li.style.padding = '10px 0'; li.style.borderTop = '1px solid var(--surface)';
-    const title = document.createElement('strong'); title.textContent = event.title;
-    const when = document.createElement('small'); when.style.display = 'block'; when.style.color = 'var(--muted)';
-    when.textContent = event.date + (Number.isFinite(event.start) ? ' · ' + new Date(event.start).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'}) : ' · Time unavailable');
-    li.append(title,when); list.append(li);
-  }
-  if (!list.children.length) $('calendarStatus').textContent = 'No readable events in the current view.';
+  calendarData=m;
+  drawCalendar();
+}
+function clearCalendarView() {
+  calendarData=null;calendarSelected='';calendarWeek='';
+  clearInterval(calendarFreshTimer);calendarFreshTimer=null;
+  $('calendarItems').textContent='';$('calendarDays').textContent='';
 }
 function pushUI() {
   $('calendarEnablePush').hidden = !!calendarSub;
@@ -1559,16 +1680,23 @@ function calendarAuth(m) {
   calendarEpoch++; calendarAllowed = m.calendar === true; calendarKey = m.pushKey || '';
   $('calendarBtn').hidden = !calendarAllowed;
   if (!calendarAllowed) {
-    calendarSub = null; $('calendarItems').textContent = ''; pushUI();
+    calendarSub = null; clearCalendarView(); pushUI();
     if ($('calendarDlg').open) $('calendarDlg').close();
     return;
   }
   syncPush(false).catch(()=>{});
 }
-$('calendarBtn').onclick=()=>{ $('calendarDlg').showModal(); $('calendarStatus').textContent='Loading…'; rawCmd('calendar_get'); };
-$('calendarRefresh').onclick=()=>rawCmd('calendar_get');
-$('calendarClose').onclick=()=>{ $('calendarDlg').close(); $('calendarItems').textContent=''; };
-$('calendarDlg').addEventListener('close',()=>{if (!$('calendarDlg').open) $('calendarItems').textContent='';});
+$('calendarBtn').onclick=()=>{
+  clearCalendarView(); calendarWeek=calWeek(calToday()); $('calendarDlg').showModal();
+  drawCalendar(); rawCmd('calendar_get'); calendarFreshTimer=setInterval(drawCalendar,30000);
+};
+$('calendarRefresh').onclick=()=>{ $('calendarStatus').textContent='Refreshing…';rawCmd('calendar_get'); };
+$('calendarClose').onclick=()=> $('calendarDlg').close();
+$('calendarDlg').addEventListener('close',()=>{if (!$('calendarDlg').open) clearCalendarView();});
+$('calendarToday').onclick=()=>{calendarWeek=calWeek(calToday());calendarSelected=calToday();drawCalendar();};
+$('calendarAll').onclick=()=>{calendarSelected='';drawCalendar();};
+$('calendarPrev').onclick=()=>{calendarWeek=calAdd(calendarWeek,-7);calendarSelected='';drawCalendar();};
+$('calendarNext').onclick=()=>{calendarWeek=calAdd(calendarWeek,7);calendarSelected='';drawCalendar();};
 $('calendarEnablePush').onclick=async()=>{
   if (!('Notification' in window) || !('PushManager' in window) || !('serviceWorker' in navigator)) { $('calendarPushStatus').textContent='This browser does not support Web Push. On iOS install the web app first.'; return; }
   try {
