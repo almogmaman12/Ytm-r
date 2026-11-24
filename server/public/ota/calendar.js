@@ -6,8 +6,19 @@
   let stopped = false, debounce, interval;
   const clean = (v) => String(v || '').replace(/\s+/g, ' ').trim();
   function dateOf(node) {
-    const n = node.closest('[data-datekey],[data-date]');
-    if (!n) return '';
+    let n=node.closest('[data-datekey],[data-date]');
+    if(!n){
+      // Agenda groups can have a separate date header. Search preceding siblings
+      // before ascending; never scan an entire calendar container for a date.
+      for(let p=node,depth=0;p&&depth<4&&!n;p=p.parentElement,depth++){
+        if(depth>0&&p.querySelectorAll){const candidates=p.querySelectorAll('[data-datekey],[data-date]');if(candidates.length===1)n=candidates[0];}
+        for(let q=p.previousElementSibling,i=0;q&&!n&&i<20;q=q.previousElementSibling,i++){
+          if(q.matches?.('[data-datekey],[data-date]'))n=q;
+          else {const a=q.querySelectorAll?.('[data-datekey],[data-date]');if(a?.length===1)n=a[0];}
+        }
+      }
+    }
+    if(!n)return '';
     let y, m, d;
     const key = n.getAttribute('data-datekey');
     const raw = n.getAttribute('data-date');
@@ -21,9 +32,9 @@
   }
   // Only unambiguous clocks: 9:30 AM, 14:30, 9 AM. Do not invent an hour from a title.
   function readClock(value) {
-    const text = clean(value).replace(/\u200e|\u200f/g,'');
+    const text = clean(value).replace(/[\u200e\u200f\u202a-\u202e\u2066-\u2069]/g,'');
     // For a displayed range, use its first clock only when it is independently unambiguous.
-    const first = text.split(/\s*[\u2013\u2014-]\s*/)[0];
+    const first = text.split(/\s*(?:[\u2013\u2014-]|\bto\b|עד)\s*/i)[0];
     const match = /^(\d{1,2})(?::(\d{2}))?\s*(am|pm)?$/i.exec(first);
     if (first !== text && !match?.[3] && /\b(am|pm)\b/i.test(text)) return null;
     if (!match || (!match[2] && !match[3])) return null;
@@ -35,21 +46,29 @@
   }
   function grab() {
     const grid = document.querySelector('[role="main"]') || document.querySelector('main');
-    if (!grid || !/\/(week|day|month|customday|schedule)(\/|$)/.test(location.pathname))
+    if (!grid || !/\/(week|day|month|customday|schedule|agenda)(\/|$)/.test(location.pathname))
       return { status: 'unsupported', items: [] };
     const chips = Array.from(grid.querySelectorAll('[data-eventid]'));
-    const items = [], seen = new Set();
+    const items = [], seen = new Set(), days=new Set();
+    const agenda=/\/(agenda|schedule)(\/|$)/.test(location.pathname);
     for (const chip of chips) {
       if (chip.getAttribute('aria-hidden') === 'true' || !chip.getClientRects().length) continue;
       if (chip.parentElement?.closest('[data-eventid]')) continue;
       const date = dateOf(chip);
       if (!date) continue;
-      const lines = (chip.innerText || '').split(/\n+/).map(clean).filter(Boolean);
+      let lines=(chip.innerText||'').split(/\n+/).map(clean).filter(Boolean);
+      if(agenda&&lines.length===1){
+        const raw=lines[0].replace(/[\u200e\u200f\u202a-\u202e\u2066-\u2069]/g,'');
+        const range='\\d{1,2}:\\d{2}(?:\\s*(?:am|pm))?\\s*(?:[–—-]|\\bto\\b|עד)\\s*\\d{1,2}:\\d{2}(?:\\s*(?:am|pm))?';
+        const first=new RegExp('^('+range+')\\s+(.+)$','i').exec(raw),last=new RegExp('^(.+?)\\s+('+range+')$','i').exec(raw);
+        if(first)lines=[first[1],first[2]];else if(last)lines=[last[2],last[1]];
+      }
       const timeNode = chip.querySelector('time,[data-event-time]');
       const candidate = clean(timeNode?.innerText || timeNode?.textContent || '');
+      const allDay=/^(all day|all-day|כל היום)$/i.test(candidate||lines[0]||'');
       const clock = readClock(candidate) || (lines.length > 1 ? readClock(lines[0]) : null);
       const explicitTitle = clean(chip.querySelector('[data-event-title]')?.textContent);
-      const title = explicitTitle || (clock && lines.length > 1 && readClock(lines[0]) ? lines.slice(1).join(' ') : lines.join(' '));
+      const title = explicitTitle || ((clock && readClock(lines[0]) || allDay) && lines.length > 1 ? lines.slice(1).join(' ') : lines.join(' '));
       if (!title) continue;
       const [y,m,d] = date.split('-').map(Number);
       // The Calendar display timezone must match the PC timezone for inferred clock times.
@@ -59,14 +78,16 @@
       else if (clock) start = new Date(y,m-1,d,clock.hour,clock.minute).getTime();
       const id = date + '|' + (chip.getAttribute('data-eventid') || '') + '|' + title + '|' + start;
       if (seen.has(id)) continue; seen.add(id);
-      items.push({ title: title.slice(0,160), date, start, time: clock ? (candidate || lines[0]) : '' });
+      days.add(date);
+      items.push({ title: title.slice(0,160), date, start, time: clock ? (candidate || lines[0]) : '', allDay });
       if (items.length >= 80) break;
     }
     // A changed layout must not silently report an empty calendar.
     if (chips.length && !items.length) return { status: 'unsupported', items: [] };
     if (!chips.length && !grid.querySelector('[data-datekey],[data-date]')) return { status: 'unsupported', items: [] };
     items.sort((a,b) => a.date.localeCompare(b.date) || (a.start ?? 0) - (b.start ?? 0));
-    return { status: 'ok', items };
+    if(!agenda)for(const cell of grid.querySelectorAll('[data-datekey],[data-date]')){const d=dateOf(cell);if(d)days.add(d);}
+    return {status:'ok',items,days:[...days].slice(0,62)};
   }
   async function scan() {
     if (stopped) return;

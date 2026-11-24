@@ -241,11 +241,17 @@ setInterval(() => { const n = Date.now(); for (const [c, v] of pairCodes) if (v.
 
 // token -> { pc: ws|null, phones: Set<ws>, lastState: object|null }
 const rooms = new Map();
+const calendarCache=new Map();
+const CAL_CACHE_TTL=14*86400000;
+function rememberCalendar(token,value){calendarCache.delete(token);calendarCache.set(token,value);while(calendarCache.size>100)calendarCache.delete(calendarCache.keys().next().value);}
+function cachedCalendar(token){const c=calendarCache.get(token);if(c&&Date.now()-c.at<CAL_CACHE_TTL)return {...c,status:'cached',items:c.items.map(x=>({...x,live:false}))};calendarCache.delete(token);return null;}
+function calendarFor(room,token){if(room.calendar?.status==='ok'&&room.agent&&Date.now()-room.calendar.at<180000)return room.calendar;return cachedCalendar(token)||(room.calendar&&['unsupported','disabled'].includes(room.calendar.status)?room.calendar:{type:'calendar',status:'offline',items:[]});}
 
 function getRoom(token) {
   let room = rooms.get(token);
   if (!room) {
     room = { pc: null, agent: null, agentYt: false, lastSite: 0, version: '', lastSeen: 0, lastAgent: 0, lastWake: 0, phones: new Set(), lastState: null, lastYtQueue: null };
+    room.calendar=cachedCalendar(token);
     rooms.set(token, room);
   }
   return room;
@@ -535,9 +541,12 @@ wss.on('connection', (ws, info) => {
     // The helper only keeps the connection alive; it sends nothing else.
     if (role === 'agent') {
       if (msg.type === 'calendar_snapshot' && room.agent === ws && calendarSecure() && !overLimit(5)) {
-        const items = (Array.isArray(msg.items) ? msg.items : []).slice(0,80).filter(x => x && /^\d{4}-\d{2}-\d{2}$/.test(x.date)).map(x => ({ title: text(x.title,160), date:x.date, start:Number.isFinite(x.start) && Math.abs(x.start-Date.now()) < 45*86400000 ? x.start : null, time:text(x.time,50) }));
-        room.calendar = { type:'calendar', status: msg.status === 'ok' ? 'ok' : msg.status === 'unsupported' ? 'unsupported' : 'offline', at: Math.min(Date.now(), Number(msg.at)||0), items };
-        room.phones.forEach(p => { if (!p.dev) send(p, room.calendar); });
+        const items=(Array.isArray(msg.items)?msg.items:[]).slice(0,80).filter(x=>x&&/^\d{4}-\d{2}-\d{2}$/.test(x.date)).map(x=>({title:text(x.title,160),date:x.date,start:Number.isFinite(x.start)&&Math.abs(x.start-Date.now())<61*86400000?x.start:null,time:text(x.time,50),allDay:x.allDay===true,live:x.live!==false&&msg.status==='ok'}));
+        const at=Math.min(Date.now(),Number(msg.at)||0);
+        if(msg.status==='disabled'){calendarCache.delete(token);room.calendar={type:'calendar',status:'disabled',items:[]};}
+        else if((msg.status==='ok'||msg.status==='cached')&&at>0&&Date.now()-at<CAL_CACHE_TTL){room.calendar={type:'calendar',status:msg.status,at,items};rememberCalendar(token,room.calendar);}
+        else room.calendar=cachedCalendar(token)||{type:'calendar',status:msg.status==='unsupported'?'unsupported':'offline',items:[]};
+        room.phones.forEach(p=>{if(!p.dev)send(p,calendarFor(room,token));});
         return;
       }
       if (msg.type === 'caps') { const yt = !!msg.yt; if (yt !== room.agentYt) { room.agentYt = yt; tellPhones(room); } }
@@ -549,7 +558,7 @@ wss.on('connection', (ws, info) => {
       if (overLimit(MAX_CMDS_PER_SEC)) return;
       if (['calendar_get','calendar_push_sub','calendar_push_unsub','calendar_push_test'].includes(msg.cmd)) {
         if (!calendarOwner()) return;
-        if (msg.cmd === 'calendar_get') return send(ws, room.calendar && Date.now()-room.calendar.at < 180000 ? room.calendar : {type:'calendar',status:'offline',items:[]});
+        if (msg.cmd === 'calendar_get') return send(ws,calendarFor(room,token));
         const u = push.endpoint(msg.value);
         if (!u) return send(ws,{type:'calendar_push',ok:false,message:'Unsupported push subscription endpoint.'});
         room.calendarSubs ||= new Map();
@@ -779,7 +788,7 @@ wss.on('connection', (ws, info) => {
     clearTimeout(authTimer);
     if (ws.joined) log(rid, `${role === 'pc' ? 'PC' : role === 'agent' ? 'PC helper' : 'phone'} disconnected: ${who}${code === 4000 ? ' (replaced by another PC)' : ''}`);
     if (role === 'agent') {
-      if (room.agent === ws) { room.calendar = null; room.agent = null; room.agentYt = false; room.lastAgent = Date.now(); tellPhones(room); }
+      if (room.agent === ws) { room.calendar=cachedCalendar(token);room.agent=null;room.agentYt=false;room.lastAgent=Date.now();tellPhones(room);if(calendarSecure())room.phones.forEach(p=>{if(!p.dev)send(p,calendarFor(room,token));}); }
     } else if (role === 'pc') {
       if (room.pc === ws) {
         room.pc = null;
@@ -797,13 +806,14 @@ wss.on('connection', (ws, info) => {
 const calendarTimer = setInterval(() => {
   if (!calendarSecure()) return;
   const now = Date.now();
+  for(const [token,cache] of calendarCache)if(now-cache.at>=CAL_CACHE_TTL)calendarCache.delete(token);
   for (const room of rooms.values()) {
     const cal = room.calendar;
     if (!room.agent || !cal || cal.status !== 'ok' || now-cal.at > 180000 || !room.calendarSubs) continue;
     for (const [url, sub] of room.calendarSubs) {
       for (const [key, at] of sub.sent) if (at < now-86400000) sub.sent.delete(key);
       for (const event of cal.items) {
-        if (!Number.isFinite(event.start) || event.start <= now || event.start-now > 600000) continue;
+        if (event.live===false || !Number.isFinite(event.start) || event.start <= now || event.start-now > 600000) continue;
         const key = crypto.createHash('sha256').update(event.title+'|'+event.start).digest('hex');
         if (sub.sent.has(key)) continue;
         sub.sent.set(key,now);

@@ -12,7 +12,7 @@
 //     payload marker, so an error page or a half-written file is never run;
 //   - it only runs on https://music.youtube.com/*, plus https://www.youtube.com/* if (and only if) you
 //     switch that on in the settings and approve Chrome's permission prompt; Calendar scripts
-//     have their own optional host permission and an explicitly selected sync tab;
+//     have their own optional host permission and run on any Calendar tab;
 //   - a bad or unreachable download never replaces the copy that already works.
 
 const SHELL_API = 2;            // payloads that need a newer shell are not installed
@@ -264,12 +264,49 @@ async function summary() {
 // PC code as the tab). If your phone asks, it opens music.youtube.com. It can do nothing else:
 // the address is fixed here and the relay sends no other instructions to it.
 let agentWs = null, agentAuthed = false;
-let calendarSnapshot = null;
-function publishCalendar() {
-  if (!agentAuthed || !agentWs || agentWs.readyState !== 1) return;
-  const fresh = calendarOn && calendarSnapshot && Date.now() - calendarSnapshot.at < 180000;
-  try { agentWs.send(JSON.stringify(fresh ? { type: 'calendar_snapshot', ...calendarSnapshot } : { type: 'calendar_snapshot', status: 'offline', items: [] })); } catch {}
+let calendarCache=null, calendarScope='', agentScope='', calendarWork=Promise.resolve();
+const calendarTabs=new Map();
+const CAL_TTL=14*86400000;
+function calendarQueue(fn){const p=calendarWork.then(fn);calendarWork=p.catch(()=>{});return p;}
+async function loadCalendarCache(cfg,origin){
+  const scope=origin+'|'+cfg.token;
+  if(calendarScope!==scope){
+    calendarScope=scope;calendarTabs.clear();
+    const {calendarCacheV2}=await chrome.storage.local.get('calendarCacheV2');
+    calendarCache=calendarCacheV2?.scope===scope?calendarCacheV2:null;
+  }
+  if(calendarCache&&Date.now()-calendarCache.at>=CAL_TTL)calendarCache=null;
 }
+function publishCalendar(){
+  if(!agentAuthed||!agentWs||agentWs.readyState!==1||calendarScope!==agentScope)return;
+  const now=Date.now();
+  for(const [id,t] of calendarTabs)if(now-t.at>=180000)calendarTabs.delete(id);
+  const live=new Set([...calendarTabs.values()].filter(t=>t.status==='ok').flatMap(t=>t.keys));
+  let data;
+  if(!calendarOn)data={status:'disabled',items:[]};
+  else if(calendarCache&&now-calendarCache.at<CAL_TTL)data={status:[...calendarTabs.values()].some(t=>t.status==='ok')?'ok':'cached',at:calendarCache.at,items:calendarCache.items.map(x=>({title:x.title,date:x.date,start:x.start,time:x.time,allDay:x.allDay,live:live.has(x.key)&&now-x.seenAt<180000}))};
+  else data={status:[...calendarTabs.values()].some(t=>t.status==='unsupported')?'unsupported':'offline',items:[]};
+  try{agentWs.send(JSON.stringify({type:'calendar_snapshot',...data}));}catch{}
+}
+async function saveCalendarTab(tabId,source,msg){
+  const cfg=await getConfig();if(!calendarOn||!cfg.token)return false;
+  await loadCalendarCache(cfg,relayOrigin(cfg.relayUrl,cfg.allowHttp));
+  const now=Date.now();
+  if(msg.status!=='ok'){calendarTabs.set(tabId,{at:now,status:'unsupported',keys:[]});return true;}
+  const items=(Array.isArray(msg.items)?msg.items:[]).slice(0,80).filter(x=>x&&typeof x.title==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(x.date)&&Number.isFinite(Date.parse(x.date))).map(x=>{
+    const title=x.title.slice(0,160),start=Number.isFinite(x.start)?x.start:null,time=String(x.time||'').slice(0,50);
+    return {title,date:x.date,start,time,allDay:x.allDay===true,source,seenAt:now,key:source+'|'+x.date+'|'+title+'|'+(start??time)};
+  });
+  const days=new Set(items.map(x=>x.date));
+  for(const d of (Array.isArray(msg.days)?msg.days:[]).slice(0,62))if(typeof d==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(d)&&Number.isFinite(Date.parse(d)))days.add(d);
+  const merged=new Map((calendarCache?.items||[]).filter(x=>!(x.source===source&&days.has(x.date))&&now-x.seenAt<CAL_TTL).map(x=>[x.key,x]));
+  for(const x of items)merged.set(x.key,x);
+  const all=[...merged.values()].filter(x=>Date.parse(x.date)>=now-8*86400000&&Date.parse(x.date)<=now+61*86400000).sort((a,b)=>a.date.localeCompare(b.date)||(a.start??0)-(b.start??0)).slice(0,80);
+  calendarTabs.set(tabId,{at:now,status:'ok',keys:items.map(x=>x.key)});
+  calendarCache={scope:calendarScope,at:now,items:all};
+  await chrome.storage.local.set({calendarCacheV2:calendarCache});return true;
+}
+async function clearCalendarCache(){calendarTabs.clear();calendarCache=null;await chrome.storage.local.remove('calendarCacheV2');publishCalendar();}
 let agentPing = null;
 let agentRetry = null;
 let agentDelay = 3000;
@@ -350,7 +387,9 @@ async function ensureAgent() {
   try { origin = relayOrigin(cfg.relayUrl, cfg.allowHttp); } catch { return stopAgent(); }
   // Always on (not only when no tab is open): if the tab is asleep, the phone can still wake it.
   if (agent === false || !cfg.token) return stopAgent();
+  await loadCalendarCache(cfg,origin);
   if (agentWs && agentWs.readyState <= 1) return;
+  agentScope=origin+'|'+cfg.token;
   const ws = new WebSocket(`${origin.replace(/^http/, 'ws')}/ws?token=${encodeURIComponent(cfg.token)}&role=agent`);
   agentWs = ws;
   ws.onmessage = async (ev) => {
@@ -392,9 +431,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type === 'calendar-open' && sender.url === chrome.runtime.getURL('options.html')) {
     (async () => {
       await getConfig(); if (!calendarOn) return { ok: false };
-      const tab = await chrome.tabs.create({ url: 'https://calendar.google.com/calendar/u/0/r/week', active: true });
-      await chrome.storage.local.set({ calendarTab: tab.id });
-      calendarSnapshot = null; publishCalendar();
+      await chrome.tabs.create({ url: 'https://calendar.google.com/calendar/u/0/r/agenda', active: true });
       return { ok: true };
     })().then(sendResponse, () => sendResponse({ ok: false })); return true;
   }
@@ -426,12 +463,12 @@ if (chrome.runtime.onUserScriptMessage) {
     if (msg && (msg.type === 'calendar-grab' || msg.type === 'calendar-check')) {
       (async () => {
         const tab = sender.tab;
-        const cfg = await chrome.storage.local.get(['calendar','calendarTab']);
-        if (!tab || sender.frameId !== 0 || !/^https:\/\/calendar\.google\.com\/calendar\//.test(sender.url || '') || !cfg.calendar || cfg.calendarTab !== tab.id || !(await chrome.permissions.contains({ origins: [CAL] }))) return false;
-        if (msg.type === 'calendar-check') return true;
-        const items = (Array.isArray(msg.items) ? msg.items : []).slice(0, 80).map(x => ({ title: String(x.title || '').slice(0, 160), date: String(x.date || '').slice(0, 10), start: Number.isFinite(x.start) ? x.start : null, time: String(x.time || '').slice(0, 50) }));
-        calendarSnapshot = { at: Date.now(), status: msg.status === 'ok' ? 'ok' : 'unsupported', items };
-        await ensureAgent(); publishCalendar(); return true;
+        const cfg=await chrome.storage.local.get('calendar');
+        if(!tab||sender.frameId!==0||!/^https:\/\/calendar\.google\.com\/calendar\//.test(sender.url||'')||!cfg.calendar||!(await chrome.permissions.contains({origins:[CAL]})))return false;
+        if(msg.type==='calendar-check')return true;
+        const source=(new URL(sender.url).pathname.match(/\/u\/(\d+)\//)||[])[1]||'0';
+        const ok=await calendarQueue(()=>saveCalendarTab(tab.id,source,msg));
+        if(ok){await ensureAgent();publishCalendar();}return ok;
       })().then(ok => sendResponse({ ok }), () => sendResponse({ ok: false })); return true;
     }
     if (msg && msg.type === 'claim-check') {
@@ -466,30 +503,30 @@ if (chrome.runtime.onUserScriptMessage) {
 }
 
 chrome.tabs.onRemoved.addListener(async (id) => {
-  const { calendarTab } = await chrome.storage.local.get('calendarTab');
-  if (id === calendarTab) { calendarSnapshot = null; publishCalendar(); await chrome.storage.local.remove('calendarTab'); }
+  if(calendarTabs.delete(id))publishCalendar();
   const tabs = await chrome.tabs.query({ url: siteMatches() }).catch(() => []);
   if (!tabs.length) chrome.storage.local.set({ pcStatus: { state: 'no-tab', version: '', at: Date.now() } });
   ensureAgent().catch(() => {});
 });
 
 chrome.tabs.onUpdated.addListener(async (tabId, info, tab) => {
+  if(info.url&&!info.url.startsWith('https://calendar.google.com/')&&calendarTabs.delete(tabId))publishCalendar();
   if (info.url && info.url.startsWith('https://music.youtube.com/')) { ensureAgent().catch(() => {}); pinTabs(); }
-  if (info.status !== 'complete' || !tab.url || !tab.url.startsWith('https://music.youtube.com/')) return;
+  if (info.status !== 'complete' || !tab.url || !(tab.url.startsWith('https://music.youtube.com/') || (calendarOn&&tab.url.startsWith('https://calendar.google.com/')))) return;
   const { ota = {} } = await chrome.storage.local.get('ota');
   if (Date.now() - (ota.checkedAt || 0) > 120000) checkForUpdate();
 });
 
 chrome.permissions.onAdded.addListener(() => { ensureRegistered().catch(() => {}); });
-chrome.permissions.onRemoved.addListener(() => { getConfig().then(() => { if (!calendarOn) { calendarSnapshot = null; publishCalendar(); } return ensureRegistered(); }).catch(() => {}); });
+chrome.permissions.onRemoved.addListener(() => { getConfig().then(async () => { if (!calendarOn) await calendarQueue(clearCalendarCache); return ensureRegistered(); }).catch(() => {}); });
 
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area === 'local' && changes.calendar) {
-    calendarSnapshot = null; getConfig().then(publishCalendar).catch(() => {}); checkForUpdate({ force: true });
+    getConfig().then(async()=>{if(!calendarOn)await calendarQueue(clearCalendarCache);else await ensureAgent();publishCalendar();}).catch(()=>{});checkForUpdate({force:true});
   }
   if (area === 'local' && changes.youtube) { checkForUpdate({ force: true }); getConfig().then(sendCaps).catch(() => {}); }
   if (area === 'local' && (changes.relayUrl || changes.token || changes.allowHttp || changes.pcCode)) checkForUpdate({ force: true });
-  if (area === 'local' && (changes.relayUrl || changes.token || changes.allowHttp || changes.pcCode || changes.agent)) { stopAgent(); ensureAgent().catch(() => {}); }
+  if (area === 'local' && (changes.relayUrl || changes.token || changes.allowHttp || changes.pcCode || changes.agent)) { if(changes.relayUrl||changes.token){calendarCache=null;calendarScope='';calendarTabs.clear();} stopAgent(); ensureAgent().catch(() => {}); }
 });
 
 chrome.runtime.onInstalled.addListener((details) => {

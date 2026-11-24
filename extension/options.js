@@ -89,10 +89,10 @@ $('calendar').onchange = async () => {
   if ($('calendar').checked) {
     const ok = await chrome.permissions.request({ origins }).catch(() => false);
     $('calendar').checked = ok; await chrome.storage.local.set({ calendar: ok });
-    say(ok ? 'Calendar access enabled. Click Open Calendar sync tab.' : 'Calendar access denied.', ok ? 'ok' : 'warn');
+    say(ok ? 'Calendar access enabled. Open any Google Calendar tab.' : 'Calendar access denied.', ok ? 'ok' : 'warn');
   } else {
     await chrome.storage.local.set({ calendar: false });
-    await chrome.storage.local.remove('calendarTab');
+    await chrome.storage.local.remove(['calendarTab','calendarCacheV2']);
     await chrome.permissions.remove({ origins }).catch(() => {});
     say('Calendar sharing stopped.', 'ok');
   }

@@ -18,7 +18,7 @@ const event = (id, title, time) => ({
 });
 const chips = [event('1','Meeting','09:30'),event('2','All day',''),event('3','Evening','6:30 PM'),event('4','Range','14:00–15:00'),event('5','Ambiguous','9:30–10:30 AM')];
 let observed, first, permitted=true;
-const grid = {querySelectorAll:()=>chips,querySelector:()=>day};
+const grid = {querySelectorAll:s=>s==='[data-eventid]'?chips:[],querySelector:()=>day};
 const ctx = {
   location:{hostname:'calendar.google.com',pathname:'/calendar/u/0/r/week'},
   document:{querySelector:()=>grid,documentElement:{}},
@@ -38,6 +38,13 @@ vm.runInNewContext(code,ctx);
   assert.equal(find('Range').start,new Date(2026,10,24,14,0).getTime());
   assert.equal(find('All day').start,null);
   assert.equal(observed.items.find(x=>x.title.includes('Ambiguous')).start,null);
+  ctx.location.pathname='/calendar/u/0/r/agenda';
+  chips.push(event('6','Hebrew','12:45 עד 14:45'));
+  chips.push(event('7','16:00 עד 18:00 Single line',''));
+  await first();
+  assert.equal(observed.status,'ok');
+  assert.equal(observed.items.find(x=>x.title==='Hebrew').start,new Date(2026,10,24,12,45).getTime());
+  assert.equal(observed.items.find(x=>x.title==='Single line').start,new Date(2026,10,24,16,0).getTime());
   permitted=false;observed=null;await first();assert.equal(observed,null);
   console.log('Calendar fixture and push endpoint tests passed');
 })().catch(e=>{console.error(e);process.exitCode=1;});

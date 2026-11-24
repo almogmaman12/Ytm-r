@@ -555,7 +555,7 @@
       </div>
     </section>
   </div>
-  <footer class="cal-footer">Read-only · Events from the open Google Calendar tab on your PC</footer>
+  <footer class="cal-footer">Read-only · Saved events sync from any Google Calendar tab</footer>
 </dialog>
 <dialog id="settings">
   <div class="sheetBody">
@@ -1586,7 +1586,7 @@ function calAdd(key,n) { const d=calDate(key); d.setDate(d.getDate()+n); return 
 function calWeek(key) { const d=calDate(key); return calAdd(key,-d.getDay()); }
 const calToday = () => calDayKey(new Date());
 function calItems() {
-  return (calendarData?.status === 'ok' && Array.isArray(calendarData.items) ? calendarData.items : [])
+  return (['ok','cached'].includes(calendarData?.status) && Array.isArray(calendarData.items) ? calendarData.items : [])
     .filter(x=>x && typeof x.title==='string' && /^\d{4}-\d{2}-\d{2}$/.test(x.date) && calDayKey(calDate(x.date))===x.date)
     .slice(0,80).sort((a,b)=>a.date.localeCompare(b.date)||(a.start??0)-(b.start??0));
 }
@@ -1599,7 +1599,8 @@ function drawCalendar() {
   const dateLabel=new Intl.DateTimeFormat(undefined,{month:'short',day:'numeric'});
   const longDay=new Intl.DateTimeFormat(undefined,{weekday:'long',month:'short',day:'numeric'});
   const clock=new Intl.DateTimeFormat(undefined,{hour:'numeric',minute:'2-digit'});
-  $('calendarRange').textContent=dateLabel.format(calDate(week))+' – '+dateLabel.format(calDate(end))+' · '+calDate(end).getFullYear();
+  $('calendarRange').textContent=new Intl.DateTimeFormat(undefined,{year:'numeric',month:'short',day:'numeric'}).formatRange(calDate(week),calDate(end));
+  $('calendarRange').dir='auto';
   $('calendarPrev').disabled=week<=low;
   $('calendarNext').disabled=week>=high;
   $('calendarAll').setAttribute('aria-pressed',String(!calendarSelected));
@@ -1618,14 +1619,14 @@ function drawCalendar() {
   const fresh=calendarData?.status==='ok' && Number.isFinite(calendarData.at) && Date.now()-calendarData.at<180000;
   status.dataset.state=fresh?'ok':'';
   status.textContent=fresh?'● Synced from your PC · '+items.length+' '+(items.length===1?'event':'events'):
-    calendarData?.status==='unsupported'?'Calendar layout could not be read. Open Week view on your PC.':
-    calendarData?.status==='ok'?'Last sync is stale. Refresh or check the PC tab.':
-    calendarData?'No fresh Calendar data. Open the Calendar sync tab on your PC.':'Waiting for calendar data…';
+    calendarData?.status==='unsupported'?'Calendar layout could not be read. Try Agenda or Week view on your PC.':
+    ['ok','cached'].includes(calendarData?.status)?'Showing saved events · Last sync '+(calendarData.at?new Date(calendarData.at).toLocaleString():'unknown')+'. Open any Calendar tab to update.':
+    calendarData?.status==='disabled'?'Calendar sharing is disabled on the PC.':calendarData?'No saved events yet. Open Google Calendar on the PC.':'Waiting for calendar data…';
   const shown=items.filter(x=>calendarSelected?x.date===calendarSelected:x.date>=week&&x.date<=end);
   if(!shown.length){
     const empty=document.createElement('div'), title=document.createElement('strong'), desc=document.createElement('div');
     empty.className='cal-empty'; title.textContent=calendarSelected?longDay.format(calDate(calendarSelected)):'No events in this view';
-    desc.textContent=calendarData?.status==='ok'?'No readable events for '+(calendarSelected?'this day.':'this week.'): 'Connect your Calendar sync tab to see events here.';
+    desc.textContent=['ok','cached'].includes(calendarData?.status)?'No saved events for '+(calendarSelected?'this day.':'this week.'): 'Open any Google Calendar tab on your PC to sync events.';
     empty.append(title,desc);list.append(empty);return;
   }
   let lastDate='', group;
@@ -1637,9 +1638,9 @@ function drawCalendar() {
     const row=document.createElement('article'), info=document.createElement('div'), title=document.createElement('strong'), when=document.createElement('small');
     const timed=Number.isFinite(event.start)&&Number.isFinite(+new Date(event.start));
     row.className='cal-event'+(timed&&event.start<Date.now()?' past':'');info.className='cal-info';
-    title.textContent=event.title||'Untitled event';
-    when.textContent=timed?clock.format(new Date(event.start)):(event.time||'Time unavailable');
-    if(timed&&event.start>=Date.now()&&event.start-Date.now()<600000)when.textContent+=' · Starting soon';
+    title.textContent=event.title||'Untitled event';title.dir='auto';
+    when.textContent=timed?clock.format(new Date(event.start)):(event.allDay?'All day':event.time||'Time unavailable');
+    if(fresh&&event.live!==false&&timed&&event.start>=Date.now()&&event.start-Date.now()<600000)when.textContent+=' · Starting soon';
     info.append(title,when);row.append(info);group.append(row);
   }
 }
