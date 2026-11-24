@@ -174,8 +174,8 @@ let port;
   assert.strictEqual(man.headers['access-control-allow-origin'], '*', 'manifest readable by the extension');
   const m = JSON.parse(man.body);
   assert.ok(/^[0-9a-f]{12}$/.test(m.version), 'version is 12 hex');
-  assert.strictEqual(m.requiresShell, 1);
-  assert.deepStrictEqual(m.files.map((f) => f.name).sort(), ['content.js', 'page.js']);
+  assert.strictEqual(m.requiresShell, 2);
+  assert.deepStrictEqual(m.files.map((f) => f.name).sort(), ['calendar.js', 'content.js', 'page.js']);
   for (const f of m.files) {
     assert.ok(['MAIN', 'USER_SCRIPT'].includes(f.world), 'world valid');
     const r = await rawGet('/ota/' + f.name);
