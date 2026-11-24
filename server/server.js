@@ -19,7 +19,7 @@ const ALLOWED_CMDS = new Set([
   'search', 'play_video', 'play_next', 'queue_remove', 'yt_jump', 'yt_remove', 'yt_reorder',
   'queue_end', 'queue_clear', 'play_collection', 'collection_next', 'collection_end', 'open', 'library',
   'radio', 'health', 'related', 'suggest', 'block_current', 'block_remove', 'block_list', 'refresh', 'reload_tab', 'queue_restore', 'yt_remove_many', 'yt_move_many',
-  'like', 'dislike', 'shuffle', 'repeat', 'speed', 'skip', 'sleep', 'save_playlist', 'skip_ad', 'add_to_playlist', 'boost', 'artist_radio',
+  'like', 'dislike', 'shuffle', 'repeat', 'speed', 'skip', 'sleep', 'save_playlist', 'skip_ad', 'add_to_playlist', 'boost', 'artist_radio', 'activate_sound',
 ]);
 const MAX_MSG_BYTES = 65536;        // PC -> server (search results can be a few KB)
 const MAX_PHONE_MSG_BYTES = 1024;   // phone -> server (commands are tiny)
@@ -629,6 +629,11 @@ wss.on('connection', (ws, info) => {
         return;
       }
       if (!ALLOWED_CMDS.has(msg.cmd)) { if (LOG_COMMANDS) log(rid, `unknown command ${clean(msg.cmd, 30)} refused  from ${who}`); return; }
+      if(msg.cmd==='activate_sound') {
+        if(!room.pc)return send(ws,{type:'status',message:'Open YouTube Music or YouTube on the PC first.'});
+        if(Date.now()-(room.lastManualActivation||0)<3000)return send(ws,{type:'status',message:'Please wait a few seconds before retrying.'});
+        room.lastManualActivation=Date.now();
+      }
       const out = { type: 'cmd', cmd: msg.cmd };
       if (msg.cmd === 'volume' || msg.cmd === 'seek') {
         const v = Number(msg.value);

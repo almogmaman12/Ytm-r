@@ -633,6 +633,7 @@
   }
 
   async function run(cmd, value, by) {
+    if (cmd === 'activate_sound') { await wantActivation(true); return; }
     if (IS_YT) return runYt(cmd, value, by);
     if (runExtra(cmd, value)) return;
     const v = video();
@@ -745,20 +746,28 @@
     }
     return null;
   }
-  let actTries = 0;
-  async function wantActivation() {
-    if (hasActivation() || replaced || !(sock && sock.readyState === WebSocket.OPEN) || actTries >= 6) return;
+  let actTries = 0, actBusy = false;
+  async function wantActivation(manual = false) {
+    const tell = message => { if(manual)sendWs({type:'status',message}); };
+    if (!active || replaced || !(sock && sock.readyState === WebSocket.OPEN)) return;
+    if (actBusy) { tell('Sound activation is already in progress.'); return; }
+    if (!manual && (hasActivation() || actTries >= 6)) return;
     const p = safePoint();
-    if (!p) return;
-    actTries++;
+    if (!p) { tell('No safe blank spot found on the PC tab. Close any open menus or dialogs and retry.'); return; }
+    if(!manual)actTries++;
+    actBusy=true;
     try {
       const r = await chrome.runtime.sendMessage({ type: 'activate', x: p.x, y: p.y });
-      if (r && r.ok) {
-        await new Promise((r) => setTimeout(r, 400));
-        if (playWish && Date.now() - playWish < 90000) { const v = video(); if (v && v.paused) { (IS_YT ? v.play() : qk('playPause', bar())?.click()); } }
-        reportSoon();
+      if (!r?.ok) { tell('Tap could not be sent. Enable Let my phone start sound in PC extension settings, close DevTools, or retry after 30 seconds.'); return; }
+      await new Promise(resolve => setTimeout(resolve, 400));
+      if (playWish && Date.now() - playWish < 90000) {
+        const v = video();
+        if(v && v.paused) { if(IS_YT) await v.play().catch(()=>{}); else qk('playPause',bar())?.click(); }
       }
-    } catch { /* an older extension, or the setting is off */ }
+      tell('Tap sent to the PC. If playback is still paused, press Play.');
+      reportSoon();
+    } catch { tell('Could not reach the PC extension. Check that it is enabled and up to date.'); }
+    finally { actBusy=false; }
   }
   every(wantActivation, 3000);
 
