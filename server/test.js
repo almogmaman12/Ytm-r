@@ -7,6 +7,8 @@ const realLog = console.log;
 console.log = (...a) => { logLines.push(a.join(' ')); };
 const DEV_FILE = require('path').join(require('os').tmpdir(), 'ytmr-devices-test-' + process.pid + '.json');
 process.env.DEVICES_FILE = DEV_FILE;
+process.env.CALENDAR_CACHE_FILE = DEV_FILE+'.calendar-cache.json';
+process.on('exit',()=>{try{require('fs').unlinkSync(process.env.CALENDAR_CACHE_FILE);}catch{}});
 const { server } = require('./server');
 
 const TOKEN = 'abcdefghijklmnopqrstuvwx_1234';
@@ -496,6 +498,32 @@ let port;
   const phoneOk = await connectCoded('phone', 'open-sesame-123', { name: 'Almog’s phone' });
   assert.ok(!phoneOk.closed, 'phone with the right code gets in');
   assert.ok(!phoneOk.w.msgs.some((m) => m.type === 'state' || m.type === 'pc_status') || phoneOk.w.msgs.findIndex((m) => m.type === 'challenge') < phoneOk.w.msgs.findIndex((m) => m.type === 'pc_status'), 'nothing is sent before the code is verified');
+
+  // Verify the relay cache after tab closure, agent disconnect, new phone and disk reload.
+  {
+    const agent=await connectCoded('agent','pc-secret-456');
+    const at=Date.now(), start=at+3600000,end=start+1800000;
+    const event={title:'Server cached event',date:new Date(start).toISOString().slice(0,10),start,end,time:'14:00 עד 14:30',live:true};
+    agent.w.send(JSON.stringify({type:'calendar_snapshot',status:'ok',at,items:[event]}));
+    await wait(150);
+    const latestCal=w=>w.msgs.filter(m=>m.type==='calendar').pop();
+    assert.strictEqual(latestCal(phoneOk.w).items[0].end,end,'end time reaches phone');
+    agent.w.send(JSON.stringify({type:'calendar_snapshot',status:'offline',items:[]}));
+    await wait(150);
+    assert.strictEqual(latestCal(phoneOk.w).status,'cached');
+    assert.strictEqual(latestCal(phoneOk.w).items[0].title,event.title);
+    agent.w.close(); await wait(150);
+    phoneOk.w.send(JSON.stringify({type:'cmd',cmd:'calendar_get'}));await wait(150);
+    assert.strictEqual(latestCal(phoneOk.w).items[0].end,end,'PC disconnected, end time still cached');
+    const newPhone=await connectCoded('phone','open-sesame-123');
+    await wait(150);
+    assert.strictEqual(latestCal(newPhone.w).items[0].title,event.title,'new authenticated phone can read server cache');
+    newPhone.w.close();
+    const stored=require('./calendar-cache').createCalendarCache(process.env.CALENDAR_CACHE_FILE);
+    assert.strictEqual(stored.get(cTok).items[0].end,end,'disk cache survives reopening');
+    assert.strictEqual(stored.get('another-private-room'),null,'room cache isolation');
+    assert(!require('fs').readFileSync(process.env.CALENDAR_CACHE_FILE,'utf8').includes(cTok),'raw room token is not persisted');
+  }
 
   // Token only (wrong code): refused, and gets nothing
   const bad = await connectCoded('phone', 'wrong-code');

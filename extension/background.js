@@ -284,7 +284,7 @@ function publishCalendar(){
   const live=new Set([...calendarTabs.values()].filter(t=>t.status==='ok').flatMap(t=>t.keys));
   let data;
   if(!calendarOn)data={status:'disabled',items:[]};
-  else if(calendarCache&&now-calendarCache.at<CAL_TTL)data={status:[...calendarTabs.values()].some(t=>t.status==='ok')?'ok':'cached',at:calendarCache.at,items:calendarCache.items.map(x=>({title:x.title,date:x.date,start:x.start,time:x.time,allDay:x.allDay,live:live.has(x.key)&&now-x.seenAt<180000}))};
+  else if(calendarCache&&now-calendarCache.at<CAL_TTL)data={status:[...calendarTabs.values()].some(t=>t.status==='ok')?'ok':'cached',at:calendarCache.at,emptyConfirmed:calendarCache.emptyConfirmed===true,items:calendarCache.items.map(x=>({title:x.title,date:x.date,start:x.start,end:x.end??null,time:x.time,allDay:x.allDay,live:live.has(x.key)&&now-x.seenAt<180000}))};
   else data={status:[...calendarTabs.values()].some(t=>t.status==='unsupported')?'unsupported':'offline',items:[]};
   try{agentWs.send(JSON.stringify({type:'calendar_snapshot',...data}));}catch{}
 }
@@ -295,15 +295,23 @@ async function saveCalendarTab(tabId,source,msg){
   if(msg.status!=='ok'){calendarTabs.set(tabId,{at:now,status:'unsupported',keys:[]});return true;}
   const items=(Array.isArray(msg.items)?msg.items:[]).slice(0,80).filter(x=>x&&typeof x.title==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(x.date)&&Number.isFinite(Date.parse(x.date))).map(x=>{
     const title=x.title.slice(0,160),start=Number.isFinite(x.start)?x.start:null,time=String(x.time||'').slice(0,50);
-    return {title,date:x.date,start,time,allDay:x.allDay===true,source,seenAt:now,key:source+'|'+x.date+'|'+title+'|'+(start??time)};
+    const end=Number.isFinite(x.end)&&start!==null&&x.end>start&&x.end-start<=7*86400000?x.end:null;
+    return {title,date:x.date,start,end,time,allDay:x.allDay===true,source,seenAt:now,key:source+'|'+x.date+'|'+title+'|'+(start??time)};
   });
+  // Closing or navigating a tab can briefly expose an empty DOM. Require two
+  // matching empty scans separated by time before deleting previously observed dates.
+  const prior=calendarTabs.get(tabId);
+  const emptySig=JSON.stringify((Array.isArray(msg.days)?msg.days:[]).slice(0,62).sort());
+  if(!items.length&&calendarCache?.items?.length&&(!prior?.emptySince||prior.emptySig!==emptySig||now-prior.emptySince<15000)){
+    calendarTabs.set(tabId,{at:now,status:'unsupported',keys:[],emptySig,emptySince:prior?.emptySig===emptySig&&prior.emptySince?prior.emptySince:now});return true;
+  }
   const days=new Set(items.map(x=>x.date));
   for(const d of (Array.isArray(msg.days)?msg.days:[]).slice(0,62))if(typeof d==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(d)&&Number.isFinite(Date.parse(d)))days.add(d);
   const merged=new Map((calendarCache?.items||[]).filter(x=>!(x.source===source&&days.has(x.date))&&now-x.seenAt<CAL_TTL).map(x=>[x.key,x]));
-  for(const x of items)merged.set(x.key,x);
+  for(const x of items){const old=calendarCache?.items?.find(y=>y.key===x.key);if(x.end===null&&old?.end>x.start)x.end=old.end;merged.set(x.key,x);}
   const all=[...merged.values()].filter(x=>Date.parse(x.date)>=now-8*86400000&&Date.parse(x.date)<=now+61*86400000).sort((a,b)=>a.date.localeCompare(b.date)||(a.start??0)-(b.start??0)).slice(0,80);
   calendarTabs.set(tabId,{at:now,status:'ok',keys:items.map(x=>x.key)});
-  calendarCache={scope:calendarScope,at:now,items:all};
+  calendarCache={scope:calendarScope,at:now,items:all,emptyConfirmed:all.length===0&&days.size>0};
   await chrome.storage.local.set({calendarCacheV2:calendarCache});return true;
 }
 async function clearCalendarCache(){calendarTabs.clear();calendarCache=null;await chrome.storage.local.remove('calendarCacheV2');publishCalendar();}
@@ -503,7 +511,7 @@ if (chrome.runtime.onUserScriptMessage) {
 }
 
 chrome.tabs.onRemoved.addListener(async (id) => {
-  if(calendarTabs.delete(id))publishCalendar();
+  await calendarQueue(async()=>{calendarTabs.delete(id);publishCalendar();});
   const tabs = await chrome.tabs.query({ url: siteMatches() }).catch(() => []);
   if (!tabs.length) chrome.storage.local.set({ pcStatus: { state: 'no-tab', version: '', at: Date.now() } });
   ensureAgent().catch(() => {});

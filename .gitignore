@@ -4,3 +4,5 @@ node_modules/
 .DS_Store
 devices.json
 devices.json.tmp
+calendar-cache.json
+calendar-cache.json.tmp

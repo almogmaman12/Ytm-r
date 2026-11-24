@@ -555,7 +555,7 @@
       </div>
     </section>
   </div>
-  <footer class="cal-footer">Read-only · Saved events sync from any Google Calendar tab</footer>
+  <footer class="cal-footer">Read-only · Events cached on your relay server</footer>
 </dialog>
 <dialog id="settings">
   <div class="sheetBody">
@@ -878,7 +878,7 @@ function connect() {
   sock.onclose = (ev) => {
     if (ws !== sock) return;
     ws = null;
-    calendarAuth({});
+    calendarDisconnect(ev.code===4003||ev.code===4005);
     $('app').dataset.pc = 'off';
     if (ev.code === 4005) {
       // This phone was removed (or signed out): forget the key and go back to the start screen.
@@ -907,7 +907,7 @@ function connect() {
 function drop() {
   const s = ws;
   ws = null;
-  calendarAuth({});
+  calendarDisconnect(false);
   clearTimeout(retryTimer);
   try { s && s.close(); } catch {}
 }
@@ -1580,6 +1580,12 @@ $('searchForm').onsubmit = (e) => {
 /* ---------- Google Calendar grabber and Web Push ---------- */
 let calendarKey = '', calendarSub = null, calendarAllowed = false, calendarEpoch = 0;
 let calendarData = null, calendarSelected = '', calendarWeek = '', calendarFreshTimer = null;
+let calendarConnected=false, calendarOwnerToken='';
+const CAL_DISPLAY_TTL=14*86400000;
+try{localStorage.removeItem('ytmrCalendarSaved');}catch{}
+// The relay owns the cache; only keep the current in-memory view during a transient disconnect.
+function forgetSavedCalendar(){calendarData=null;}
+function cachedPhoneData(){return calendarData&&['ok','cached'].includes(calendarData.status)&&Date.now()-calendarData.at<CAL_DISPLAY_TTL?{...calendarData,status:'cached',items:calendarData.items.map(x=>({...x,live:false}))}:null;}
 const calDayKey = d => [d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-');
 function calDate(key) { const [y,m,d]=key.split('-').map(Number); return new Date(y,m-1,d,12); }
 function calAdd(key,n) { const d=calDate(key); d.setDate(d.getDate()+n); return calDayKey(d); }
@@ -1616,11 +1622,11 @@ function drawCalendar() {
     btn.onclick=()=>{calendarSelected=calendarSelected===date?'':date;drawCalendar();}; days.append(btn);
   }
   const status=$('calendarStatus'), list=$('calendarItems'); list.textContent='';
-  const fresh=calendarData?.status==='ok' && Number.isFinite(calendarData.at) && Date.now()-calendarData.at<180000;
+  const fresh=calendarConnected && calendarData?.status==='ok' && Number.isFinite(calendarData.at) && Date.now()-calendarData.at<180000;
   status.dataset.state=fresh?'ok':'';
   status.textContent=fresh?'● Synced from your PC · '+items.length+' '+(items.length===1?'event':'events'):
     calendarData?.status==='unsupported'?'Calendar layout could not be read. Try Agenda or Week view on your PC.':
-    ['ok','cached'].includes(calendarData?.status)?'Showing saved events · Last sync '+(calendarData.at?new Date(calendarData.at).toLocaleString():'unknown')+'. Open any Calendar tab to update.':
+    ['ok','cached'].includes(calendarData?.status)?'Showing saved events · Last sync '+(calendarData.at?new Date(calendarData.at).toLocaleString():'unknown')+'. Saved on the server. Open any Calendar tab to update.':
     calendarData?.status==='disabled'?'Calendar sharing is disabled on the PC.':calendarData?'No saved events yet. Open Google Calendar on the PC.':'Waiting for calendar data…';
   const shown=items.filter(x=>calendarSelected?x.date===calendarSelected:x.date>=week&&x.date<=end);
   if(!shown.length){
@@ -1637,20 +1643,22 @@ function drawCalendar() {
     }
     const row=document.createElement('article'), info=document.createElement('div'), title=document.createElement('strong'), when=document.createElement('small');
     const timed=Number.isFinite(event.start)&&Number.isFinite(+new Date(event.start));
-    row.className='cal-event'+(timed&&event.start<Date.now()?' past':'');info.className='cal-info';
+    row.className='cal-event'+(timed&&(Number.isFinite(event.end)?event.end:event.start)<Date.now()?' past':'');info.className='cal-info';
     title.textContent=event.title||'Untitled event';title.dir='auto';
-    when.textContent=timed?clock.format(new Date(event.start)):(event.allDay?'All day':event.time||'Time unavailable');
+    const ends=timed&&Number.isFinite(event.end)&&event.end>event.start&&Number.isFinite(+new Date(event.end));
+    when.textContent=timed?clock.format(new Date(event.start))+(ends?' – '+(calDayKey(new Date(event.end))!==calDayKey(new Date(event.start))?dateLabel.format(new Date(event.end))+' ':'')+clock.format(new Date(event.end)):''):(event.allDay?'All day':event.time||'Time unavailable');
+    when.dir='auto';
     if(fresh&&event.live!==false&&timed&&event.start>=Date.now()&&event.start-Date.now()<600000)when.textContent+=' · Starting soon';
     info.append(title,when);row.append(info);group.append(row);
   }
 }
 function renderCalendar(m) {
-  if (!calendarAllowed || !$('calendarDlg').open) return;
+  if(!calendarAllowed||!calendarConnected||calendarOwnerToken!==getToken())return;
   calendarData=m;
   drawCalendar();
 }
 function clearCalendarView() {
-  calendarData=null;calendarSelected='';calendarWeek='';
+  calendarSelected='';calendarWeek='';
   clearInterval(calendarFreshTimer);calendarFreshTimer=null;
   $('calendarItems').textContent='';$('calendarDays').textContent='';
 }
@@ -1666,7 +1674,7 @@ function sameKey(sub,key) {
   const b = keyBytes(key); return !!a && a.length===b.length && a.every((v,i)=>v===b[i]);
 }
 async function syncPush(create, epoch=calendarEpoch) {
-  if (!calendarAllowed || !calendarKey || !('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) return;
+  if (!calendarAllowed || !calendarConnected || !calendarKey || !('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) return;
   if (Notification.permission !== 'granted') return;
   const reg = await navigator.serviceWorker.ready;
   if (epoch !== calendarEpoch || !calendarAllowed) return;
@@ -1677,21 +1685,25 @@ async function syncPush(create, epoch=calendarEpoch) {
   calendarSub = sub; pushUI();
   if (sub) rawCmd('calendar_push_sub',sub.endpoint);
 }
+function calendarDisconnect(revoked) {
+  calendarEpoch++;calendarConnected=false;calendarKey='';calendarSub=null;pushUI();
+  if(revoked||calendarOwnerToken!==getToken()){
+    calendarAllowed=false;calendarOwnerToken='';forgetSavedCalendar();clearCalendarView();$('calendarBtn').hidden=true;
+    if($('calendarDlg').open)$('calendarDlg').close();
+  }else{calendarData=cachedPhoneData()||calendarData;drawCalendar();}
+}
 function calendarAuth(m) {
-  calendarEpoch++; calendarAllowed = m.calendar === true; calendarKey = m.pushKey || '';
-  $('calendarBtn').hidden = !calendarAllowed;
-  if (!calendarAllowed) {
-    calendarSub = null; clearCalendarView(); pushUI();
-    if ($('calendarDlg').open) $('calendarDlg').close();
-    return;
-  }
-  syncPush(false).catch(()=>{});
+  calendarEpoch++;calendarConnected=true;calendarAllowed=m.calendar===true&&!!getToken();calendarKey=m.pushKey||'';
+  $('calendarBtn').hidden=!calendarAllowed;
+  if(!calendarAllowed){calendarDisconnect(true);return;}
+  calendarOwnerToken=getToken();calendarData=cachedPhoneData()||calendarData;
+  drawCalendar();rawCmd('calendar_get');syncPush(false).catch(()=>{});
 }
 $('calendarBtn').onclick=()=>{
   clearCalendarView(); calendarWeek=calWeek(calToday()); $('calendarDlg').showModal();
-  drawCalendar(); rawCmd('calendar_get'); calendarFreshTimer=setInterval(drawCalendar,30000);
+  drawCalendar(); if(calendarConnected)rawCmd('calendar_get'); calendarFreshTimer=setInterval(drawCalendar,30000);
 };
-$('calendarRefresh').onclick=()=>{ $('calendarStatus').textContent='Refreshing…';rawCmd('calendar_get'); };
+$('calendarRefresh').onclick=()=>{ if(calendarConnected){$('calendarStatus').textContent='Refreshing…';rawCmd('calendar_get');}else{drawCalendar();toast('Offline. Showing saved events.');} };
 $('calendarClose').onclick=()=> $('calendarDlg').close();
 $('calendarDlg').addEventListener('close',()=>{if (!$('calendarDlg').open) clearCalendarView();});
 $('calendarToday').onclick=()=>{calendarWeek=calWeek(calToday());calendarSelected=calToday();drawCalendar();};

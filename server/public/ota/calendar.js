@@ -44,6 +44,11 @@
     else if (hour > 23) return null;
     return { hour, minute };
   }
+  function readEnd(value) {
+    const v=clean(value).replace(/[\u200e\u200f\u202a-\u202e\u2066-\u2069]/g,'');
+    const parts=v.split(/\s*(?:[\u2013\u2014-]|\bto\b|עד)\s*/i);
+    return parts.length===2&&readClock(parts[0])&&readClock(parts[1])&&readClock(v)?readClock(parts[1]):null;
+  }
   function grab() {
     const grid = document.querySelector('[role="main"]') || document.querySelector('main');
     if (!grid || !/\/(week|day|month|customday|schedule|agenda)(\/|$)/.test(location.pathname))
@@ -66,7 +71,12 @@
       const timeNode = chip.querySelector('time,[data-event-time]');
       const candidate = clean(timeNode?.innerText || timeNode?.textContent || '');
       const allDay=/^(all day|all-day|כל היום)$/i.test(candidate||lines[0]||'');
-      const clock = readClock(candidate) || (lines.length > 1 ? readClock(lines[0]) : null);
+      const timeText=readClock(candidate)?candidate:(lines.find(x=>readClock(x))||'');
+      const clock=readClock(timeText);
+      // The accessibility label sometimes includes the full range even if the chip shows only a start.
+      const aria=clean(chip.getAttribute('aria-label')).replace(/[\u200e\u200f\u202a-\u202e\u2066-\u2069]/g,'');
+      const range=aria.match(/(?:\d{1,2}:\d{2}(?:\s*(?:am|pm))?|\d{1,2}\s*(?:am|pm))\s*(?:[–—-]|\bto\b|עד)\s*(?:\d{1,2}:\d{2}(?:\s*(?:am|pm))?|\d{1,2}\s*(?:am|pm))/i)?.[0]||'';
+      const endClock=readEnd(timeText)||((!clock|| (readClock(range)?.hour===clock.hour&&readClock(range)?.minute===clock.minute))?readEnd(range):null);
       const explicitTitle = clean(chip.querySelector('[data-event-title]')?.textContent);
       const title = explicitTitle || ((clock && readClock(lines[0]) || allDay) && lines.length > 1 ? lines.slice(1).join(' ') : lines.join(' '));
       if (!title) continue;
@@ -76,10 +86,16 @@
       const dt = timeNode?.getAttribute('datetime');
       if (dt && /^\d{4}-\d{2}-\d{2}T.*(?:Z|[+-]\d{2}:\d{2})$/.test(dt) && Number.isFinite(Date.parse(dt))) start = Date.parse(dt);
       else if (clock) start = new Date(y,m-1,d,clock.hour,clock.minute).getTime();
+      else if (readClock(range)) { const a=readClock(range);start=new Date(y,m-1,d,a.hour,a.minute).getTime(); }
+      let end=null;
+      if(Number.isFinite(start)&&endClock){const d2=new Date(start);d2.setHours(endClock.hour,endClock.minute,0,0);if(+d2<start)d2.setDate(d2.getDate()+1);if(+d2>start)end=+d2;}
+      const endNode=chip.querySelector('[data-event-end],time[data-end],time[data-role="end"]');
+      const endDt=endNode?.getAttribute('datetime');
+      if(endDt&&/^\d{4}-\d{2}-\d{2}T.*(?:Z|[+-]\d{2}:\d{2})$/.test(endDt)&&Number.isFinite(start)&&Date.parse(endDt)>start)end=Date.parse(endDt);
       const id = date + '|' + (chip.getAttribute('data-eventid') || '') + '|' + title + '|' + start;
       if (seen.has(id)) continue; seen.add(id);
       days.add(date);
-      items.push({ title: title.slice(0,160), date, start, time: clock ? (candidate || lines[0]) : '', allDay });
+      items.push({ title: title.slice(0,160), date, start, end, time: timeText||range, allDay });
       if (items.length >= 80) break;
     }
     // A changed layout must not silently report an empty calendar.
