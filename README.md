@@ -77,6 +77,18 @@ Needs Chrome 135 or newer.
 ### 3. Open the phone page
 Visit your relay address on your phone, paste the same token, and tap Connect. Use "Add to Home screen" to install it.
 
+## Optional Google Calendar website grabber and push reminders
+
+No Calendar API, OAuth app, API key or Google password is needed. Enable Calendar access under extension Options → Advanced, approve Chrome's optional site permission, then click **Open Calendar sync tab**. Sign in normally in Google Calendar and leave that selected tab on the Week view. The grabber reads rendered event chips, not Google endpoints. Only the selected tab is allowed to send snapshots. If the browser restarts or you close that tab, open a new sync tab from Options. Keep the calendar display timezone equal to the PC timezone; time parsing currently supports explicit 24-hour or AM/PM clocks, and ambiguous values are not used for reminders. Events outside the displayed view are not fetched. Google markup changes may require an OTA selector fix.
+
+The phone Calendar button requires strong existing `ACCESS_CODE` and `PC_CODE` (both at least 8 characters); paired phones do not receive calendar snapshots. The PC helper must be enabled. No calendar titles are included in push payloads or logs. The relay keeps the latest snapshot in memory and marks it stale after 3 minutes.
+
+On the phone open Calendar → Enable push notifications and approve the browser prompt. Test notification is available. Generic reminders are sent 10 minutes before readable timed events, even when the phone page is closed, as long as the relay and PC helper remain online with fresh calendar data. If you disable site access, close the sync tab, or lose connectivity, reminders stop when the snapshot expires. No exact delivery guarantee on sleeping hosts.
+
+For stable push keys across Render restarts, run `node server/calendar-push.js` locally and put its single JSON output in a private Render environment variable named `VAPID_PRIVATE_JWK`. Optionally set `VAPID_SUBJECT` to a contact mailto URL. Never commit the private key. If omitted, keys are ephemeral and the phone must re-enable push after a restart. Subscriptions are in memory; reopen the phone page after a redeploy to register its existing subscription again. Android Chrome is the primary target; iOS requires an installed web app.
+
+The first update requires extension 2.4.0 (reload once). Subsequent changes to `server/public/ota/calendar.js`, the phone interface and relay are OTA. The calendar payload is isolated from music scripts and only registered on the explicitly permitted Calendar origin.
+
 ## Updating (the point of all this)
 Change anything under `server/` (including `server/public/ota/`), commit and push. Your host redeploys. The extension checks the relay about every 10 minutes and whenever a YouTube Music tab loads, or press **Check for update now** in its settings. A new version is applied to the open tab without reloading it.
 

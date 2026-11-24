@@ -8,6 +8,7 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const { WebSocketServer } = require('ws');
+const push = require('./calendar-push');
 
 const PORT = process.env.PORT || 3000;
 const PUBLIC_DIR = path.resolve(__dirname, 'public');
@@ -92,8 +93,11 @@ function buildOtaManifest() {
     }
     const buf = fs.readFileSync(path.join(OTA_DIR, f.name));
     const sha256 = crypto.createHash('sha256').update(buf).digest('hex');
-    files.push({ name: f.name, world: f.world, sha256, size: buf.length });
-    parts.push(`${f.name}:${f.world}:${sha256}`);
+    if (f.target != null && f.target !== 'calendar' && f.target !== 'music') throw new Error('ota.json: bad target');
+    if (f.target === 'calendar' && f.world !== 'USER_SCRIPT') throw new Error('ota.json: bad calendar world');
+    const target = f.target || 'music';
+    files.push({ name: f.name, world: f.world, target, sha256, size: buf.length });
+    parts.push(`${f.name}:${f.world}:${target}:${sha256}`);
   }
   const version = crypto.createHash('sha256').update(parts.join('\n')).digest('hex').slice(0, 12);
   return { version, requiresShell: Number(cfg.requiresShell) || 1, files };
@@ -152,6 +156,7 @@ function clientIp(req) {
 // HMAC-SHA256(code, token|role|challenge). Read at connection time, so it can change on restart.
 const accessCode = () => process.env.ACCESS_CODE || '';
 const pcCode = () => process.env.PC_CODE || '';
+const calendarSecure = () => accessCode().length >= 8 && pcCode().length >= 8;
 const codeFor = (role) => (role === 'phone' ? accessCode() : pcCode());   // 'pc' and 'agent' are the PC side
 function proofFor(code, token, role, nonce) {
   return crypto.createHmac('sha256', code).update(`${token}|${role}|${nonce}`).digest('hex');
@@ -456,6 +461,7 @@ wss.on('connection', (ws, info) => {
   };
 
   let authed = false;
+  const calendarOwner = () => role === 'phone' && !viaDevice && calendarSecure();
   let authTimer = null;
   let nonce = '';
   const join = () => {
@@ -484,7 +490,7 @@ wss.on('connection', (ws, info) => {
       if (room.lastYtQueue) send(ws, room.lastYtQueue);
       if (room.pc) send(room.pc, { type: 'cmd', cmd: 'get_state' });
     }
-    send(ws, { type: 'authed', guarded: !!codeFor(role) });
+    send(ws, { type: 'authed', guarded: !!codeFor(role), calendar: calendarOwner(), ...(calendarOwner() ? { pushKey: push.publicKey } : {}) });
   };
 
   const code = viaDevice ? '' : codeFor(role);
@@ -528,6 +534,12 @@ wss.on('connection', (ws, info) => {
 
     // The helper only keeps the connection alive; it sends nothing else.
     if (role === 'agent') {
+      if (msg.type === 'calendar_snapshot' && room.agent === ws && calendarSecure() && !overLimit(5)) {
+        const items = (Array.isArray(msg.items) ? msg.items : []).slice(0,80).filter(x => x && /^\d{4}-\d{2}-\d{2}$/.test(x.date)).map(x => ({ title: text(x.title,160), date:x.date, start:Number.isFinite(x.start) && Math.abs(x.start-Date.now()) < 45*86400000 ? x.start : null, time:text(x.time,50) }));
+        room.calendar = { type:'calendar', status: msg.status === 'ok' ? 'ok' : msg.status === 'unsupported' ? 'unsupported' : 'offline', at: Math.min(Date.now(), Number(msg.at)||0), items };
+        room.phones.forEach(p => { if (!p.dev) send(p, room.calendar); });
+        return;
+      }
       if (msg.type === 'caps') { const yt = !!msg.yt; if (yt !== room.agentYt) { room.agentYt = yt; tellPhones(room); } }
       return;
     }
@@ -535,6 +547,26 @@ wss.on('connection', (ws, info) => {
     if (role === 'phone') {
       if (raw.length > MAX_PHONE_MSG_BYTES || msg.type !== 'cmd') return;
       if (overLimit(MAX_CMDS_PER_SEC)) return;
+      if (['calendar_get','calendar_push_sub','calendar_push_unsub','calendar_push_test'].includes(msg.cmd)) {
+        if (!calendarOwner()) return;
+        if (msg.cmd === 'calendar_get') return send(ws, room.calendar && Date.now()-room.calendar.at < 180000 ? room.calendar : {type:'calendar',status:'offline',items:[]});
+        const u = push.endpoint(msg.value);
+        if (!u) return send(ws,{type:'calendar_push',ok:false,message:'Unsupported push subscription endpoint.'});
+        room.calendarSubs ||= new Map();
+        if (msg.cmd === 'calendar_push_unsub') { room.calendarSubs.delete(u.href); return send(ws,{type:'calendar_push',ok:true,message:'Notifications disabled.'}); }
+        if (msg.cmd === 'calendar_push_sub') {
+          if (room.calendarSubs.size >= 8 && !room.calendarSubs.has(u.href)) return send(ws,{type:'calendar_push',ok:false,message:'Too many notification devices.'});
+          // A browser subscription belongs to one owner room, never several.
+          for (const other of rooms.values()) if (other !== room) other.calendarSubs?.delete(u.href);
+          const old = room.calendarSubs.get(u.href);
+          room.calendarSubs.set(u.href,old || {sent:new Map()});
+          return send(ws,{type:'calendar_push',ok:true,message:'Notifications enabled.'});
+        }
+        if (!room.calendarSubs.has(u.href) || Date.now()-(room.lastPushTest||0)<10000) return;
+        room.lastPushTest=Date.now();
+        push.sendPush(u.href).then(status => send(ws,{type:'calendar_push',ok:status>=200&&status<300,message:status>=200&&status<300?'Test notification sent.':'Push delivery rejected.'})).catch(()=>send(ws,{type:'calendar_push',ok:false,message:'Push delivery failed.'}));
+        return;
+      }
       if (msg.cmd === 'pair_start' || msg.cmd === 'device_list' || msg.cmd === 'device_revoke' || msg.cmd === 'device_leave') {
         if (msg.cmd === 'device_leave') {
           if (viaDevice) { devices.delete(viaDevice.id); saveDevices(); log(rid, `paired phone signed itself out: ${who}`); ws.close(4005, 'removed'); }
@@ -747,7 +779,7 @@ wss.on('connection', (ws, info) => {
     clearTimeout(authTimer);
     if (ws.joined) log(rid, `${role === 'pc' ? 'PC' : role === 'agent' ? 'PC helper' : 'phone'} disconnected: ${who}${code === 4000 ? ' (replaced by another PC)' : ''}`);
     if (role === 'agent') {
-      if (room.agent === ws) { room.agent = null; room.agentYt = false; room.lastAgent = Date.now(); tellPhones(room); }
+      if (room.agent === ws) { room.calendar = null; room.agent = null; room.agentYt = false; room.lastAgent = Date.now(); tellPhones(room); }
     } else if (role === 'pc') {
       if (room.pc === ws) {
         room.pc = null;
@@ -760,6 +792,28 @@ wss.on('connection', (ws, info) => {
     cleanupRoom(token);
   });
 });
+
+// Remind only from fresh DOM snapshots, once per event/device, 10 minutes before it starts.
+const calendarTimer = setInterval(() => {
+  if (!calendarSecure()) return;
+  const now = Date.now();
+  for (const room of rooms.values()) {
+    const cal = room.calendar;
+    if (!room.agent || !cal || cal.status !== 'ok' || now-cal.at > 180000 || !room.calendarSubs) continue;
+    for (const [url, sub] of room.calendarSubs) {
+      for (const [key, at] of sub.sent) if (at < now-86400000) sub.sent.delete(key);
+      for (const event of cal.items) {
+        if (!Number.isFinite(event.start) || event.start <= now || event.start-now > 600000) continue;
+        const key = crypto.createHash('sha256').update(event.title+'|'+event.start).digest('hex');
+        if (sub.sent.has(key)) continue;
+        sub.sent.set(key,now);
+        push.sendPush(url).then(status => { if (status===404||status===410) room.calendarSubs.delete(url); else if (status<200||status>=300) sub.sent.delete(key); }).catch(()=>sub.sent.delete(key));
+        break;
+      }
+    }
+  }
+}, 30000); calendarTimer.unref();
+wss.on('close', () => clearInterval(calendarTimer));
 
 // Heartbeat: drop dead connections, keep proxies from idling us out.
 const heartbeat = setInterval(() => {

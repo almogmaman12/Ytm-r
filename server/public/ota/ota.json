@@ -1,5 +1,5 @@
 {
-  "requiresShell": 1,
+  "requiresShell": 2,
   "files": [
     {
       "name": "page.js",
@@ -8,6 +8,11 @@
     {
       "name": "content.js",
       "world": "USER_SCRIPT"
+    },
+    {
+      "name": "calendar.js",
+      "world": "USER_SCRIPT",
+      "target": "calendar"
     }
   ]
 }

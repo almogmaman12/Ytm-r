@@ -11,14 +11,17 @@
 //   - every file must match the SHA-256 fingerprint in the relay's manifest and start with the
 //     payload marker, so an error page or a half-written file is never run;
 //   - it only runs on https://music.youtube.com/*, plus https://www.youtube.com/* if (and only if) you
-//     switch that on in the settings and approve Chrome's permission prompt; no other site access;
+//     switch that on in the settings and approve Chrome's permission prompt; Calendar scripts
+//     have their own optional host permission and an explicitly selected sync tab;
 //   - a bad or unreachable download never replaces the copy that already works.
 
-const SHELL_API = 1;            // payloads that need a newer shell are not installed
+const SHELL_API = 2;            // payloads that need a newer shell are not installed
 const SCRIPT_PREFIX = 'ytmr-';
 const YTM = 'https://music.youtube.com/*';
 const YT = 'https://www.youtube.com/*';          // optional: regular YouTube, off unless enabled in the settings
-let ytOn = false;
+let ytOn = false, calendarOn = false;
+const CAL = 'https://calendar.google.com/*';
+const matchesFor = (f) => f.target === 'calendar' ? (calendarOn ? [CAL] : []) : siteMatches();
 const siteMatches = () => (ytOn ? [YTM, YT] : [YTM]);
 const CHECK_EVERY_MINUTES = 10;
 const MAX_FILE_BYTES = 400000;
@@ -39,9 +42,10 @@ function relayOrigin(raw, allowHttp) {
 }
 
 async function getConfig() {
-  const c = await chrome.storage.local.get(['relayUrl', 'token', 'allowHttp', 'pcCode', 'youtube']);
+  const c = await chrome.storage.local.get(['relayUrl', 'token', 'allowHttp', 'pcCode', 'youtube', 'calendar']);
   pcCodeNow = c.pcCode || '';
   ytOn = !!c.youtube && await chrome.permissions.contains({ origins: [YT] }).catch(() => false);
+  calendarOn = !!c.calendar && await chrome.permissions.contains({ origins: [CAL] }).catch(() => false);
   return { relayUrl: c.relayUrl || '', token: c.token || '', allowHttp: !!c.allowHttp };
 }
 
@@ -74,6 +78,8 @@ function validateManifest(m) {
   for (const f of m.files) {
     if (!f || !/^[A-Za-z0-9_.-]+\.js$/.test(f.name) || names.has(f.name)) throw new Error('Invalid file entry');
     if (f.world !== 'MAIN' && f.world !== 'USER_SCRIPT') throw new Error('Invalid file world');
+    if (f.target != null && f.target !== 'calendar' && f.target !== 'music') throw new Error('Invalid payload target');
+    if (f.target === 'calendar' && f.world !== 'USER_SCRIPT') throw new Error('Calendar must use an isolated script');
     if (!/^[0-9a-f]{64}$/.test(f.sha256)) throw new Error('Invalid fingerprint');
     names.add(f.name);
   }
@@ -81,7 +87,7 @@ function validateManifest(m) {
 
 // The optional PC code (see the README) travels to the page script together with the token.
 let pcCodeNow = '';
-const cfgKey = (origin, token) => `${origin}|${token}|${pcCodeNow}|${ytOn ? 'yt' : ''}`;
+const cfgKey = (origin, token) => `${origin}|${token}|${pcCodeNow}|${ytOn ? 'yt' : ''}|${calendarOn ? 'cal' : ''}`;
 
 async function saveStatus(patch) {
   const { ota = {} } = await chrome.storage.local.get('ota');
@@ -91,7 +97,7 @@ async function saveStatus(patch) {
 // ---- registering the payload with Chrome ----
 
 function codeFor(f, origin, token, version) {
-  const prefix = f.world === 'USER_SCRIPT'
+  const prefix = f.target === 'calendar' ? '' : f.world === 'USER_SCRIPT'
     ? `globalThis.__YTMR_CONFIG__=${JSON.stringify({ relay: origin, token, version, pcCode: pcCodeNow })};\n`
     : '';
   return prefix + f.code;
@@ -104,9 +110,9 @@ async function registerFiles(origin, token, version, files) {
   await chrome.userScripts.configureWorld({ messaging: true });
   const existing = (await chrome.userScripts.getScripts()).filter((s) => s.id.startsWith(SCRIPT_PREFIX)).map((s) => s.id);
   if (existing.length) await chrome.userScripts.unregister({ ids: existing });
-  await chrome.userScripts.register(ordered(files).map(([name, f]) => ({
+  await chrome.userScripts.register(ordered(files).filter(([, f]) => matchesFor(f).length).map(([name, f]) => ({
     id: SCRIPT_PREFIX + name,
-    matches: siteMatches(),
+    matches: matchesFor(f),
     js: [{ code: codeFor(f, origin, token, version) }],
     runAt: 'document_idle',
     world: f.world,
@@ -116,12 +122,13 @@ async function registerFiles(origin, token, version, files) {
 // Tabs that are already open get the new code straight away. The new copy tells the old one
 // to stop, so nothing runs twice and the page does not need to be reloaded.
 async function applyToOpenTabs(origin, token, version, files) {
-  const tabs = await chrome.tabs.query({ url: siteMatches() });
+  const tabs = await chrome.tabs.query({ url: [...siteMatches(), ...(calendarOn ? [CAL] : [])] });
   if (!tabs.length) return true;
   if (typeof chrome.userScripts.execute !== 'function') return false;
   let ok = true;
   for (const tab of tabs) {
     for (const [, f] of ordered(files)) {
+      if (!matchesFor(f).some(p => (tab.url || '').startsWith(p.slice(0, -1)))) continue;
       try {
         await chrome.userScripts.execute({
           target: { tabId: tab.id },
@@ -145,7 +152,7 @@ async function ensureRegistered() {
   let origin;
   try { origin = relayOrigin(cfg.relayUrl, cfg.allowHttp); } catch { return; }
   const have = new Set((await chrome.userScripts.getScripts()).map((s) => s.id));
-  const wanted = Object.keys(ota.files).map((n) => SCRIPT_PREFIX + n);
+  const wanted = Object.entries(ota.files).filter(([, f]) => matchesFor(f).length).map(([n]) => SCRIPT_PREFIX + n);
   if (ota.cfgKey === cfgKey(origin, cfg.token) && wanted.every((id) => have.has(id))) return;
   await registerFiles(origin, cfg.token, ota.version, ota.files);
   await chrome.storage.local.set({ ota: { ...ota, cfgKey: cfgKey(origin, cfg.token) } });
@@ -213,7 +220,7 @@ getConfig().then(ensureAgent).catch(() => {});
       if (hex(await crypto.subtle.digest('SHA-256', buf)) !== f.sha256) throw new Error(`${f.name} does not match its fingerprint`);
       const code = new TextDecoder('utf-8', { fatal: true }).decode(buf);
       if (!code.startsWith(MARKER)) throw new Error(`${f.name} is not a YT Music Remote payload file`);
-      files[f.name] = { world: f.world, sha256: f.sha256, code };
+      files[f.name] = { world: f.world, target: f.target || 'music', sha256: f.sha256, code };
     }
   } catch (e) {
     // Keep whatever already works.
@@ -256,12 +263,19 @@ async function summary() {
 // While no YouTube Music tab is open, keep one small connection to the relay (role "agent", same
 // PC code as the tab). If your phone asks, it opens music.youtube.com. It can do nothing else:
 // the address is fixed here and the relay sends no other instructions to it.
-let agentWs = null;
+let agentWs = null, agentAuthed = false;
+let calendarSnapshot = null;
+function publishCalendar() {
+  if (!agentAuthed || !agentWs || agentWs.readyState !== 1) return;
+  const fresh = calendarOn && calendarSnapshot && Date.now() - calendarSnapshot.at < 180000;
+  try { agentWs.send(JSON.stringify(fresh ? { type: 'calendar_snapshot', ...calendarSnapshot } : { type: 'calendar_snapshot', status: 'offline', items: [] })); } catch {}
+}
 let agentPing = null;
 let agentRetry = null;
 let agentDelay = 3000;
 
 function stopAgent() {
+  agentAuthed = false;
   clearInterval(agentPing); agentPing = null;
   clearTimeout(agentRetry); agentRetry = null;
   if (agentWs) { const w = agentWs; agentWs = null; try { w.close(); } catch {} }
@@ -347,11 +361,12 @@ async function ensureAgent() {
       const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(`${cfg.token}|agent|${m.nonce}`));
       ws.send(JSON.stringify({ type: 'auth', proof: hex(sig) }));
     } else if (m.type === 'authed') {
+      agentAuthed = true;
       agentDelay = 3000;
       clearInterval(agentPing);
       // A message every 20 s also keeps Chrome from stopping this worker.
       agentPing = setInterval(() => { try { ws.send('{"type":"ping"}'); } catch {} }, 20000);
-      sendCaps();
+      sendCaps(); publishCalendar();
     } else if (m.type === 'wake') {
       openMusicTab();
     } else if (m.type === 'site') {
@@ -360,7 +375,7 @@ async function ensureAgent() {
   };
   ws.onclose = (ev) => {
     if (agentWs !== ws) return;
-    agentWs = null;
+    agentWs = null; agentAuthed = false;
     clearInterval(agentPing); agentPing = null;
     const wait = ev.code === 4003 ? 10 * 60 * 1000 : agentDelay;   // wrong or missing code: do not hammer the relay
     agentDelay = Math.min(agentDelay * 2, 60000);
@@ -374,6 +389,15 @@ async function ensureAgent() {
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (!msg) return;
   if (msg.type === 'ota-check') { checkForUpdate({ force: !!msg.force }).then(sendResponse, () => sendResponse(null)); return true; }
+  if (msg.type === 'calendar-open' && sender.url === chrome.runtime.getURL('options.html')) {
+    (async () => {
+      await getConfig(); if (!calendarOn) return { ok: false };
+      const tab = await chrome.tabs.create({ url: 'https://calendar.google.com/calendar/u/0/r/week', active: true });
+      await chrome.storage.local.set({ calendarTab: tab.id });
+      calendarSnapshot = null; publishCalendar();
+      return { ok: true };
+    })().then(sendResponse, () => sendResponse({ ok: false })); return true;
+  }
   if (msg.type === 'ota-status') { summary().then(sendResponse, () => sendResponse(null)); return true; }
 });
 
@@ -399,6 +423,17 @@ let lastPhoneCheck = 0;
 // Optional status messages from the running payload (shown on the settings page).
 if (chrome.runtime.onUserScriptMessage) {
   chrome.runtime.onUserScriptMessage.addListener((msg, sender, sendResponse) => {
+    if (msg && (msg.type === 'calendar-grab' || msg.type === 'calendar-check')) {
+      (async () => {
+        const tab = sender.tab;
+        const cfg = await chrome.storage.local.get(['calendar','calendarTab']);
+        if (!tab || sender.frameId !== 0 || !/^https:\/\/calendar\.google\.com\/calendar\//.test(sender.url || '') || !cfg.calendar || cfg.calendarTab !== tab.id || !(await chrome.permissions.contains({ origins: [CAL] }))) return false;
+        if (msg.type === 'calendar-check') return true;
+        const items = (Array.isArray(msg.items) ? msg.items : []).slice(0, 80).map(x => ({ title: String(x.title || '').slice(0, 160), date: String(x.date || '').slice(0, 10), start: Number.isFinite(x.start) ? x.start : null, time: String(x.time || '').slice(0, 50) }));
+        calendarSnapshot = { at: Date.now(), status: msg.status === 'ok' ? 'ok' : 'unsupported', items };
+        await ensureAgent(); publishCalendar(); return true;
+      })().then(ok => sendResponse({ ok }), () => sendResponse({ ok: false })); return true;
+    }
     if (msg && msg.type === 'claim-check') {
       // A YouTube tab waits for a video to play before taking the connection, unless we just opened it for the phone.
       const id = sender && sender.tab && sender.tab.id;
@@ -430,7 +465,9 @@ if (chrome.runtime.onUserScriptMessage) {
   });
 }
 
-chrome.tabs.onRemoved.addListener(async () => {
+chrome.tabs.onRemoved.addListener(async (id) => {
+  const { calendarTab } = await chrome.storage.local.get('calendarTab');
+  if (id === calendarTab) { calendarSnapshot = null; publishCalendar(); await chrome.storage.local.remove('calendarTab'); }
   const tabs = await chrome.tabs.query({ url: siteMatches() }).catch(() => []);
   if (!tabs.length) chrome.storage.local.set({ pcStatus: { state: 'no-tab', version: '', at: Date.now() } });
   ensureAgent().catch(() => {});
@@ -444,9 +481,12 @@ chrome.tabs.onUpdated.addListener(async (tabId, info, tab) => {
 });
 
 chrome.permissions.onAdded.addListener(() => { ensureRegistered().catch(() => {}); });
-chrome.permissions.onRemoved.addListener(() => { ensureRegistered().catch(() => {}); });
+chrome.permissions.onRemoved.addListener(() => { getConfig().then(() => { if (!calendarOn) { calendarSnapshot = null; publishCalendar(); } return ensureRegistered(); }).catch(() => {}); });
 
 chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === 'local' && changes.calendar) {
+    calendarSnapshot = null; getConfig().then(publishCalendar).catch(() => {}); checkForUpdate({ force: true });
+  }
   if (area === 'local' && changes.youtube) { checkForUpdate({ force: true }); getConfig().then(sendCaps).catch(() => {}); }
   if (area === 'local' && (changes.relayUrl || changes.token || changes.allowHttp || changes.pcCode)) checkForUpdate({ force: true });
   if (area === 'local' && (changes.relayUrl || changes.token || changes.allowHttp || changes.pcCode || changes.agent)) { stopAgent(); ensureAgent().catch(() => {}); }
@@ -461,7 +501,7 @@ chrome.alarms.create('ota-check', { periodInMinutes: CHECK_EVERY_MINUTES, delayI
 chrome.alarms.create('agent-check', { periodInMinutes: 1 });
 chrome.alarms.onAlarm.addListener((a) => {
   if (a.name === 'ota-check') checkForUpdate();
-  if (a.name === 'agent-check') { ensureAgent().catch(() => {}); pinTabs(); }
+  if (a.name === 'agent-check') { ensureAgent().catch(() => {}); pinTabs(); publishCalendar(); }
 });
 
 pinTabs();

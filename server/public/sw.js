@@ -24,3 +24,19 @@ self.addEventListener('fetch', (e) => {
     return (await net) || Response.error();
   })());
 });
+
+self.addEventListener('push', (e) => {
+  e.waitUntil(self.registration.showNotification('Calendar reminder', {
+    body: 'An upcoming calendar event is starting soon. Open YTM Remote to check.',
+    icon: '/icon.svg', tag: 'ytmr-calendar', data: { url: '/' }
+  }));
+});
+self.addEventListener('notificationclick', (e) => {
+  e.notification.close();
+  e.waitUntil((async () => {
+    const windows = await self.clients.matchAll({type:'window',includeUncontrolled:true});
+    const client = windows.find(c => new URL(c.url).origin === self.location.origin);
+    if (client) return client.focus();
+    return self.clients.openWindow('/');
+  })());
+});

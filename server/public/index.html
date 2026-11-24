@@ -356,7 +356,7 @@
     <div class="top">
       <span class="pill"><span class="dot"></span><span id="status">Connecting…</span></span>
       <div style="display:flex;gap:2px"><button id="siteBtn" class="icon-btn" aria-label="Open or switch YouTube and YouTube Music on the PC" title="Open or switch site"><svg class="i"><use href="#i-swap"/></svg></button><button id="refreshBtn" class="icon-btn" aria-label="Force refresh" title="Force refresh"><svg class="i"><use href="#i-refresh"/></svg></button>
-      <button id="settingsBtn" class="icon-btn" aria-label="Settings"><svg class="i"><use href="#i-sliders"/></svg></button></div>
+      <button id="calendarBtn" class="icon-btn" aria-label="Calendar" title="Calendar" hidden><svg class="i" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 3v4m10-4v4M3 10h18m-13 5h2m4 0h2"/></svg></button><button id="settingsBtn" class="icon-btn" aria-label="Settings"><svg class="i"><use href="#i-sliders"/></svg></button></div>
     </div>
     <div id="art" role="img" aria-label="Album art"><button id="srcChip" type="button" aria-label="Open or switch site"><svg class="i"><use id="srcIcon" href="#i-srcytm"/></svg><span id="srcName">YouTube Music</span></button></div>
     <div class="meta">
@@ -483,6 +483,17 @@
   </div>
 </div>
 
+<dialog id="calendarDlg" aria-label="Calendar" style="max-height:85dvh;overflow:auto">
+  <h2>Calendar</h2><p id="calendarStatus" class="small" role="status"></p>
+  <ul id="calendarItems" style="list-style:none;padding:0;margin:0 0 16px"></ul>
+  <div class="row">
+    <button id="calendarEnablePush" class="secondary">Enable push notifications</button>
+    <button id="calendarTestPush" class="secondary" hidden>Send test notification</button>
+    <button id="calendarDisablePush" class="secondary" hidden>Disable notifications</button>
+    <p id="calendarPushStatus" class="small" role="status">Reminders 10 minutes before readable timed events. Requires an active Calendar sync tab on the PC.</p>
+    <button id="calendarRefresh" class="secondary">Refresh</button><button id="calendarClose" class="secondary">Close</button>
+  </div>
+</dialog>
 <dialog id="settings">
   <div class="sheetBody">
     <h2>Settings</h2>
@@ -797,11 +808,14 @@ function connect() {
     else if (m.type === 'pair_code') showPairCode(m);
     else if (m.type === 'devices') renderDevices(m.list);
     else if (m.type === 'challenge') answerChallenge(sock, m.nonce);
-    else if (m.type === 'authed') { needCode = false; sendName(); }
+    else if (m.type === 'calendar') renderCalendar(m);
+    else if (m.type === 'calendar_push') $('calendarPushStatus').textContent = m.message;
+    else if (m.type === 'authed') { needCode = false; sendName(); calendarAuth(m); }
   };
   sock.onclose = (ev) => {
     if (ws !== sock) return;
     ws = null;
+    calendarAuth({});
     $('app').dataset.pc = 'off';
     if (ev.code === 4005) {
       // This phone was removed (or signed out): forget the key and go back to the start screen.
@@ -830,6 +844,7 @@ function connect() {
 function drop() {
   const s = ws;
   ws = null;
+  calendarAuth({});
   clearTimeout(retryTimer);
   try { s && s.close(); } catch {}
 }
@@ -1497,6 +1512,75 @@ $('searchForm').onsubmit = (e) => {
   searchTimer = setTimeout(() => {
     $('searchMsg').textContent = 'No response. Check that YouTube Music is open on the PC.';
   }, 10000);
+};
+
+/* ---------- Google Calendar grabber and Web Push ---------- */
+let calendarKey = '', calendarSub = null, calendarAllowed = false, calendarEpoch = 0;
+function renderCalendar(m) {
+  if (!calendarAllowed || !$('calendarDlg').open) return;
+  const list = $('calendarItems'); list.textContent = '';
+  $('calendarStatus').textContent = m.status === 'ok' ? 'Events currently displayed in the PC calendar.' :
+    m.status === 'unsupported' ? 'Calendar layout could not be read. Open the Week view on the PC.' :
+    'No fresh Calendar data. Enable Calendar in extension settings and open its sync tab.';
+  if (m.status !== 'ok') return;
+  for (const event of m.items || []) {
+    const li = document.createElement('li'); li.style.padding = '10px 0'; li.style.borderTop = '1px solid var(--surface)';
+    const title = document.createElement('strong'); title.textContent = event.title;
+    const when = document.createElement('small'); when.style.display = 'block'; when.style.color = 'var(--muted)';
+    when.textContent = event.date + (Number.isFinite(event.start) ? ' · ' + new Date(event.start).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'}) : ' · Time unavailable');
+    li.append(title,when); list.append(li);
+  }
+  if (!list.children.length) $('calendarStatus').textContent = 'No readable events in the current view.';
+}
+function pushUI() {
+  $('calendarEnablePush').hidden = !!calendarSub;
+  $('calendarTestPush').hidden = $('calendarDisablePush').hidden = !calendarSub;
+}
+function keyBytes(key) {
+  return Uint8Array.from(atob(key.replace(/-/g,'+').replace(/_/g,'/')+'='.repeat((4-key.length%4)%4)),c=>c.charCodeAt(0));
+}
+function sameKey(sub,key) {
+  const a = sub.options.applicationServerKey && new Uint8Array(sub.options.applicationServerKey);
+  const b = keyBytes(key); return !!a && a.length===b.length && a.every((v,i)=>v===b[i]);
+}
+async function syncPush(create, epoch=calendarEpoch) {
+  if (!calendarAllowed || !calendarKey || !('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) return;
+  if (Notification.permission !== 'granted') return;
+  const reg = await navigator.serviceWorker.ready;
+  if (epoch !== calendarEpoch || !calendarAllowed) return;
+  let sub = await reg.pushManager.getSubscription();
+  if (sub && !sameKey(sub,calendarKey)) { await sub.unsubscribe(); sub = null; }
+  if (!sub && create) sub = await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:keyBytes(calendarKey)});
+  if (epoch !== calendarEpoch || !calendarAllowed) return;
+  calendarSub = sub; pushUI();
+  if (sub) rawCmd('calendar_push_sub',sub.endpoint);
+}
+function calendarAuth(m) {
+  calendarEpoch++; calendarAllowed = m.calendar === true; calendarKey = m.pushKey || '';
+  $('calendarBtn').hidden = !calendarAllowed;
+  if (!calendarAllowed) {
+    calendarSub = null; $('calendarItems').textContent = ''; pushUI();
+    if ($('calendarDlg').open) $('calendarDlg').close();
+    return;
+  }
+  syncPush(false).catch(()=>{});
+}
+$('calendarBtn').onclick=()=>{ $('calendarDlg').showModal(); $('calendarStatus').textContent='Loading…'; rawCmd('calendar_get'); };
+$('calendarRefresh').onclick=()=>rawCmd('calendar_get');
+$('calendarClose').onclick=()=>{ $('calendarDlg').close(); $('calendarItems').textContent=''; };
+$('calendarDlg').addEventListener('close',()=>{if (!$('calendarDlg').open) $('calendarItems').textContent='';});
+$('calendarEnablePush').onclick=async()=>{
+  if (!('Notification' in window) || !('PushManager' in window) || !('serviceWorker' in navigator)) { $('calendarPushStatus').textContent='This browser does not support Web Push. On iOS install the web app first.'; return; }
+  try {
+    if (await Notification.requestPermission() !== 'granted') { $('calendarPushStatus').textContent='Notification permission was not granted.'; return; }
+    await syncPush(true);
+  } catch { $('calendarPushStatus').textContent='Could not subscribe. Check HTTPS and browser notification settings.'; }
+};
+$('calendarTestPush').onclick=()=>{ if (calendarSub) rawCmd('calendar_push_test',calendarSub.endpoint); };
+$('calendarDisablePush').onclick=async()=>{
+  if (!calendarSub) return;
+  try { const sub=calendarSub; await sub.unsubscribe(); rawCmd('calendar_push_unsub',sub.endpoint); calendarSub=null; pushUI(); }
+  catch { $('calendarPushStatus').textContent='Unable to unsubscribe. Try again.'; }
 };
 
 /* ---------- pairing ---------- */

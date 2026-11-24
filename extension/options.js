@@ -68,8 +68,9 @@ async function refresh() {
 }
 
 async function load() {
-  const c = await chrome.storage.local.get(['relayUrl', 'token', 'allowHttp', 'pcCode', 'agent', 'youtube', 'sound']);
+  const c = await chrome.storage.local.get(['relayUrl', 'token', 'allowHttp', 'pcCode', 'agent', 'youtube', 'sound', 'calendar']);
   $('agent').checked = c.agent !== false;
+  $('calendar').checked = !!c.calendar && await chrome.permissions.contains({ origins: ['https://calendar.google.com/*'] }).catch(() => false);
   $('sound').checked = !!c.sound && await chrome.permissions.contains({ permissions: ['debugger'] }).catch(() => false);
   $('youtube').checked = !!c.youtube && await chrome.permissions.contains({ origins: ['https://www.youtube.com/*'] }).catch(() => false);
   $('pccode').value = c.pcCode || '';
@@ -80,6 +81,23 @@ async function load() {
   refresh();
 }
 
+$('calendar').onchange = async () => {
+  const origins = ['https://calendar.google.com/*'];
+  if ($('calendar').checked) {
+    const ok = await chrome.permissions.request({ origins }).catch(() => false);
+    $('calendar').checked = ok; await chrome.storage.local.set({ calendar: ok });
+    say(ok ? 'Calendar access enabled. Click Open Calendar sync tab.' : 'Calendar access denied.', ok ? 'ok' : 'warn');
+  } else {
+    await chrome.storage.local.set({ calendar: false });
+    await chrome.storage.local.remove('calendarTab');
+    await chrome.permissions.remove({ origins }).catch(() => {});
+    say('Calendar sharing stopped.', 'ok');
+  }
+};
+$('calendarOpen').onclick = async () => {
+  const res = await chrome.runtime.sendMessage({ type: 'calendar-open' }).catch(() => null);
+  if (!res?.ok) say('Enable Calendar access first.', 'warn');
+};
 $('sound').onchange = async () => {
   const permissions = ['debugger'];
   if ($('sound').checked) {
