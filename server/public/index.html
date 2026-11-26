@@ -376,6 +376,33 @@
   @media(prefers-reduced-motion: reduce) {
     #calendarDlg *, #calendarDlg *::before, #calendarDlg *::after { transition: none !important; animation: none !important; }
   }
+  /* Today-first planner: a compact day dashboard and an in-agenda time marker. */
+  #calendarDlg .cal-day.today[aria-pressed="true"] { box-shadow: 0 5px 20px var(--cal-edge), inset 0 0 0 1px #ffffff40; }
+  #calendarToday[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
+  .cal-agenda-head { align-items: flex-start; }
+  .cal-agenda-title { min-width: 0; flex: 1; }
+  #calendarViewDate { display: block; color: var(--muted); font-size: 13px; font-weight: 600; margin: 5px 0 3px; }
+  .cal-agenda-controls { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; flex: none; }
+  .cal-day-step { display: flex; gap: 5px; }
+  .cal-day-step button { display: grid; place-items: center; height: 40px; width: 44px; border: 1px solid var(--line); border-radius: 12px; background: var(--cal-panel); }
+  .cal-day-step button:disabled { opacity: .3; cursor: default; }
+  .cal-day-step .i { width: 17px; height: 17px; }
+  .cal-group.single-day { display: block; }
+  .cal-group.single-day > h3 { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .cal-group.single-day .cal-group-body { gap: 10px; }
+  .cal-group.single-day .cal-event { padding: 17px 15px 17px 20px; }
+  .cal-group.single-day .cal-event strong { font-size: 17px; }
+  .cal-now-line { display: flex; align-items: center; gap: 8px; margin: 4px 0; font-size: 11px; font-weight: 750; color: var(--accent); font-variant-numeric: tabular-nums; }
+  .cal-now-line::before { content: ''; width: 7px; height: 7px; flex: none; background: var(--accent); border-radius: 50%; box-shadow: 0 0 0 4px var(--cal-soft); }
+  .cal-now-line::after { content: ''; flex: 1; height: 1px; background: var(--cal-edge); }
+  #calendarHeroJump { display: inline-flex; align-items: center; gap: 6px; margin-top: 13px; padding: 8px 11px; min-height: 40px; border-radius: 11px; color: inherit; background: #0001; font-size: 12px; font-weight: 750; }
+  #calendarHeroJump .i { width: 15px; height: 15px; }
+  @media(max-width: 740px) {
+    .cal-agenda-head { margin-bottom: 15px; }
+    .cal-agenda-controls { gap: 5px; }
+    .cal-day-step button { height: 40px; width: 44px; }
+    .cal-group.single-day .cal-event { padding: 15px 13px 15px 17px; }
+  }
   dialog#settings { padding: 0; max-height: 90dvh; }
   dialog#settings[open] { display: flex; flex-direction: column; }
   .sheetBody { overflow-y: auto; padding: 22px 22px 6px; overscroll-behavior: contain; }
@@ -664,7 +691,7 @@
     </div>
     <div class="cal-monthbar">
       <div><div id="calendarMonthTitle"></div><p id="calendarRange"></p></div>
-      <button id="calendarToday">Today</button>
+      <button id="calendarToday" aria-pressed="false">Today</button>
     </div>
     <div class="cal-toolbar">
       <div class="cal-segments" role="group" aria-label="Calendar view">
@@ -684,7 +711,7 @@
     <p id="calendarStatus" role="status" aria-live="polite"></p>
     <div id="calendarOverview" class="cal-overview" aria-label="Selected view summary" hidden>
       <div class="cal-stat"><strong id="calendarStatEvents">0</strong><span>Saved events</span></div>
-      <div class="cal-stat"><strong id="calendarStatDays">0</strong><span>Days with events</span></div>
+      <div class="cal-stat"><strong id="calendarStatDays">0</strong><span id="calendarStatDaysLabel">Days with events</span></div>
       <div class="cal-stat"><strong id="calendarStatAllDay">0</strong><span>All-day events</span></div>
     </div>
     <section id="calendarHero" class="cal-hero" aria-label="Highlighted event" hidden>
@@ -695,11 +722,18 @@
           <div id="calendarHeroDetail"></div>
           <div id="calendarHeroTrack" class="cal-hero-track" role="progressbar" aria-label="Event progress" aria-valuemin="0" aria-valuemax="100" hidden><div id="calendarHeroProgress"></div></div>
         </div>
+        <button id="calendarHeroJump" hidden>View event day <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></button>
       </div>
     </section>
     <div class="cal-agenda-head">
-      <div><h3 id="calendarViewLabel">This week</h3><div id="calendarCount"></div></div>
-      <button id="calendarAll" aria-pressed="true">Whole week</button>
+      <div class="cal-agenda-title"><h3 id="calendarViewLabel">Today</h3><div id="calendarViewDate" hidden></div><div id="calendarCount"></div></div>
+      <div class="cal-agenda-controls">
+        <button id="calendarAll" aria-pressed="false">Whole week</button>
+        <div id="calendarDayStep" class="cal-day-step" hidden>
+          <button id="calendarDayPrev" aria-label="Previous day"><svg class="i" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></button>
+          <button id="calendarDayNext" aria-label="Next day"><svg class="i" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg></button>
+        </div>
+      </div>
     </div>
     <div id="calendarItems" aria-labelledby="calendarViewLabel"></div>
     <details class="cal-reminders">
@@ -1752,11 +1786,14 @@ function calMonth(key){return key.slice(0,7)+'-01';}
 function calShiftMonth(key,n){const d=calDate(calMonth(key));d.setMonth(d.getMonth()+n);return calDayKey(d);}
 function calPeriod(key){return calendarMode==='month'?calMonth(key):calWeek(key);}
 function calPeriodEnd(key){return calendarMode==='month'?calAdd(calShiftMonth(key,1),-1):calAdd(key,6);}
-function calMove(n){calendarWeek=calendarMode==='month'?calShiftMonth(calendarWeek,n):calAdd(calendarWeek,n*7);calendarSelected='';drawCalendar();}
+function calScrollTop(){const scroll=$('calendarItems').closest('.cal-scroll');if(scroll)scroll.scrollTop=0;}
+function calSelectDay(date){calendarSelected=date;calendarWeek=calPeriod(date);drawCalendar();calScrollTop();}
+function calMove(n){calendarWeek=calendarMode==='month'?calShiftMonth(calendarWeek,n):calAdd(calendarWeek,n*7);calendarSelected='';drawCalendar();calScrollTop();}
+function calMoveDay(n){if(!calendarSelected)return;const date=calAdd(calendarSelected,n);const periods=[calPeriod(calToday()),...calItems().map(e=>calPeriod(e.date))].sort();if(date<periods[0]||date>calPeriodEnd(periods[periods.length-1]))return;calSelectDay(date);}
 function calSetMode(mode){
   if(calendarMode===mode)return;
   const anchor=calendarSelected||(calToday()>=calendarWeek&&calToday()<=calPeriodEnd(calendarWeek)?calToday():calendarWeek);
-  calendarMode=mode;calendarWeek=calPeriod(anchor);drawCalendar();
+  calendarMode=mode;calendarWeek=calPeriod(anchor);drawCalendar();calScrollTop();
 }
 function calItems() {
   return (['ok','cached'].includes(calendarData?.status) && Array.isArray(calendarData.items) ? calendarData.items : [])
@@ -1792,6 +1829,10 @@ function drawCalendar() {
   $('calendarMonthMode').setAttribute('aria-pressed',String(monthMode));
   $('calendarAll').textContent=monthMode?'Whole month':'Whole week';
   $('calendarAll').setAttribute('aria-pressed',String(!calendarSelected));
+  $('calendarToday').setAttribute('aria-pressed',String(calendarSelected===today));
+  $('calendarDayStep').hidden=!calendarSelected;
+  $('calendarDayPrev').disabled=!calendarSelected||calendarSelected<=periods[0];
+  $('calendarDayNext').disabled=!calendarSelected||calendarSelected>=calPeriodEnd(periods[periods.length-1]);
   const days=$('calendarDays'), focusedDate=days.contains(document.activeElement)?document.activeElement.dataset.date:'';
   const labels=$('calendarWeekLabels'); labels.textContent='';days.textContent='';days.dataset.mode=calendarMode;
   for(let i=0;i<7;i++){const label=document.createElement('span');label.textContent=shortDay.format(calDate(calAdd(calWeek(week),i)));labels.append(label);}
@@ -1806,7 +1847,7 @@ function drawCalendar() {
     number.textContent=d.getDate();dots.setAttribute('aria-hidden','true');
     for(let i=0;i<Math.min(count,3);i++)dots.append(document.createElement('b'));
     if(count>3)dots.append('+');btn.append(number,dots);
-    btn.onclick=()=>{calendarSelected=calendarSelected===date?'':date;drawCalendar();};days.append(btn);
+    btn.onclick=()=>calSelectDay(date);days.append(btn);
     if(focusedDate===date)btn.focus({preventScroll:true});
   }
   const status=$('calendarStatus'),list=$('calendarItems');
@@ -1822,11 +1863,15 @@ function drawCalendar() {
     .sort((a,b)=>a.date.localeCompare(b.date)||Number(!!b.allDay)-Number(!!a.allDay)||(a.start??Infinity)-(b.start??Infinity));
   $('calendarOverview').hidden=!saved;
   $('calendarStatEvents').textContent=String(shown.length);
-  $('calendarStatDays').textContent=String(new Set(shown.map(e=>e.date)).size);
+  $('calendarStatDaysLabel').textContent=calendarSelected?'Timed events':'Days with events';
+  $('calendarStatDays').textContent=String(calendarSelected?shown.filter(formatTime).length:new Set(shown.map(e=>e.date)).size);
   $('calendarStatAllDay').textContent=String(shown.filter(e=>e.allDay).length);
   const timed=shown.filter(formatTime).sort((a,b)=>a.start-b.start);
   const ongoing=fresh?timed.find(e=>e.live!==false&&hasEnd(e)&&e.start<=now&&now<e.end):null;
-  const upcoming=ongoing||timed.find(e=>e.start>now);
+  const later=calendarSelected===today?items.filter(e=>e.date>today&&formatTime(e)&&e.start>now).sort((a,b)=>a.start-b.start)[0]:null;
+  const upcoming=ongoing||timed.find(e=>e.start>now)||later;
+  const jump=$('calendarHeroJump'), outside=!!upcoming&&!!calendarSelected&&upcoming.date!==calendarSelected;
+  jump.hidden=!outside;jump.onclick=outside?()=>calSelectDay(upcoming.date):null;
   const hero=$('calendarHero');hero.hidden=!upcoming;
   $('calendarHeroTitle').textContent=upcoming?.title||'';
   $('calendarHeroLabel').textContent=ongoing?'Happening now':fresh&&upcoming?.live!==false?'Up next':'Next saved event';
@@ -1844,20 +1889,23 @@ function drawCalendar() {
   }
   $('calendarViewLabel').textContent=calendarSelected?(calendarSelected===today?'Today':longDay.format(calDate(calendarSelected))):(week===current?(monthMode?'This month':'This week'):(monthMode?'Month agenda':'Week agenda'));
   $('calendarViewLabel').dir='auto';
+  const viewDate=$('calendarViewDate');viewDate.hidden=calendarSelected!==today;
+  viewDate.textContent=calendarSelected===today?longDay.format(calDate(today)):'';
+  viewDate.dir='auto';
   $('calendarCount').textContent=saved?shown.length+' saved '+(shown.length===1?'event':'events'):'Agenda not synced';
   list.textContent='';
   if(!shown.length){
     const empty=document.createElement('div'),title=document.createElement('strong'),desc=document.createElement('div');
     empty.className='cal-empty';
     empty.innerHTML='<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M7 3v4m10-4v4M3 10h18m-9 4v3m-1.5-1.5h3"/></svg>';
-    title.textContent=saved?'No saved events':'Your agenda is waiting';
-    desc.textContent=saved?'Nothing saved for this view. Open Calendar on your PC to sync more dates.':'Open any Google Calendar tab on your PC to sync events.';
+    title.textContent=saved?(calendarSelected===today?'No events saved for today':'No saved events'):'Your agenda is waiting';
+    desc.textContent=saved?'Open Calendar on your PC to sync more dates.':'Open any Google Calendar tab on your PC to sync events.';
     empty.append(title,desc);list.append(empty);return;
   }
-  let lastDate='',body;
+  let lastDate='',body,nowMarker=false;
   for(const event of shown){
     if(event.date!==lastDate){
-      lastDate=event.date;const group=document.createElement('section');group.className='cal-group'+(lastDate===today?' today':'');
+      lastDate=event.date;const group=document.createElement('section');group.className='cal-group'+(lastDate===today?' today':'')+(calendarSelected?' single-day':'');
       const heading=document.createElement('h3'),day=document.createElement('strong'),name=document.createElement('span');
       heading.setAttribute('aria-label',longDay.format(calDate(lastDate)));day.textContent=calDate(lastDate).getDate();
       name.textContent=lastDate===today?'Today':shortDay.format(calDate(lastDate));heading.append(day,name);
@@ -1875,6 +1923,9 @@ function drawCalendar() {
     if(hasEnd(event)){const duration=document.createElement('span');duration.className='cal-duration';duration.textContent=calDuration(event.end-event.start);time.append(duration);}
     info.append(title,time);row.append(info);
     if(active||soon){const state=document.createElement('small');state.className='cal-state';state.textContent=active?'In progress':'In '+Math.ceil((event.start-now)/60000)+' min';row.append(state);}
+    if(!nowMarker&&calendarSelected===today&&fresh&&event.live!==false&&formatTime(event)&&event.start>now){
+      const marker=document.createElement('div');marker.className='cal-now-line';marker.textContent='Now · '+clock.format(new Date(now));body.append(marker);nowMarker=true;
+    }
     body.append(row);
   }
 }
@@ -1887,6 +1938,7 @@ function clearCalendarView() {
   calendarSelected='';calendarWeek='';calendarMode='week';
   $('calendarHero').hidden=true;$('calendarHeroTitle').textContent='';$('calendarHeroTime').textContent='';
   $('calendarHeroMeta').hidden=true;$('calendarHeroDetail').textContent='';$('calendarHeroTrack').hidden=true;$('calendarHeroTrack').removeAttribute('aria-valuenow');$('calendarHeroProgress').style.width='0%';
+  $('calendarHeroJump').hidden=true;$('calendarHeroJump').onclick=null;
   $('calendarOverview').hidden=true;for(const id of ['calendarStatEvents','calendarStatDays','calendarStatAllDay'])$(id).textContent='0';
   clearInterval(calendarFreshTimer);calendarFreshTimer=null;
   $('calendarItems').textContent='';$('calendarDays').textContent='';
@@ -1929,14 +1981,16 @@ function calendarAuth(m) {
   drawCalendar();rawCmd('calendar_get');syncPush(false).catch(()=>{});
 }
 $('calendarBtn').onclick=()=>{
-  clearCalendarView(); calendarWeek=calWeek(calToday()); $('calendarDlg').showModal();
-  drawCalendar(); if(calendarConnected)rawCmd('calendar_get'); calendarFreshTimer=setInterval(drawCalendar,30000);
+  clearCalendarView(); calendarSelected=calToday(); calendarWeek=calPeriod(calendarSelected); $('calendarDlg').showModal();
+  drawCalendar(); calScrollTop(); if(calendarConnected)rawCmd('calendar_get'); calendarFreshTimer=setInterval(drawCalendar,30000);
 };
 $('calendarRefresh').onclick=()=>{ if(calendarConnected){$('calendarStatus').textContent='Refreshing…';rawCmd('calendar_get');}else{drawCalendar();toast('Offline. Showing saved events.');} };
 $('calendarClose').onclick=()=> $('calendarDlg').close();
 $('calendarDlg').addEventListener('close',()=>{if (!$('calendarDlg').open) clearCalendarView();});
-$('calendarToday').onclick=()=>{calendarWeek=calPeriod(calToday());calendarSelected=calToday();drawCalendar();};
-$('calendarAll').onclick=()=>{calendarSelected='';drawCalendar();};
+$('calendarToday').onclick=()=>calSelectDay(calToday());
+$('calendarAll').onclick=()=>{calendarSelected='';drawCalendar();calScrollTop();};
+$('calendarDayPrev').onclick=()=>calMoveDay(-1);
+$('calendarDayNext').onclick=()=>calMoveDay(1);
 $('calendarPrev').onclick=()=>calMove(-1);
 $('calendarNext').onclick=()=>calMove(1);
 $('calendarWeekMode').onclick=()=>calSetMode('week');
