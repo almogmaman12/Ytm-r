@@ -756,6 +756,55 @@
     #picker,#saveDlg,#blockDlg,#codeDlg,#phoneConfirm { width:100%;max-width:100%;margin:auto 0 0;max-height:90dvh;border-radius:26px 26px 0 0;padding:22px 18px calc(18px + var(--safe-b)); }
     #picker::before,#saveDlg::before,#blockDlg::before,#codeDlg::before,#phoneConfirm::before { content:'';display:block;width:36px;height:4px;border-radius:99px;background:var(--muted);opacity:.45;margin:0 auto 17px;flex:none; }
   }
+  /* Playback studio: direct controls instead of repeated picker lists. */
+  #studioDlg,#trackActions { width:min(94vw,460px);max-height:92dvh;padding:20px;border:1px solid var(--phone-edge);border-radius:28px;background:var(--phone-panel);color:var(--ink);box-shadow:0 24px 80px #0008; }
+  #studioDlg::backdrop,#trackActions::backdrop { background:#08070bb5;backdrop-filter:blur(6px); }
+  .studio-top { display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:15px; }
+  .studio-top h2 { font-size:26px;font-weight:800;letter-spacing:-.045em;margin:4px 0 0; }
+  .studio-top .icon-btn { background:var(--surface);flex:none;color:var(--ink); }
+  .studio-track { display:flex;align-items:center;gap:11px;padding:11px;border:1px solid var(--phone-edge);border-radius:18px;background:var(--surface);margin-bottom:16px; }
+  .studio-art { flex:none;width:54px;height:54px;border-radius:12px;background:var(--surface-2) center/cover; }
+  .studio-track-copy { flex:1;min-width:0; }
+  .studio-track-copy strong,.studio-track-copy small { display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+  .studio-track-copy strong { font-size:15px;font-weight:750; }
+  .studio-track-copy small { font-size:12px;color:var(--muted);margin-top:4px; }
+  .studio-tabs { display:flex;gap:4px;padding:4px;border-radius:17px;background:var(--bg);margin-bottom:16px; }
+  .studio-tabs button { flex:1;min-height:46px;font-size:12px;font-weight:750;color:var(--muted);border-radius:13px;display:flex;align-items:center;justify-content:center;gap:5px; }
+  .studio-tabs button .i { width:17px;height:17px; }
+  .studio-tabs button[aria-pressed="true"] { background:var(--surface-2);color:var(--accent); }
+  .studio-meter { position:relative;padding:20px 16px 15px;border-radius:24px;background:radial-gradient(ellipse at top,var(--phone-soft),transparent 80%),var(--bg);border:1px solid var(--phone-edge);text-align:center; }
+  .studio-meter output { display:block;font-size:53px;line-height:1.15;font-weight:800;letter-spacing:-.07em;color:var(--accent);font-variant-numeric:tabular-nums; }
+  .studio-meter .studio-label { color:var(--muted);font-size:12px;margin:4px 0 16px; }
+  .studio-slider-row { display:flex;align-items:center;gap:9px; }
+  .studio-slider-row button { display:grid;place-items:center;background:var(--surface);border-radius:13px;width:44px;height:44px;flex:none;font-size:23px; }
+  .studio-slider-row input { min-width:0;accent-color:var(--accent); }
+  .studio-scale { display:flex;justify-content:space-between;font-size:10px;color:var(--muted);margin:7px 49px 0; }
+  .studio-presets { display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;margin:13px 0; }
+  .studio-presets button { min-height:45px;padding:7px 4px;border:1px solid var(--line);border-radius:13px;background:var(--surface);font-size:13px;font-weight:750; }
+  .studio-presets button[aria-pressed="true"] { border-color:var(--accent);background:var(--phone-soft);color:var(--accent); }
+  .studio-action { width:100%;min-height:52px;padding:12px;border-radius:16px;background:var(--accent);color:var(--accent-ink);font-weight:800;margin-top:9px; }
+  .studio-action:disabled { opacity:.45; }
+  .studio-note { min-height:2.6em;font-size:12px;color:var(--muted);margin:10px 1px 0;line-height:1.4; }
+  .studio-sleep-actions { display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:9px; }
+  .studio-sleep-actions button { min-height:48px;padding:8px;border:1px solid var(--line);border-radius:15px;background:var(--surface);font-size:12px;font-weight:700; }
+  .studio-sleep-actions button:disabled { opacity:.4; }
+  .track-action-grid { display:grid;grid-template-columns:1fr 1fr;gap:8px; }
+  .track-action-grid button { min-height:83px;text-align:start;padding:13px;border-radius:18px;border:1px solid var(--phone-edge);background:var(--surface);font-size:13px;font-weight:750;display:flex;flex-direction:column;gap:8px; }
+  .track-action-grid button .i { color:var(--accent);width:22px;height:22px; }
+  .track-action-grid button:disabled { opacity:.4; }
+  .track-action-grid button:first-child { background:var(--phone-soft);border-color:var(--accent); }
+  .settings-shortcuts { display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:0 0 16px; }
+  .settings-shortcuts button { text-align:start;padding:13px;min-height:80px;border-radius:17px;background:var(--surface);border:1px solid var(--line);font-size:13px;font-weight:750; }
+  .settings-shortcuts .i { width:21px;height:21px;margin-bottom:7px;color:var(--accent); }
+  #settingsThemePreview { border:1px solid var(--line);border-radius:20px;padding:16px;margin:0 0 20px;background:var(--bg); }
+  .theme-preview-row { display:flex;align-items:center;gap:11px; }
+  .theme-preview-art { width:48px;height:48px;border-radius:13px;background:var(--phone-soft);color:var(--accent);display:grid;place-items:center; }
+  .theme-preview-copy { flex:1;min-width:0;font-size:13px;font-weight:750; }
+  .theme-preview-copy small { display:block;color:var(--muted);font-size:11px;font-weight:500; }
+  .theme-preview-play { width:40px;height:40px;display:grid;place-items:center;border-radius:15px;background:var(--accent);color:var(--accent-ink); }
+  .theme-preview-bar { height:5px;background:var(--surface-2);border-radius:99px;margin-top:13px;overflow:hidden; }
+  .theme-preview-bar i { display:block;width:64%;height:100%;background:var(--accent);border-radius:inherit; }
+  @media(max-width:600px) { #studioDlg,#trackActions { width:100%;max-width:100%;margin:auto 0 0;border-radius:28px 28px 0 0;padding:22px 18px calc(18px + var(--safe-b)); } }
   @media (prefers-reduced-motion: reduce) { * { transition:none !important;animation:none !important; } }
 </style>
 </head>
@@ -763,6 +812,7 @@
 
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
   <defs>
+    <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.5" fill="currentColor"/><circle cx="12" cy="12" r="1.5" fill="currentColor"/><circle cx="19" cy="12" r="1.5" fill="currentColor"/></symbol>
     <symbol id="i-pin" viewBox="0 0 24 24"><path d="m16 3 5 5-4 2-2 6-3 1-5-5 1-3 6-2 2-4ZM7 17l-4 4"/></symbol>
     <symbol id="i-play" viewBox="0 0 24 24"><path fill="currentColor" d="M8 4.8v14.4L19.6 12z"/></symbol>
     <symbol id="i-pause" viewBox="0 0 24 24"><rect fill="currentColor" stroke="none" x="6.5" y="4.5" width="3.8" height="15" rx="1.2"/><rect fill="currentColor" stroke="none" x="13.7" y="4.5" width="3.8" height="15" rx="1.2"/></symbol>
@@ -1048,10 +1098,10 @@
     <label class="lbl" for="deviceName">This device's name</label>
     <input id="deviceName" type="text" maxlength="24" placeholder="For example: Almog's phone" autocomplete="off" spellcheck="false">
     <p class="small">Shown in the relay's log and next to songs you add to the queue.</p>
-    <p id="verLine" class="small"></p></div></div>
+    <p id="verLine" class="small"></p></div><div class="settings-shortcuts"><button id="settingsStudio"><svg class="i"><use href="#i-speed"/></svg>Playback studio</button><button id="settingsCalendar"><svg class="i" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M7 3v4m10-4v4M3 10h18"/></svg>Calendar</button></div></div>
 
     <details open>
-      <summary>Appearance &amp; feel</summary>
+      <summary>Appearance &amp; feel</summary><div id="settingsThemePreview"><div class="theme-preview-row"><span class="theme-preview-art">♪</span><div class="theme-preview-copy">Your music<small>Live appearance preview</small></div><span class="theme-preview-play"><svg class="i"><use href="#i-play"/></svg></span></div><div class="theme-preview-bar"><i></i></div></div>
       <label class="lbl">Theme</label>
       <div class="appearance-row" id="phoneThemes" role="group" aria-label="Theme"><button data-theme="dark">Dark</button><button data-theme="black">AMOLED</button></div>
       <label class="lbl">Accent</label>
@@ -1155,6 +1205,17 @@
 </dialog>
 
 <dialog id="phoneConfirm" aria-labelledby="phoneConfirmTitle"><div class="phone-sheet-head"><div class="phone-sheet-icon"><svg class="i"><use href="#i-queue"/></svg></div><div class="phone-sheet-copy"><span class="page-eyebrow">Confirm action</span><h2 id="phoneConfirmTitle"></h2></div></div><p id="phoneConfirmText"></p><div class="phone-dialog-actions"><button id="phoneConfirmNo" class="secondary">Cancel</button><button id="phoneConfirmYes" class="danger">Continue</button></div></dialog>
+<dialog id="studioDlg" aria-labelledby="studioHeading">
+  <div class="studio-top"><div><span class="page-eyebrow">Sound &amp; playback</span><h2 id="studioHeading">Playback studio</h2></div><button id="studioClose" class="icon-btn" aria-label="Close playback studio"><svg class="i"><use href="#i-x"/></svg></button></div>
+  <div class="studio-track"><div id="studioArt" class="studio-art"></div><div class="studio-track-copy"><strong id="studioTitle">Nothing playing</strong><small id="studioArtist"></small></div></div>
+  <div id="studioTabs" class="studio-tabs" role="group" aria-label="Playback control"><button data-studio="speed"><svg class="i"><use href="#i-speed"/></svg>Speed</button><button data-studio="boost"><svg class="i"><use href="#i-boost"/></svg>Boost</button><button data-studio="sleep"><svg class="i"><use href="#i-moon"/></svg>Sleep</button></div>
+  <div class="studio-meter"><output id="studioValue" for="studioSlider">1×</output><p id="studioLabel" class="studio-label"></p><div class="studio-slider-row"><button id="studioMinus" aria-label="Decrease">−</button><input id="studioSlider" type="range" aria-label="Playback speed"><button id="studioPlus" aria-label="Increase">+</button></div><div class="studio-scale"><span id="studioMin"></span><span id="studioMax"></span></div></div>
+  <div id="studioPresets" class="studio-presets" role="group" aria-label="Presets"></div>
+  <button id="studioApply" class="studio-action">Apply</button>
+  <div id="studioSleepActions" class="studio-sleep-actions" hidden><button id="studioSleepEnd">After this song</button><button id="studioSleepOff">Turn off timer</button></div>
+  <p id="studioNote" class="studio-note" role="status" aria-live="polite"></p>
+</dialog>
+<dialog id="trackActions" aria-labelledby="trackActionHeading"><div class="studio-top"><div><span class="page-eyebrow">Track actions</span><h2 id="trackActionHeading">Make it yours</h2></div><button id="trackActionClose" class="icon-btn" aria-label="Close track actions"><svg class="i"><use href="#i-x"/></svg></button></div><div class="studio-track"><div id="trackActionArt" class="studio-art"></div><div class="studio-track-copy"><strong id="trackActionTitle"></strong><small id="trackActionArtist"></small></div></div><div id="trackActionGrid" class="track-action-grid"></div></dialog>
 
 <script>
 const $ = (id) => document.getElementById(id);
@@ -1520,7 +1581,7 @@ function renderExtras(s) {
   const bo = s.boost || 100;
   $('boostLbl').textContent = bo > 100 ? bo + '%' + (s.boostPending ? '…' : '') : 'Boost';
   setPressed('boostBtn', bo > 100 && !s.boostPending);
-  renderSleep();
+  renderSleep();if($('studioDlg').open)studioSync();
 }
 function sleepLeft() {
   if (!last || last.sleep == null) return null;
@@ -1529,6 +1590,7 @@ function sleepLeft() {
 }
 function renderSleep() {
   const left = sleepLeft();
+  if($('studioDlg').open&&studioMode==='sleep')studioSync();
   if($('picker').open&&phonePickType==='Sleep timer')phonePickContext();
   setPressed('sleepBtn', left !== null);
   if (left === null) $('sleepLbl').textContent = 'Sleep';
@@ -1595,8 +1657,9 @@ function openSiteSheet() {
 $('siteBtn').onclick = () => { buzz(); openSiteSheet(); };
 $('srcChip').onclick = () => { buzz(); openSiteSheet(); };
 
-let wantPlaylist = false;
-function openPlaylistPick() {
+let wantPlaylist = false, phonePlaylistTarget=null;
+function openPlaylistPick(target=null) {
+  if(target)phonePlaylistTarget=target;
   const lib = libCache.playlists || storedLib('playlists');
   if (!lib) {
     if (!cmd('library', 'playlists')) return;
@@ -1605,36 +1668,23 @@ function openPlaylistPick() {
   }
   const items = (lib.items || []).filter((r) => r.kind === 'playlist' && r.playlistId && !['LM', 'SE'].includes(r.playlistId));
   if (!items.length) { toast('No playlists found in your library.'); return; }
+  const selectedTarget=phonePlaylistTarget;phonePlaylistTarget=null;
   const track=phoneTrackKey();
   pick('Add this song to…',items.map(r=>({value:r.playlistId,label:r.title,sub:r.subtitle,thumb:r.thumb})),null,id=>{
-    if(track!==phoneTrackKey())return toast('The song changed. Open the playlist menu again.');
+    if(!selectedTarget&&track!==phoneTrackKey())return toast('The song changed. Open the playlist menu again.');
     const it = items.find((r) => r.playlistId === id);
-    if (cmd('add_to_playlist', id + '|current')) toast(`Adding to “${it ? it.title : 'playlist'}”…`);
+    if (cmd('add_to_playlist', id + '|'+(selectedTarget?.videoId||'current'))) toast(`Adding to “${it ? it.title : 'playlist'}”…`);
   });
+  if(selectedTarget)$('pickContext').textContent='Adding: '+selectedTarget.title;
 }
-$('plBtn').onclick = () => { buzz(); openPlaylistPick(); };
+$('plBtn').onclick = () => { buzz();phonePlaylistTarget=null;openPlaylistPick(); };
 $('adSkip').onclick = () => { buzz(); cmd('skip_ad'); };
 $('likeBtn').onclick = () => { buzz(); cmd('like'); };
 $('shuffleBtn').onclick = () => { buzz(); cmd('shuffle'); };
 $('repeatBtn').onclick = () => { buzz(); cmd('repeat'); };
-$('boostBtn').onclick = () => pick('Volume boost',
-  [{ value: 100, label: 'Off (100%)', sub: 'Normal volume' },
-   ...[125, 150, 200, 300, 400, 500].map((n) => ({ value: n, label: n + '%', sub: n === 125 ? 'A little louder' : n === 150 ? 'Clearly louder' : n === 200 ? 'Twice as strong' : n === 300 ? 'Very loud. Lower your speakers first' : n === 400 ? 'Extreme. Quiet parts come up a lot' : 'Maximum. Heavy compression, can hurt your ears' }))],
-  (last && last.boost) || 100,
-  (n) => { if (cmd('boost', n)) toast(n === 100 ? 'Boost off' : 'Boost ' + n + '%. Lower the volume if it distorts.'); });
-$('speedBtn').onclick = () => pick('Playback speed',
-  [0.75, 1, 1.25, 1.5, 1.75, 2].map((n) => ({ value: n, label: n === 1 ? 'Normal (1x)' : n + 'x' })), (last && last.speed) || 1,
-  (n) => cmd('speed', n));
-$('sleepBtn').onclick = () => {
-  const on = sleepLeft() !== null;
-  pick('Sleep timer', [
-    ...[15, 30, 45, 60, 90].map((m) => ({ value: String(m), label: m < 60 ? `${m} minutes` : m === 60 ? '1 hour' : '1.5 hours' })),
-    { value: 'end', label: 'After this song' },
-    ...(on ? [{ value: 'off', label: 'Turn off the timer' }] : []),
-  ], null, (v) => {
-    if (cmd('sleep', v)) toast(v === 'off' ? 'Sleep timer off' : v === 'end' ? 'Music stops after this song' : `Music fades out in ${v} minutes`);
-  });
-};
+$('boostBtn').onclick=()=>openStudio('boost');
+$('speedBtn').onclick=()=>openStudio('speed');
+$('sleepBtn').onclick=()=>openStudio('sleep');
 function skipBy(n) {
   if(!last||!last.duration||!cmd('skip',n))return;
   last.position=Math.min(last.duration,Math.max(0,(last.position||0)+(last.playing?(Date.now()-lastAt)/1000*(Number(last.speed)||1):0)+n));lastAt=Date.now();tick();buzz();
@@ -1942,12 +1992,10 @@ function itemRow(r) {
   box.append(
     actionButton('i-queue', 'Play next', () => addSong('play_next', r)),
     actionButton('i-end', 'Add to end of queue', () => addSong('queue_end', r)),
-    actionButton('i-radio', 'Start radio from this song', () => { cmd('radio', r.videoId); toast('Starting a radio…'); setView('playing'); }));
+    actionButton('i-more', 'More song actions', () => openTrackActions(r)));
   return trackRow(r, box, () => {
     buzz();
-    cmd('play_video', r.videoId);
-    toast('Starting ' + r.title);
-    setView('playing');
+    if(cmd('play_video',r.videoId)){toast('Starting '+r.title);setView('playing');}
   });
 }
 
@@ -2044,7 +2092,7 @@ function renderLibrary(m) {
     libCache[m.section] = m;
     try { const j = JSON.stringify(m); if (j.length < 400000) localStorage.setItem(LIB_KEY + m.section, j); } catch {}
   }
-  if (wantPlaylist && m.section === 'playlists') { wantPlaylist = false; if (!m.error) openPlaylistPick(); else toast("Couldn't load your playlists: " + m.error); }
+  if (wantPlaylist && m.section === 'playlists') { wantPlaylist = false; if (!m.error) openPlaylistPick(); else {phonePlaylistTarget=null;toast("Couldn't load your playlists: " + m.error);} }
   if (m.section !== libSection) { if(libSection==='home'&&m.section==='history')phoneDrawRecent('home');return; }
   clearTimeout(libTimer);
   if (m.error && libCache[m.section]) { $('libMsg').textContent='Showing saved library · refresh failed';return; }   // keep showing the old list if a quiet refresh fails
@@ -3020,6 +3068,76 @@ function phoneConfirm(title,description,label,action){$('phoneConfirmTitle').tex
 $('phoneConfirmNo').onclick=()=>$('phoneConfirm').close();
 $('phoneConfirmYes').onclick=()=>{const action=phoneConfirmAction;phoneConfirmAction=null;$('phoneConfirm').close();if(action)action();};
 $('phoneConfirm').addEventListener('close',()=>{if(!$('phoneConfirm').open)phoneConfirmAction=null;});
+/* Playback studio. Every command is already supported by the relay. */
+let studioMode='speed',studioDraft=1,studioPending=null,studioTimeout=null;
+const studioSpecs={
+ speed:{min:.25,max:2,step:.05,presets:[.75,1,1.25,1.5,1.75,2],label:v=>Number(v.toFixed(2))+'×'},
+ boost:{min:100,max:500,step:5,presets:[100,125,150,200,300,500],label:v=>v+'%'},
+ sleep:{min:1,max:720,step:1,presets:[15,30,45,60,90,120],label:v=>v>=60?Math.floor(v/60)+'h'+(v%60?' '+v%60+'m':''):v+'m'}
+};
+function studioActual(mode){return mode==='speed'?(last?.speed||1):mode==='boost'?(last?.boost||100):sleepLeft();}
+function studioClamp(mode,v){const s=studioSpecs[mode];return Math.min(s.max,Math.max(s.min,Math.round((Number(v)-s.min)/s.step)*s.step+s.min));}
+function studioSelect(mode){
+  studioMode=mode;const s=studioSpecs[mode],actual=studioActual(mode);
+  studioDraft=studioClamp(mode,mode==='sleep'?(actual>0?Math.ceil(actual/60):30):actual);
+  const slider=$('studioSlider');slider.min=s.min;slider.max=s.max;slider.step=s.step;slider.setAttribute('aria-label',mode==='sleep'?'Timer minutes':mode==='boost'?'Volume boost':'Playback speed');
+  document.querySelectorAll('#studioTabs button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.studio===mode)));
+  $('studioMin').textContent=s.label(s.min);$('studioMax').textContent=s.label(s.max);
+  $('studioSleepActions').hidden=mode!=='sleep';
+  const presets=$('studioPresets');presets.textContent='';for(const value of s.presets){const b=document.createElement('button');b.type='button';b.dataset.value=value;b.textContent=s.label(value);b.onclick=()=>{studioDraft=value;studioDraw();buzz();};presets.append(b);}
+  studioDraw();
+}
+function studioDraw(){
+  const s=studioSpecs[studioMode];$('studioSlider').value=studioDraft;$('studioValue').textContent=s.label(studioDraft);
+  $('studioLabel').textContent=studioMode==='speed'?'Playback rate':studioMode==='boost'?'Amplification above normal volume':'Stop playback after';
+  $('studioMinus').disabled=studioDraft<=s.min;$('studioPlus').disabled=studioDraft>=s.max;
+  Array.from($('studioPresets').children).forEach(b=>b.setAttribute('aria-pressed',String(Math.abs(Number(b.dataset.value)-studioDraft)<.0001)));
+  studioSync();
+}
+function studioSync(){
+  if(!$('studioDlg').open)return;
+  $('studioTitle').textContent=last?.title||'Nothing playing';$('studioArtist').textContent=last?.artist||'';$('studioArt').style.backgroundImage=last?.art?cssUrl(last.art):'';
+  const actual=studioActual(studioMode),online=$('app').dataset.pc==='on',pending=studioPending?.mode===studioMode;
+  if(pending){
+    const target=studioPending.value;
+    const ok=studioMode==='sleep'?(target==='off'?actual===null:target==='end'?actual===-1:actual!==null&&actual>=Number(target)*60-15&&actual<=Number(target)*60+5):Math.abs(actual-Number(target))<.011&&!last?.boostPending;
+    if(ok){studioPending=null;clearTimeout(studioTimeout);}
+  }
+  const busy=studioPending?.mode===studioMode;
+  $('studioApply').disabled=!online||!!studioPending;$('studioApply').textContent=busy?'Waiting for PC…':studioMode==='sleep'?'Start timer':'Apply '+studioSpecs[studioMode].label(studioDraft);
+  $('studioSleepEnd').disabled=!online||!!studioPending;$('studioSleepOff').disabled=!online||actual===null||!!studioPending;
+  const status=studioMode==='sleep'?(actual===null?'Timer off':actual<0?'Stops at end of song':'Time left: '+fmt(actual)): 'PC reports '+studioSpecs[studioMode].label(actual);
+  $('studioNote').textContent=!online?'PC offline · controls are unavailable.':busy?'Request sent. Waiting for the PC to report the new value.':status+(studioMode==='boost'&&studioDraft>100?' · Reduce speaker volume if audio distorts.':'');
+}
+function studioSend(value){
+  if(studioPending)return;const mode=studioMode;
+  if(!cmd(mode,value))return;
+  studioPending={mode,value};clearTimeout(studioTimeout);studioTimeout=setTimeout(()=>{studioPending=null;studioSync();if($('studioDlg').open)$('studioNote').textContent='No confirmation from the PC. Check its connection before trying again.';},8000);studioSync();buzz();
+}
+function openStudio(mode){if(!$('studioDlg').open)$('studioDlg').showModal();studioSelect(mode);}
+$('studioClose').onclick=()=>$('studioDlg').close();
+document.querySelectorAll('#studioTabs button').forEach(b=>b.onclick=()=>studioSelect(b.dataset.studio));
+$('studioSlider').oninput=()=>{studioDraft=studioClamp(studioMode,$('studioSlider').value);studioDraw();};
+$('studioMinus').onclick=()=>{studioDraft=studioClamp(studioMode,studioDraft-studioSpecs[studioMode].step);studioDraw();};
+$('studioPlus').onclick=()=>{studioDraft=studioClamp(studioMode,studioDraft+studioSpecs[studioMode].step);studioDraw();};
+$('studioApply').onclick=()=>studioSend(studioMode==='sleep'?String(Math.round(studioDraft)):Number(studioDraft.toFixed(2)));
+$('studioSleepEnd').onclick=()=>studioSend('end');$('studioSleepOff').onclick=()=>studioSend('off');
+$('settingsStudio').onclick=()=>{$('settings').close();openStudio('speed');};
+$('settingsCalendar').onclick=()=>{if($('calendarBtn').hidden)return;$('settings').close();$('calendarBtn').click();};
+function openTrackActions(r){
+  const dlg=$('trackActions'),grid=$('trackActionGrid');$('trackActionTitle').textContent=r.title;$('trackActionArtist').textContent=r.subtitle||'';$('trackActionArt').style.backgroundImage=r.thumb?cssUrl(r.thumb):'';grid.textContent='';
+  const add=(icon,label,fn)=>{const b=document.createElement('button');b.type='button';b.innerHTML='<svg class="i"><use href="#'+icon+'"/></svg>';const span=document.createElement('span');span.textContent=label;b.append(span);b.onclick=()=>{dlg.close();buzz();fn();};grid.append(b);};
+  add('i-play','Play now',()=>{if(cmd('play_video',r.videoId)){toast('Starting '+r.title);setView('playing');}});
+  add('i-queue','Play next',()=>addSong('play_next',r));add('i-end','Add to queue',()=>addSong('queue_end',r));
+  add('i-radio','Start song radio',()=>{if(cmd('radio',r.videoId)){toast('Starting a radio…');setView('playing');}});
+  if(last?.site!=='yt')add('i-lib','Add to playlist',()=>openPlaylistPick(r));
+  dlg.showModal();
+}
+$('trackActionClose').onclick=()=>$('trackActions').close();
+$('trackActions').addEventListener('close',()=>{if(!$('trackActions').open){$('trackActionGrid').textContent='';$('trackActionTitle').textContent='';$('trackActionArtist').textContent='';$('trackActionArt').style.backgroundImage='';}});
+new MutationObserver(()=>{if($('studioDlg').open)studioSync();$('settingsCalendar').hidden=$('calendarBtn').hidden;}).observe($('app'),{attributes:true,attributeFilter:['data-pc']});
+new MutationObserver(()=>{$('settingsCalendar').hidden=$('calendarBtn').hidden;}).observe($('calendarBtn'),{attributes:true,attributeFilter:['hidden']});
+$('settingsCalendar').hidden=$('calendarBtn').hidden;
 resetColour();
 show();
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
