@@ -9,4 +9,10 @@
     <RootNamespace>YtmCompanion</RootNamespace>
     <Version>0.1.0</Version>
   </PropertyGroup>
+  <ItemGroup Condition="'$(ExtensionPublicKeyPath)' != ''">
+    <EmbeddedResource Include="$(ExtensionPublicKeyPath)" LogicalName="YtmCompanion.ReleasePublicKey.pem" />
+  </ItemGroup>
+  <Target Name="RequireReleaseKey" BeforeTargets="PrepareForBuild" Condition="'$(RequirePublisherKey)' == 'true'">
+    <Error Condition="'$(ExtensionPublicKeyPath)' == '' Or !Exists('$(ExtensionPublicKeyPath)')" Text="Production builds require a trusted public verification key." />
+  </Target>
 </Project>
