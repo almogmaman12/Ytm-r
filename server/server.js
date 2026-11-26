@@ -207,6 +207,7 @@ const pairCodes = new Map();      // code -> { token, exp }
 const devices = new Map();        // id -> { id, name, hash, token, created, lastSeen }
 const cloudDevices=process.env.DATABASE_URL?createDeviceStore(neonQuery(process.env.DATABASE_URL)):null;
 const pendingPairs=new Map();
+const deviceAccessPending=new Set();
 try {
   const saved = JSON.parse(fs.readFileSync(DEVICES_FILE, 'utf8'));
   for (const d of Array.isArray(saved) ? saved : []) {
@@ -241,7 +242,12 @@ function deviceFromKey(key) {
   return a.length === b.length && crypto.timingSafeEqual(a, b) ? d : null;
 }
 const deviceList = (token) => [...devices.values()].filter((d) => d.token === token)
-  .map((d) => ({ id: d.id, name: d.name || 'Phone', created: d.created, ago: Date.now() - (d.lastSeen || d.created) }));
+  .map((d) => ({ id:d.id,name:d.name||'Phone',created:d.created,ago:Date.now()-(d.lastSeen||d.created),paused:d.paused===true,calendar:d.calendar===true }));
+// Sharing calendar data is explicitly granted by an owner, and never works while paused.
+function deviceActive(d){return !d||(devices.get(d.id)===d&&d.paused!==true);}
+function mayReadCalendar(d){return calendarSecure()&&deviceActive(d)&&(!d||d.calendar===true);}
+function sendCalendar(room,token){for(const p of room.phones)if(mayReadCalendar(p.dev))send(p,calendarFor(room,token));}
+function notifyDeviceOwners(room,token){for(const p of room.phones)if(!p.dev)send(p,{type:'devices',list:deviceList(token)});}
 setInterval(() => { const n = Date.now(); for (const [c, v] of pairCodes) if (v.exp < n) pairCodes.delete(c); }, 30000).unref();
 
 // token -> { pc: ws|null, phones: Set<ws>, lastState: object|null }
@@ -433,7 +439,7 @@ wss.on('connection', async (ws, info) => {
     if (deviceList(entry.token).length+(pendingPairs.get(entry.token)||0) >= MAX_DEVICES_PER_ROOM) return ws.close(4007, 'too many paired phones');
     const id = crypto.randomBytes(8).toString('hex');
     const secret = crypto.randomBytes(24).toString('base64url');
-    const record={id,name:'',hash:sha(secret),token:entry.token,created:Date.now(),lastSeen:Date.now()};
+    const record={id,name:'',hash:sha(secret),token:entry.token,created:Date.now(),lastSeen:Date.now(),paused:false,calendar:false};
     if(cloudDevices){
       pendingPairs.set(entry.token,(pendingPairs.get(entry.token)||0)+1);
       try{await cloudDevices.insert(record);}catch{console.warn('Paired phone could not be saved to Neon.');return ws.close(1013,'database unavailable');}
@@ -450,6 +456,7 @@ wss.on('connection', async (ws, info) => {
   if (info.devKey) {
     viaDevice = deviceFromKey(info.devKey);
     if (!viaDevice) { const f = noteBadCode(ip); log('------', `unknown or removed device key from ${device}, ${ip}  (${f.n} of ${MAX_BAD_CODES})`); return ws.close(4005, 'removed'); }
+    if(viaDevice.paused===true)return ws.close(4008,'device paused');
     token = viaDevice.token;
     viaDevice.lastSeen = Date.now();
     ws.dev = viaDevice;
@@ -480,6 +487,7 @@ wss.on('connection', async (ws, info) => {
 
   let authed = false;
   const calendarOwner = () => role === 'phone' && !viaDevice && calendarSecure();
+  const calendarReader = () => role === 'phone' && mayReadCalendar(viaDevice);
   let authTimer = null;
   let nonce = '';
   const join = () => {
@@ -508,8 +516,8 @@ wss.on('connection', async (ws, info) => {
       if (room.lastYtQueue) send(ws, room.lastYtQueue);
       if (room.pc) send(room.pc, { type: 'cmd', cmd: 'get_state' });
     }
-    send(ws, { type: 'authed', guarded: !!codeFor(role), calendar: calendarOwner(), ...(calendarOwner() ? { pushKey: push.publicKey } : {}) });
-    if(calendarOwner())send(ws,calendarFor(room,token));
+    send(ws, { type: 'authed', guarded: !!codeFor(role), calendar: calendarReader(), ...(calendarOwner() ? { pushKey: push.publicKey } : {}) });
+    if(calendarReader())send(ws,calendarFor(room,token));
   };
 
   const code = viaDevice ? '' : codeFor(role);
@@ -543,6 +551,7 @@ wss.on('connection', async (ws, info) => {
       return;
     }
 
+    if(viaDevice&&!deviceActive(viaDevice)){return ws.close(devices.has(viaDevice.id)?4008:4005,devices.has(viaDevice.id)?'device paused':'removed');}
     if (role === 'phone' && msg.type === 'name') {
       const before = who;
       setName(msg.name);
@@ -569,7 +578,7 @@ wss.on('connection', async (ws, info) => {
           room.calendar=calendarCache.put(token,snapshot)?snapshot:calendarCache.get(token);
         }
         else room.calendar=calendarCache.get(token)||{type:'calendar',status:msg.status==='unsupported'?'unsupported':'offline',items:[]};
-        room.phones.forEach(p=>{if(!p.dev)send(p,calendarFor(room,token));});
+        sendCalendar(room,token);
         return;
       }
       if (msg.type === 'caps') { const yt = !!msg.yt; if (yt !== room.agentYt) { room.agentYt = yt; tellPhones(room); } }
@@ -580,8 +589,8 @@ wss.on('connection', async (ws, info) => {
       if (raw.length > MAX_PHONE_MSG_BYTES || msg.type !== 'cmd') return;
       if (overLimit(MAX_CMDS_PER_SEC)) return;
       if (['calendar_get','calendar_push_sub','calendar_push_unsub','calendar_push_test'].includes(msg.cmd)) {
+        if(msg.cmd==='calendar_get'){if(calendarReader())send(ws,calendarFor(room,token));return;}
         if (!calendarOwner()) return;
-        if (msg.cmd === 'calendar_get') return send(ws,calendarFor(room,token));
         const u = push.endpoint(msg.value);
         if (!u) return send(ws,{type:'calendar_push',ok:false,message:'Unsupported push subscription endpoint.'});
         room.calendarSubs ||= new Map();
@@ -599,7 +608,7 @@ wss.on('connection', async (ws, info) => {
         push.sendPush(u.href).then(status => send(ws,{type:'calendar_push',ok:status>=200&&status<300,message:status>=200&&status<300?'Test notification sent.':'Push delivery rejected.'})).catch(()=>send(ws,{type:'calendar_push',ok:false,message:'Push delivery failed.'}));
         return;
       }
-      if (msg.cmd === 'pair_start' || msg.cmd === 'device_list' || msg.cmd === 'device_revoke' || msg.cmd === 'device_leave') {
+      if (['pair_start','device_list','device_revoke','device_leave','device_access'].includes(msg.cmd)) {
         if (msg.cmd === 'device_leave') {
           if(viaDevice){
             if(cloudDevices){try{await cloudDevices.remove(viaDevice.id);}catch{console.warn('Paired phone sign-out could not be saved to Neon.');return send(ws,{type:'status',message:'Could not sign out. Database unavailable; try again.'});}}
@@ -609,6 +618,27 @@ wss.on('connection', async (ws, info) => {
         }
         if (viaDevice) return;                     // paired phones cannot manage other phones
         if (msg.cmd === 'device_list') return send(ws, { type: 'devices', list: deviceList(token) });
+        if(msg.cmd==='device_access'){
+          const m=/^([0-9a-f]{16}):(paused|calendar):(0|1)$/.exec(String(msg.value||''));
+          if(!m)return;const [,id,field,flag]=m,d=devices.get(id),enabled=flag==='1';
+          if(!d||d.token!==token)return;
+          if(field==='calendar'&&enabled&&!calendarSecure())return send(ws,{type:'status',message:'Set strong access and PC codes before sharing the calendar.'});
+          if(deviceAccessPending.has(id))return send(ws,{type:'status',message:'A device update is already in progress.'});
+          if((d[field]===true)===enabled)return send(ws,{type:'devices',list:deviceList(token)});
+          deviceAccessPending.add(id);
+          try{
+            if(cloudDevices)await cloudDevices.setAccess(id,field,enabled);
+            if(devices.get(id)!==d)return;
+            d[field]=enabled;saveDevices();
+            for(const p of room.phones){if(!p.dev||p.dev.id!==id)continue;
+              if(d.paused===true){p.close(4008,'device paused');continue;}
+              if(field==='calendar'){const allowed=mayReadCalendar(d);send(p,{type:'calendar_access',calendar:allowed});if(allowed)send(p,calendarFor(room,token));}
+            }
+            notifyDeviceOwners(room,token);
+          }catch{send(ws,{type:'status',message:'Could not save device access. Try again.'});}
+          finally{deviceAccessPending.delete(id);}
+          return;
+        }
         if (msg.cmd === 'device_revoke') {
           const id = String(msg.value || '');
           const d = devices.get(id);
@@ -820,7 +850,7 @@ wss.on('connection', async (ws, info) => {
     clearTimeout(authTimer);
     if (ws.joined) log(rid, `${role === 'pc' ? 'PC' : role === 'agent' ? 'PC helper' : 'phone'} disconnected: ${who}${code === 4000 ? ' (replaced by another PC)' : ''}`);
     if (role === 'agent') {
-      if (room.agent === ws) { room.calendar=calendarCache.get(token);room.agent=null;room.agentYt=false;room.lastAgent=Date.now();tellPhones(room);if(calendarSecure())room.phones.forEach(p=>{if(!p.dev)send(p,calendarFor(room,token));}); }
+      if (room.agent === ws) { room.calendar=calendarCache.get(token);room.agent=null;room.agentYt=false;room.lastAgent=Date.now();tellPhones(room);sendCalendar(room,token); }
     } else if (role === 'pc') {
       if (room.pc === ws) {
         room.pc = null;
