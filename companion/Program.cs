@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Security.Cryptography;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using Microsoft.Win32;
 
@@ -59,8 +60,12 @@ internal static class Store
         }
         catch { return false; }
     }
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
+    private static extern int GetCurrentPackageFullName(ref uint length, System.Text.StringBuilder? name);
+    public static bool Packaged { get { uint length = 0; return GetCurrentPackageFullName(ref length, null) == 122; } }
     public static void SetStartup(bool enabled)
     {
+        if (Packaged) return; // MSIX startup is managed by Windows Startup Apps.
         using var key = Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run");
         if (enabled) key.SetValue("YTM Remote Companion", "\"" + Environment.ProcessPath + "\" --background");
         else key.DeleteValue("YTM Remote Companion", false);
@@ -197,6 +202,7 @@ internal sealed class SettingsForm : Form
         var auto = new CheckBox { Text = "Automatically install verified extension updates while Chrome is closed", AutoSize = true, Checked = current.AutomaticUpdates };
         var startup = new CheckBox { Text = "Start YTM Remote Companion with Windows", AutoSize = true, Checked = current.StartWithWindows };
         panel.Controls.Add(auto); panel.Controls.Add(startup);
+        if (Store.Packaged) { startup.Enabled = false; Label("For the MSIX edition, enable startup in Windows Settings > Apps > Startup."); }
         Label(string.IsNullOrEmpty(current.PasswordHash) ? "Create a settings password (12+ characters)" : "New password (leave blank to keep current password)");
         var password = new TextBox { UseSystemPasswordChar = true, Width = 525 };
         panel.Controls.Add(password);
