@@ -805,6 +805,45 @@
   .theme-preview-bar { height:5px;background:var(--surface-2);border-radius:99px;margin-top:13px;overflow:hidden; }
   .theme-preview-bar i { display:block;width:64%;height:100%;background:var(--accent);border-radius:inherit; }
   @media(max-width:600px) { #studioDlg,#trackActions { width:100%;max-width:100%;margin:auto 0 0;border-radius:28px 28px 0 0;padding:22px 18px calc(18px + var(--safe-b)); } }
+  /* Dedicated music detail pages, using the existing browse response. */
+  #v-search[data-browse="on"] > :not(#browsePage) { display:none !important; }
+  .browse-nav { display:flex;align-items:center;gap:8px;position:sticky;top:calc(62px + env(safe-area-inset-top,0px));z-index:5;background:color-mix(in srgb,var(--bg) 92%,transparent);backdrop-filter:blur(16px);padding:5px 0 10px; }
+  .browse-nav .icon-btn { flex:none;border-radius:14px;background:var(--surface);width:44px;height:44px; }
+  #browseCrumb { flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:12px;font-weight:700;color:var(--muted); }
+  .browse-hero { position:relative;isolation:isolate;overflow:hidden;border-radius:27px;padding:22px 17px 18px;background:linear-gradient(155deg,var(--phone-soft),var(--phone-panel) 80%);border:1px solid var(--phone-edge); }
+  #browseBackdrop { position:absolute;inset:-35px;z-index:-1;background-position:center;background-size:cover;filter:blur(40px);opacity:.18;pointer-events:none; }
+  #browseArt { width:min(58%,210px);aspect-ratio:1;margin:0 auto 19px;border-radius:20px;background:var(--surface-2) center/cover;box-shadow:0 10px 38px #0005;display:grid;place-items:center; }
+  #browseArt[data-kind="artist"] { border-radius:50%; }
+  #browseArt .i { width:50px;height:50px;color:var(--muted); }
+  .browse-hero-copy { text-align:center; }
+  #browseTitle { margin:5px 0 6px;font-size:clamp(25px,7vw,36px);line-height:1.12;font-weight:850;letter-spacing:-.055em;overflow-wrap:anywhere; }
+  #browseSubtitle { margin:0;color:var(--muted);font-size:13px;line-height:1.5;overflow-wrap:anywhere; }
+  #browseMeta { margin:9px 0 0;font-size:11px;color:var(--muted);font-weight:650; }
+  .browse-actions { display:flex;align-items:center;justify-content:center;gap:7px;margin:18px 0 0; }
+  .browse-actions button { flex:none;min-width:44px;min-height:46px;border-radius:15px;background:var(--surface);border:1px solid var(--phone-edge);display:flex;align-items:center;justify-content:center;gap:6px;font-size:12px;font-weight:750;padding:8px; }
+  .browse-actions button .i { width:20px;height:20px; }
+  .browse-actions .browse-primary { flex:1;background:var(--accent);color:var(--accent-ink);border-color:transparent;font-size:14px; }
+  .browse-actions button[aria-pressed="true"] { color:var(--accent);border-color:var(--accent); }
+  .browse-actions button:disabled { opacity:.4; }
+  .browse-status { display:flex;align-items:center;justify-content:space-between;gap:8px;margin:15px 0 10px;color:var(--muted);font-size:12px; }
+  #browseRetry { min-height:40px;padding:6px 11px;border-radius:12px;background:var(--surface);font-weight:700;flex:none; }
+  #browseFilters { display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;margin:12px 0; }
+  #browseFilters button { flex:none;min-height:40px;padding:8px 12px;background:var(--surface);border:1px solid var(--line);border-radius:14px;font-size:12px;font-weight:700; }
+  #browseFilters button[aria-pressed="true"] { background:var(--accent);color:var(--accent-ink);border-color:transparent; }
+  .browse-section { margin:21px 0 0; }
+  .browse-section h3 { font-size:20px;font-weight:800;letter-spacing:-.035em;margin:0 0 10px; }
+  .browse-section ul.tracks { margin:0; }
+  .browse-section .browse-grid { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px; }
+  .browse-grid li:not(.shelf) { flex-direction:column;align-items:stretch;min-width:0;margin:0; }
+  .browse-grid .th { width:100%;height:auto;aspect-ratio:1;border-radius:13px; }
+  .browse-grid .txt { width:100%;flex:none; }
+  .browse-grid .t { white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden; }
+  .browse-grid .acts3 { justify-content:space-between; }
+  .browse-index { flex:none;min-width:16px;text-align:center;font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums; }
+  .browse-indexed li.now-track { border-color:var(--accent);background:var(--phone-soft); }
+  .browse-indexed li.now-track .browse-index { color:var(--accent);font-weight:800; }
+  .browse-empty { text-align:center;color:var(--muted);padding:25px 12px;border:1px dashed var(--line);border-radius:18px;font-size:13px; }
+  @media(max-width:360px) { .browse-hero { padding:17px 12px; } .browse-actions { gap:4px; } .browse-actions button { min-width:40px;padding:6px; } .browse-index { min-width:12px; } }
   @media (prefers-reduced-motion: reduce) { * { transition:none !important;animation:none !important; } }
 </style>
 </head>
@@ -943,6 +982,15 @@
     <div id="searchEmpty" class="empty"><strong>Find something to play</strong>Search for songs, albums, artists or playlists. Tap a result to play it now, or use the buttons to play it next or add it to the end of the queue.</div>
     <div id="searchLoading" class="loading-list" aria-hidden="true" hidden><i></i><i></i><i></i></div>
     <ul id="results" class="tracks"></ul>
+    <section id="browsePage" hidden aria-labelledby="browseTitle">
+      <div class="browse-nav"><button id="browseBack" class="icon-btn" aria-label="Go back"><svg class="i" viewBox="0 0 24 24"><path d="M19 12H5m7-7-7 7 7 7"/></svg></button><span id="browseCrumb">Browse</span><button id="browseSearch" class="icon-btn" aria-label="Return to music search"><svg class="i"><use href="#i-search"/></svg></button></div>
+      <div class="browse-hero"><div id="browseBackdrop"></div><div id="browseArt"><svg id="browseFallback" class="i"><use id="browseFallbackIcon" href="#i-lib"/></svg></div><div class="browse-hero-copy"><span id="browseKind" class="page-eyebrow"></span><h2 id="browseTitle" dir="auto"></h2><p id="browseSubtitle" dir="auto"></p><p id="browseMeta"></p></div>
+        <div class="browse-actions"><button id="browsePlay" class="browse-primary"><svg class="i"><use id="browsePlayIcon" href="#i-play"/></svg><span id="browsePlayLabel">Play</span></button><button id="browseNext" aria-label="Play collection next" title="Play next"><svg class="i"><use href="#i-queue"/></svg></button><button id="browseEnd" aria-label="Add collection to queue" title="Add to queue"><svg class="i"><use href="#i-end"/></svg></button><button id="browsePin" aria-label="Pin collection on this phone" aria-pressed="false"><svg class="i"><use href="#i-pin"/></svg></button></div>
+      </div>
+      <div class="browse-status"><span id="browseStatus" role="status" aria-live="polite"></span><button id="browseRetry">Refresh</button></div>
+      <div id="browseLoading" class="loading-list" aria-hidden="true" hidden><i></i><i></i><i></i></div>
+      <div id="browseFilters" role="group" aria-label="Filter page content"></div><div id="browseResults"></div>
+    </section>
   </section>
 
   <section id="v-library" class="view" aria-label="Library" hidden>
@@ -1274,7 +1322,7 @@ function setView(name) {
   $('mini').hidden = name === 'playing';
   if(changed)window.scrollTo(0,phoneScroll[name]||0);
   if (name === 'library') loadLibrary(false);
-  if(name==='search'){$('musicSearchClear').hidden=!$('q').value;if(!$('q').value&&!$('results').children.length)drawSuggest();}
+  if(name==='search'){$('musicSearchClear').hidden=!$('q').value;if(!phoneBrowse&&!$('q').value&&!$('results').children.length)drawSuggest();}
 }
 document.querySelectorAll('#tabs button').forEach((b) => { b.onclick = () => { buzz(); setView(b.dataset.view); }; });
 $('miniCard').onclick = (e) => { if (!e.target.closest('button')) setView('playing'); };
@@ -1361,7 +1409,7 @@ function setPc(online, wake, version, agoMs, why, helper, yt) {
   $('app').dataset.wake = !online && wake ? 'on' : 'off';
   if (cameOnline) { scheduleAutoCheck(); cmd('block_list'); if(view==='library')loadLibrary(false); }
   if (online) finishRefresh();
-  $('status').textContent = online ? 'PC connected' : 'PC offline';
+  $('status').textContent = online ? 'PC connected' : 'PC offline';browseOnline();
   renderSeen();
   if (!last) {
     $('artist').textContent = online ? '' : 'Waiting for your PC. Check that YouTube Music is open in Chrome and the token matches.';
@@ -1564,7 +1612,7 @@ function render(s) {
   $('adBar').classList.toggle('on', s.ad === 'ad' || s.ad === 'skip');
   $('adSkip').hidden = s.ad !== 'skip';
   syncMedia();
-  tick();
+  tick();browsePlaying();
 }
 
 /* ---------- like, shuffle, repeat, speed, sleep ---------- */
@@ -1965,10 +2013,7 @@ function addSong(c, r) {
 // One row for a song, album, playlist or artist, with the right buttons and tap action.
 function itemRow(r) {
   if (r.kind === 'artist') {
-    return trackRow(r, null, () => {
-      buzz();
-      openArtist(r);
-    });
+    return trackRow(r,actionButton('i-radio','Start artist radio',()=>{if(cmd('artist_radio',r.browseId)){toast('Starting artist radio…');setView('playing');}}),()=>{buzz();openArtist(r);});
   }
   if (r.kind === 'album' || r.kind === 'playlist') {
     const box = document.createElement('div');
@@ -1978,13 +2023,11 @@ function itemRow(r) {
       actionButton('i-queue', 'Play next', () => cmd('collection_next', r.playlistId)),
       actionButton('i-end', 'Add to end of queue', () => cmd('collection_end', r.playlistId)));
     if (r.playlistId.length >= 4) {
-      box.append(actionButton('i-list', 'Show the songs', () => { setView('search'); openArtist({ browseId: 'VL' + r.playlistId, title: r.title }); }));
+      box.append(actionButton('i-play','Play collection now',()=>{if(cmd('play_collection',r.playlistId)){toast('Starting '+r.title);setView('playing');}}));
     }
     return trackRow(r, box, () => {
       buzz();
-      cmd('play_collection', r.playlistId);
-      toast('Starting ' + r.title);
-      setView('playing');
+      openArtist(r);
     });
   }
   const box = document.createElement('div');
@@ -2003,6 +2046,8 @@ let searchKind = 'song', currentResults = [], prevSearch = null, autoArtist = ''
 const queryText = (q) => String(q).replace(/^(song|album|artist|playlist)\|/, '');
 
 function renderResults(m) {
+  if(phoneBrowse&&m.query===phoneBrowse.query){browseReceive(m);return;}
+  if(String(m.query).startsWith('open:'))return;
   if (m.query !== lastQuery) return;   // an answer to an older search
   clearTimeout(searchTimer);
   const list = $('results');
@@ -2027,24 +2072,80 @@ function renderResults(m) {
   for (const r of currentResults) list.append(itemRow(r));
 }
 
-function openArtist(r) {
-  if (view !== 'search') setView('search');
-  prevSearch = { query: lastQuery, results: currentResults };
-  lastQuery = 'open:' + r.browseId;
-  $('results').textContent = '';
-  $('backBtn').hidden = false;
-  $('searchMsg').textContent = 'Opening ' + r.title + '…';
-  if (!cmd('open', r.browseId)) { $('searchMsg').textContent = 'Not connected to your PC yet.'; return; }
-  clearTimeout(searchTimer);
-  searchTimer = setTimeout(() => { $('searchMsg').textContent = 'No response. Check that YouTube Music is open on the PC.'; }, 12000);
+let phoneBrowse=null,browseStack=[],browseOrigin='search',browseTimer=null;
+const browseCache=new Map();
+function browseRemember(query,items){browseCache.delete(query);browseCache.set(query,{items,at:Date.now()});if(browseCache.size>20)browseCache.delete(browseCache.keys().next().value);}
+function browseReset(){clearTimeout(browseTimer);phoneBrowse=null;browseStack=[];$('v-search').dataset.browse='off';$('browsePage').hidden=true;$('browseResults').textContent='';$('browseTitle').textContent='';$('browseArt').style.backgroundImage='';$('browseBackdrop').style.backgroundImage='';}
+function browseBack(){
+  if(browseStack.length){clearTimeout(browseTimer);const old=browseStack.pop();phoneBrowse=old;browseDraw();window.scrollTo(0,old.scroll||0);if(old.loading)browseFetch();return;}
+  const origin=browseOrigin;browseReset();if(origin!=='search')setView(origin);else window.scrollTo(0,phoneScroll.search||0);
 }
-$('backBtn').onclick = () => {
-  if (!prevSearch) return;
-  const p = prevSearch;
-  prevSearch = null;
-  lastQuery = p.query;
-  renderResults({ query: p.query, results: p.results });
-};
+function openArtist(r){
+  const collection=['album','playlist'].includes(r.kind),id=collection?'VL'+r.playlistId:r.browseId;
+  const kind=collection?r.kind:'artist';
+  openBrowsePage({...r,kind,browseId:id},'open:'+id,'open',id,/^(UC|MPREb_|VL)[A-Za-z0-9_-]{4,60}$/.test(id||''));
+}
+function openBrowsePage(r,query,command,value,supported=true){
+  if(phoneBrowse&&view==='search'){
+    if(phoneBrowse.query===query)return;
+    phoneBrowse.scroll=window.scrollY;browseStack.push(phoneBrowse);if(browseStack.length>15)browseStack.shift();
+  }else{browseStack=[];browseOrigin=view==='library'?'library':view==='playing'?'playing':'search';if(view==='search')phoneScroll.search=window.scrollY;}
+  clearTimeout(browseTimer);
+  const cached=browseCache.get(query);
+  phoneBrowse={r,query,command,value,supported,items:cached?.items||[],loaded:!!cached,loading:false,filter:'all',error:'',cached:!!cached,scroll:0};
+  setView('search');$('v-search').dataset.browse='on';$('browsePage').hidden=false;browseDraw();window.scrollTo(0,0);browseFetch();
+}
+function browseFetch(){
+  const p=phoneBrowse;if(!p)return;clearTimeout(browseTimer);
+  if(!p.supported){p.error='This collection can be played but its tracks cannot be opened by the current connection.';p.loading=false;browseDraw();return;}
+  p.error='';p.loading=true;browseDraw();
+  if(!cmd(p.command,p.value)){p.loading=false;p.error=p.loaded?'Showing saved results. PC offline.':'Connect to your PC to load this page.';browseDraw();return;}
+  browseTimer=setTimeout(()=>{if(phoneBrowse===p){p.loading=false;p.error=p.loaded?'Showing saved results. Refresh timed out.':'No response from your PC. Try refresh.';browseDraw();}},14000);
+}
+function browseReceive(m){
+  const p=phoneBrowse;if(!p||m.query!==p.query)return;clearTimeout(browseTimer);p.loading=false;
+  if(m.error){p.error=p.loaded?'Showing saved results. Refresh failed.':'Could not open this page: '+m.error;}
+  else{p.items=m.results||[];p.error='';p.loaded=true;p.cached=false;if(p.command==='open')browseRemember(p.query,p.items);}
+  browseDraw();
+}
+function browseDraw(){
+  const p=phoneBrowse;if(!p)return;const r=p.r,collection=['album','playlist'].includes(r.kind),artist=r.kind==='artist',related=r.kind==='related';
+  $('browseCrumb').textContent=browseStack.length?browseStack[browseStack.length-1].r.title:(browseOrigin==='library'?'Library':browseOrigin==='playing'?'Now playing':'Search');
+  $('browseTitle').textContent=r.title||'Music';$('browseSubtitle').textContent=r.subtitle||'';$('browseSubtitle').hidden=!r.subtitle;
+  $('browseKind').textContent=artist?'Artist':related?'Discover':r.kind==='album'?'Album':'Playlist';
+  const art=r.thumb?cssUrl(r.thumb):'';$('browseArt').style.backgroundImage=art;$('browseBackdrop').style.backgroundImage=art;$('browseArt').dataset.kind=r.kind;$('browseFallback').hidden=!!art;$('browseFallbackIcon').setAttribute('href',artist?'#i-user':related?'#i-radio':'#i-lib');
+  const songs=p.items.filter(x=>x.kind==='song'),others=p.items.length-songs.length;
+  $('browseMeta').textContent=p.loaded?(songs.length?songs.length+' tracks shown':'')+(others?(songs.length?' · ':'')+others+' other results':'')||'No items returned':'';
+  $('browsePlay').hidden=!collection&&!artist&&!related;$('browsePlayLabel').textContent=artist?'Artist radio':related?'Play first song':'Play collection';$('browsePlayIcon').setAttribute('href',artist?'#i-radio':'#i-play');
+  $('browseNext').hidden=$('browseEnd').hidden=$('browsePin').hidden=!collection;
+  $('browsePin').setAttribute('aria-pressed',String(phonePins.has(r.playlistId)));$('browsePin').setAttribute('aria-label',phonePins.has(r.playlistId)?'Unpin collection':'Pin collection');
+  browseOnline();
+  $('browseStatus').textContent=p.error||(p.loading?(p.loaded?'Showing saved results · refreshing…':'Loading from your PC…'):p.cached?'Saved results from this session':p.loaded?'Showing available results from your PC':'');
+  $('browseRetry').disabled=p.loading;$('browseRetry').hidden=!p.supported;$('browseLoading').hidden=!p.loading||p.loaded;
+  const groups=[['song','Tracks'],['album','Albums'],['playlist','Playlists'],['artist','Artists']].map(([kind,label])=>({kind,label,items:p.items.filter(x=>x.kind===kind)})).filter(g=>g.items.length);
+  if(!groups.some(g=>g.kind===p.filter))p.filter='all';
+  const filters=$('browseFilters');filters.textContent='';filters.hidden=groups.length<2;
+  for(const g of [{kind:'all',label:'All',items:p.items},...groups]){const btn=document.createElement('button');btn.type='button';btn.textContent=g.label+' · '+g.items.length;btn.setAttribute('aria-pressed',String(p.filter===g.kind));btn.onclick=()=>{p.filter=g.kind;browseDraw();};filters.append(btn);}
+  const out=$('browseResults');out.textContent='';
+  for(const g of groups){
+    if(p.filter!=='all'&&p.filter!==g.kind)continue;
+    const section=document.createElement('section'),title=document.createElement('h3'),list=document.createElement('ul');section.className='browse-section';title.textContent=g.label;list.className='tracks '+(g.kind==='song'?'browse-indexed':'browse-grid');
+    g.items.forEach((item,i)=>{const row=itemRow(item);if(g.kind==='song'){const index=document.createElement('span');index.className='browse-index';index.textContent=String(i+1);row.prepend(index);row.dataset.browseVideo=item.videoId;}list.append(row);});
+    section.append(title,list);out.append(section);
+  }
+  if(p.loaded&&!p.items.length&&!p.loading){const empty=document.createElement('div');empty.className='browse-empty';empty.textContent='No items were returned for this page.';out.append(empty);}
+  browsePlaying();
+}
+function browseOnline(){if(!phoneBrowse)return;const online=$('app').dataset.pc==='on';$('browsePlay').disabled=!online||(phoneBrowse.r.kind==='related'&&!phoneBrowse.items.some(x=>x.kind==='song'));$('browseNext').disabled=$('browseEnd').disabled=!online;}
+function browsePlaying(){
+  if(!phoneBrowse)return;const video=last?.videoId||'';document.querySelectorAll('#browseResults [data-browse-video]').forEach(row=>{const on=!!video&&row.dataset.browseVideo===video;row.classList.toggle('now-track',on);const i=row.querySelector('.browse-index');if(i){if(!i.dataset.number)i.dataset.number=i.textContent;i.textContent=on?'♪':i.dataset.number;}});
+}
+$('browseBack').onclick=browseBack;$('browseSearch').onclick=()=>{browseReset();window.scrollTo(0,0);$('q').focus();};$('browseRetry').onclick=browseFetch;
+$('browsePlay').onclick=()=>{const p=phoneBrowse;if(!p)return;const r=p.r;let ok=false;if(r.kind==='artist')ok=cmd('artist_radio',r.browseId);else if(r.kind==='related'){const song=p.items.find(x=>x.kind==='song');if(song)ok=cmd('play_video',song.videoId);}else ok=cmd('play_collection',r.playlistId);if(ok){toast('Starting playback…');setView('playing');}};
+$('browseNext').onclick=()=>{if(phoneBrowse&&cmd('collection_next',phoneBrowse.r.playlistId))toast('Requested play next');};
+$('browseEnd').onclick=()=>{if(phoneBrowse&&cmd('collection_end',phoneBrowse.r.playlistId))toast('Requested add to queue');};
+$('browsePin').onclick=()=>{const id=phoneBrowse?.r.playlistId;if(!id)return;if(phonePins.has(id))phonePins.delete(id);else if(phonePins.size<80)phonePins.add(id);phoneWrite('pins',JSON.stringify([...phonePins]));browseDraw();};
+$('backBtn').onclick=browseBack;
 
 document.querySelectorAll('#kinds .chip').forEach((b) => {
   b.onclick = () => {
@@ -2132,6 +2233,7 @@ $('searchForm').onsubmit = (e) => {
   e.preventDefault();
   const q = $('q').value.trim();
   if (!q) return;
+  if(phoneBrowse)browseReset();
   $('q').blur();$('musicSearchClear').hidden=false;
   remember(q);
   $('suggest').hidden = true;
@@ -2552,26 +2654,14 @@ $('artistRadioBtn').onclick = () => {
   const id = String(lastQuery || '').slice(5);
   if (/^UC/.test(id) && cmd('artist_radio', id)) { toast('Starting artist radio…'); setView('playing'); }
 };
-$('relatedBtn').onclick = () => {
-  buzz();
-  setView('search');
-  lastQuery = 'related:current'; prevSearch = null; autoArtist = '';
-  $('backBtn').hidden = true;
-  $('artistRadioBtn').hidden = true;
-  $('results').textContent = '';
-  $('searchEmpty').hidden = true;
-  $('searchMsg').textContent = 'Finding songs similar to the one playing…';
-  if (!cmd('related', 'current')) { $('searchMsg').textContent = 'Not connected to your PC yet.'; return; }
-  clearTimeout(searchTimer);
-  searchTimer = setTimeout(() => { $('searchMsg').textContent = 'No response. Check that YouTube Music is open on the PC.'; }, 14000);
-};
+$('relatedBtn').onclick=()=>{buzz();browseCache.delete('related:current');openBrowsePage({kind:'related',title:'Similar songs',subtitle:last?.title?'Inspired by '+last.title:'Discover more music',thumb:last?.art||''},'related:current','related','current');};
 $('artistBtn').onclick = () => {
   buzz();
   const raw = (last && last.artist) || '';
   // "Artist A, Artist B" or "Artist • Album": take the first name.
   const name = raw.split(/\s*(?:,|&|•|·| feat\.? | ft\.? | x )\s*/i)[0].trim();
   if (!name) return toast('Nothing is playing, so there is no artist to open.');
-  setView('search');
+  browseReset();setView('search');
   searchKind = 'artist';
   document.querySelectorAll('#kinds .chip').forEach((c) => c.setAttribute('aria-pressed', String(c.dataset.kind === 'artist')));
   $('q').value = name;
@@ -2583,7 +2673,7 @@ $('artistBtn').onclick = () => {
 /* ---------- force refresh ---------- */
 let refreshPending = false, refreshTimer = null;
 function forceRefresh() {
-  buzz();
+  buzz();browseCache.clear();
   for (const k of Object.keys(libCache)) delete libCache[k];
   try { for (const k of Object.keys(localStorage)) if (k.startsWith(LIB_KEY)) localStorage.removeItem(k); } catch {}
   suggested = { query: '', items: [] };
@@ -2600,6 +2690,7 @@ function finishRefresh() {
   cmd('refresh');
   cmd('block_list');
   if (view === 'library') loadLibrary(true);
+  if(view==='search'&&phoneBrowse)browseFetch();
   toast('Refreshed');
 }
 $('refreshBtn').onclick = forceRefresh;
@@ -3045,7 +3136,7 @@ function phoneDrawRecent(section,m){
 }
 function phonePinnedOrder(items){return [...items].sort((a,b)=>Number(phonePins.has(b.playlistId))-Number(phonePins.has(a.playlistId)));}
 function phoneLibraryRow(r){const li=itemRow(r);if(!r.playlistId||!['playlist','album'].includes(r.kind))return li;const pin=actionButton('i-pin','Pin collection on this phone',()=>{if(phonePins.has(r.playlistId))phonePins.delete(r.playlistId);else if(phonePins.size<80)phonePins.add(r.playlistId);phoneWrite('pins',JSON.stringify([...phonePins]));if(phoneLibSnapshot)drawLibrary(phoneLibSnapshot);});pin.classList.add('pin-btn');pin.setAttribute('aria-pressed',String(phonePins.has(r.playlistId)));pin.setAttribute('aria-label',phonePins.has(r.playlistId)?'Unpin collection':'Pin collection');li.append(pin);return li;}
-function phoneClearPins(){phonePins.clear();phoneWrite('pins','[]');phoneLibSnapshot=null;for(const k of Object.keys(phoneScroll))delete phoneScroll[k];}
+function phoneClearPins(){browseReset();browseCache.clear();phonePins.clear();phoneWrite('pins','[]');phoneLibSnapshot=null;for(const k of Object.keys(phoneScroll))delete phoneScroll[k];}
 $('forget').addEventListener('click',phoneClearPins);
 $('devLeave').addEventListener('click',phoneClearPins);
 /* Phone-only submenu navigation and confirmations. */
