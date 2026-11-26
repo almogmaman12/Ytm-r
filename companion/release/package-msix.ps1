@@ -4,7 +4,8 @@ param(
   [Parameter(Mandatory=$true)][string]$Publisher,
   [Parameter(Mandatory=$true)][string]$CertificateThumbprint,
   [Parameter(Mandatory=$true)][string]$Version,
-  [Parameter(Mandatory=$true)][string]$OutputDirectory
+  [Parameter(Mandatory=$true)][string]$OutputDirectory,
+  [Parameter(Mandatory=$true)][string]$ExtensionPublicKeyPath
 )
 $ErrorActionPreference = 'Stop'
 if ($Version -notmatch '^\d+\.\d+\.\d+\.\d+$') { throw 'MSIX version must have four components' }
@@ -12,12 +13,18 @@ if ($CertificateThumbprint -notmatch '^[0-9A-Fa-f]{40}$') { throw 'Invalid signi
 $cert = Get-Item "Cert:\CurrentUser\My\$CertificateThumbprint"
 if ($cert.Subject -ne $Publisher -or -not $cert.HasPrivateKey) { throw 'Publisher must match the signing certificate subject' }
 $root = Split-Path -Parent $PSScriptRoot
+$publicKeyPath = (Resolve-Path -LiteralPath $ExtensionPublicKeyPath).Path
+$pem = (Get-Content -LiteralPath $publicKeyPath -Raw).Trim()
+if ($pem -notmatch '(?s)\A-----BEGIN PUBLIC KEY-----\s+[A-Za-z0-9+/=\r\n]+-----END PUBLIC KEY-----\z') { throw 'Provide a public PEM key only, never the private signing key.' }
+# Verify that the public resource is valid P-256 before packaging it.
+node -e "const k=require('node:crypto').createPublicKey(require('node:fs').readFileSync(process.argv[1])); if(k.asymmetricKeyType!=='ec'||k.asymmetricKeyDetails.namedCurve!=='prime256v1')process.exit(1)" "$publicKeyPath"
+if ($LASTEXITCODE -ne 0) { throw 'Invalid P-256 publisher key' }
 $out = [IO.Path]::GetFullPath($OutputDirectory)
 New-Item -ItemType Directory -Path $out -Force | Out-Null
 $stage = Join-Path ([IO.Path]::GetTempPath()) ('ytmr-msix-' + [Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $stage | Out-Null
 try {
-  dotnet publish (Join-Path $root 'YtmCompanion.csproj') -c Release -r win-x64 --self-contained true -o $stage
+  dotnet publish (Join-Path $root 'YtmCompanion.csproj') -c Release -r win-x64 --self-contained true -p:RequirePublisherKey=true "-p:ExtensionPublicKeyPath=$publicKeyPath" -o $stage
   if ($LASTEXITCODE -ne 0) { throw 'Build failed' }
   Add-Type -AssemblyName System.Drawing
   $assets = Join-Path $stage 'Assets'
