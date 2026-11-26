@@ -178,3 +178,12 @@ Check your workplace's IT policy before installing extensions or sending traffic
 
 ## License
 MIT
+
+
+## Phone System Center
+
+Open Settings → System Center. All paired phones can check the phone app build; a code-authenticated owner can also view connection history and database usage. The relay computes a fingerprint from the phone HTML and service worker at startup, exposes only the build and release notes at `/app-version.json`, and embeds the build into the served HTML. Update release notes in `APP_RELEASE` in `server/server.js` when shipping a new phone feature. A user-approved update fetches the current phone page without reloading the PC extension or deleting local settings. Update checks run only while the phone is visible and already connected.
+
+Connection history starts with the first System Center deployment and keeps 30 days of room-scoped PC/helper transitions and relay-wide start/stop and database error/recovery events. A relay heartbeat is recorded at most every 30 minutes while clients are connected. Unobserved gaps are not measured downtime; no external monitor or idle keep-alive is installed.
+
+The database dashboard shows relay-wide app SQL-over-HTTPS request counts, failed requests and average response times by UTC day, plus the allocated PostgreSQL table/index storage for this application's tables. Storage measurements are cached for five minutes. Internal System Center SQL is excluded from request counts to avoid self-counting; metrics are batched, and a sudden stop can lose unflushed metrics. This is not a Neon billing, compute or account-wide usage meter. No new environment variables or dependencies are required.
