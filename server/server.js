@@ -14,11 +14,12 @@ const {neonQuery,createDeviceStore}=require('./neon-store');
 const {createCalendarCloud,roomKey,hashKey}=require('./calendar-neon');
 const {createActivity}=require('./device-activity');
 const {createSystem}=require('./system-center');
+const {createOps}=require('./system-ops');
 
 const PORT = process.env.PORT || 3000;
 const PUBLIC_DIR = path.resolve(__dirname, 'public');
 const APP_VERSION=crypto.createHash('sha256').update(fs.readFileSync(path.join(PUBLIC_DIR,'index.html'))).update(fs.readFileSync(path.join(PUBLIC_DIR,'sw.js'))).digest('hex').slice(0,16);
-const APP_RELEASE={version:APP_VERSION,notes:['System Center: app updates, connection history and database usage.']};
+const APP_RELEASE={version:APP_VERSION,notes:['System Center 2.0: alerts, database optimization, connection analytics, sanitized logs, security and reports.']};
 const MIN_TOKEN_LEN = 20;
 const ALLOWED_CMDS = new Set([
   'play', 'pause', 'toggle', 'next', 'previous', 'volume', 'seek', 'get_state',
@@ -187,7 +188,7 @@ function noteBadCode(ip) {
   let f = failures.get(ip);
   if (!f || now - f.first > BAD_CODE_WINDOW_MS) f = { n: 0, first: now, until: 0 };
   f.n++;
-  if (f.n >= MAX_BAD_CODES) f.until = now + BLOCK_MS;
+  if (f.n >= MAX_BAD_CODES) {if(f.until<=now)ops.emit(null,'blocked');f.until = now + BLOCK_MS;}
   failures.set(ip, f);
   return f;
 }
@@ -210,8 +211,10 @@ const PAIR_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';   // no 0/O/1/I, so it
 const MAX_DEVICES_PER_ROOM = 8;
 const pairCodes = new Map();      // code -> { token, exp }
 const devices = new Map();        // id -> { id, name, hash, token, created, lastSeen }
-const system=createSystem(process.env.DATABASE_URL?neonQuery(process.env.DATABASE_URL):null);
-const cloudQuery=system.query;
+const rawQuery=process.env.DATABASE_URL?neonQuery(process.env.DATABASE_URL):null;
+const ops=createOps(rawQuery);
+const system=createSystem(rawQuery);
+const cloudQuery=system.query?async(q,p)=>{const at=Date.now();let ok=false;try{const r=await system.query(q,p);ok=true;return r;}finally{ops.measure(q,Date.now()-at,ok);}}:null;
 const cloudDevices=cloudQuery?createDeviceStore(cloudQuery):null;
 const cloudCalendar=cloudQuery?createCalendarCloud(cloudQuery):null;
 const activity=createActivity(cloudQuery);
@@ -274,7 +277,7 @@ setInterval(() => { const n = Date.now(); for (const [c, v] of pairCodes) if (v.
 const rooms = new Map();
 // Durable server cache independent of browser tabs and websocket rooms.
 const CALENDAR_CACHE_FILE=process.env.CALENDAR_CACHE_FILE||path.join(path.dirname(DEVICES_FILE),'calendar-cache.json');
-const calendarCache=createCalendarCache(CALENDAR_CACHE_FILE,{cloud:cloudCalendar});
+const calendarCache=createCalendarCache(CALENDAR_CACHE_FILE,{cloud:cloudCalendar,onStatus:(key,ok)=>ops.emitScope(key,ok?'backup_recovered':'backup_failed')});
 // Subscriptions live independently of sockets and rooms. The database never
 // needs the raw room token for calendar or reminder data.
 const calendarSubscriptions=new Map();
@@ -459,7 +462,7 @@ server.on('upgrade', (req, socket, head) => {
   const devKey = url.searchParams.get('device') || '';
   if (role === 'phone' && (pair || devKey) && !token) {
     // A new phone joining with a short code, or a paired phone using its device key.
-    if (isBlocked(clientIp(req))) return rejectUpgrade(socket, 429, 'Too Many Requests');
+    if (isBlocked(clientIp(req))) {ops.emit(null,'blocked_request');return rejectUpgrade(socket, 429, 'Too Many Requests');}
     if (!(pair ? /^[A-Z2-9]{8}$/.test(pair) : /^[0-9a-f]{16}\.[A-Za-z0-9_-]{20,64}$/.test(devKey))) return rejectUpgrade(socket, 400, 'Bad Request');
     if (wss.clients.size >= MAX_CLIENTS) return rejectUpgrade(socket, 503, 'Service Unavailable');
     return wss.handleUpgrade(req, socket, head, (ws) => {
@@ -472,7 +475,7 @@ server.on('upgrade', (req, socket, head) => {
     return rejectUpgrade(socket, 400, 'Bad Request');
   }
   if (isBlocked(clientIp(req))) {
-    if (LOG_COMMANDS) console.log(`${new Date().toISOString()} [blocked] ${clientIp(req)} is blocked for too many wrong codes`);
+    ops.emit(null,'blocked_request');    if (LOG_COMMANDS) console.log(`${new Date().toISOString()} [blocked] ${clientIp(req)} is blocked for too many wrong codes`);
     return rejectUpgrade(socket, 429, 'Too Many Requests');
   }
   if (wss.clients.size >= MAX_CLIENTS) return rejectUpgrade(socket, 503, 'Service Unavailable');
@@ -492,7 +495,7 @@ wss.on('connection', async (ws, info) => {
     // Claim a pairing code: hand out a device key, then close. The phone reconnects with the key.
     const entry = pairCodes.get(info.pair);
     if (!entry || entry.exp < Date.now()) {
-      const f = noteBadCode(ip);
+      const f = noteBadCode(ip);ops.emit(null,'pair_failed');
       console.log(`${new Date().toISOString()} [pairing] wrong or expired code from ${device}, ${ip}  (${f.n} of ${MAX_BAD_CODES}${f.until ? ', now blocked for 15 minutes' : ''})`);
       return ws.close(4006, 'bad pair code');
     }
@@ -506,7 +509,7 @@ wss.on('connection', async (ws, info) => {
       try{await cloudDevices.insert(record);}catch{console.warn('Paired phone could not be saved to Neon.');return ws.close(1013,'database unavailable');}
       finally{const n=(pendingPairs.get(entry.token)||1)-1;if(n)pendingPairs.set(entry.token,n);else pendingPairs.delete(entry.token);}
     }
-    devices.set(id,record);saveDevices();activity.record(entry.token,record,'paired');
+    devices.set(id,record);saveDevices();activity.record(entry.token,record,'paired');ops.emit(entry.token,'paired');
     log(roomId(entry.token), `phone paired with a code: ${device}, ${ip}`);
     send(ws, { type: 'paired', device: `${id}.${secret}` });
     const r = rooms.get(entry.token);
@@ -516,7 +519,7 @@ wss.on('connection', async (ws, info) => {
   let viaDevice = null;
   if (info.devKey) {
     viaDevice = deviceFromKey(info.devKey);
-    if (!viaDevice) { const f = noteBadCode(ip); log('------', `unknown or removed device key from ${device}, ${ip}  (${f.n} of ${MAX_BAD_CODES})`); return ws.close(4005, 'removed'); }
+    if (!viaDevice) { const f = noteBadCode(ip);ops.emit(null,'device_key_failed'); log('------', `unknown or removed device key from ${device}, ${ip}  (${f.n} of ${MAX_BAD_CODES})`); return ws.close(4005, 'removed'); }
     if(viaDevice.paused===true){log(roomId(viaDevice.token),'paused paired device attempted to reconnect');pauseSocket(ws);return;}
     token = viaDevice.token;
     viaDevice.lastSeen = Date.now();
@@ -536,7 +539,7 @@ wss.on('connection', async (ws, info) => {
 
   const room = getRoom(token);
   ws.isAlive = true;
-  ws.on('pong', () => { ws.isAlive = true; });
+  ws.on('pong', () => { ws.isAlive = true;if(ws.joined&&ws.pingAt){ops.sample(token,role==='agent'?'helper':role,Date.now()-ws.pingAt);ws.pingAt=0;} });
 
   let windowStart = Date.now();
   let count = 0;
@@ -547,7 +550,7 @@ wss.on('connection', async (ws, info) => {
   };
 
   let authed = false;
-  let lastDiag=0,lastActivityRead=0,lastSystemRead=0;
+  let lastDiag=0,lastActivityRead=0,lastSystemRead=0,lastOpsRead=0;
   const actionLogged=new Map();
   const calendarOwner = () => role === 'phone' && !viaDevice && calendarSecure();
   const calendarReader = () => role === 'phone' && mayReadCalendar(viaDevice);
@@ -560,14 +563,14 @@ wss.on('connection', async (ws, info) => {
     if (role === 'agent') {
       if (room.agent && room.agent !== ws) room.agent.close(4000, 'replaced');
       room.agent = ws;
-      system.transition(token,'helper',true);
+      system.transition(token,'helper',true);ops.conn(token,'helper',true);
       ws.who = who;
       log(rid, `PC helper connected: ${who}`);
       tellPhones(room);
     } else if (role === 'pc') {
       if (room.pc && room.pc !== ws) { log(rid, `PC replaced: ${room.pc.who} is out, ${who} is in`); room.pc.close(4000, 'replaced'); }
       room.pc = ws;
-      system.transition(token,'pc',true);
+      system.transition(token,'pc',true);ops.conn(token,'pc',true);
       ws.who = who;
       log(rid, `PC connected: ${who}`);
       if (room.boost != null) send(ws, { type: 'cmd', cmd: 'boost', value: room.boost });
@@ -610,7 +613,7 @@ wss.on('connection', async (ws, info) => {
         setName(msg.name);
         join();
       } else {
-        const f = noteBadCode(ip);
+        const f = noteBadCode(ip);ops.emit(null,'auth_failed');
         log(rid, `${role} gave a WRONG code: ${who}  (${f.n} of ${MAX_BAD_CODES}${f.until ? ', now blocked for 15 minutes' : ''})`);
         ws.close(4003, 'wrong code');
       }
@@ -655,6 +658,30 @@ wss.on('connection', async (ws, info) => {
     if (role === 'phone') {
       if (raw.length > MAX_PHONE_MSG_BYTES || msg.type !== 'cmd') return;
       if (overLimit(MAX_CMDS_PER_SEC)) return;
+      if(['ops_overview','ops_logs','ops_security','ops_analytics','ops_optimization','ops_report','ops_mark_read','ops_push'].includes(msg.cmd)){
+        if(viaDevice||!accessCode())return;
+        const request=String(msg.value?.request||'');if(!/^[a-zA-Z0-9_-]{1,32}$/.test(request))return;
+        if(Date.now()-lastOpsRead<1000)return send(ws,{type:msg.cmd,request,error:'Wait a moment before refreshing.'});
+        lastOpsRead=Date.now();
+        try{
+          let data;
+          if(msg.cmd==='ops_mark_read')data={prefs:await ops.setPreference(token,{readAt:Date.now()})};
+          else if(msg.cmd==='ops_push'){
+            if(typeof msg.value.enabled!=='boolean')return;
+            if(msg.value.enabled&&!subscriptionsFor(token).length)return send(ws,{type:msg.cmd,request,error:'Enable calendar notifications on your owner phone first.'});
+            data={prefs:await ops.setPreference(token,{push:msg.value.enabled})};
+          }else if(msg.cmd==='ops_optimization')data={usage:await system.usage(),features:await ops.breakdown()};
+          else if(msg.cmd==='ops_analytics')data={history:await system.history(token),points:await ops.analytics(token)};
+          else if(msg.cmd==='ops_report'){
+            const cal=calendarCache.diagnostics(token);
+            data={generatedAt:Date.now(),appBuild:APP_VERSION,uptime:Date.now()-relayStarted,pc:!!room.pc,helper:!!room.agent,pcVersion:room.pc?room.version||'':'',calendar:cal,subscriptions:subscriptionsFor(token).length,usage:await system.usage(),features:await ops.breakdown(),events:(await ops.list(token)).slice(0,40)};
+          }else{
+            const events=await ops.list(token),prefs=ops.preference(token);
+            data={events:msg.cmd==='ops_security'?events.filter(e=>e.category==='security'||e.category==='device'):msg.cmd==='ops_overview'?events.filter(e=>e.alert):events,prefs,mode:ops.mode,subscriptions:subscriptionsFor(token).length};
+          }
+          return send(ws,{type:msg.cmd,request,data});
+        }catch{return send(ws,{type:msg.cmd,request,error:'Could not load or save system data. Try again.'});}
+      }
       if(msg.cmd==='system_history'||msg.cmd==='system_usage'){
         if(viaDevice||!accessCode())return;
         const request=String(msg.value?.request||'');if(!/^[a-zA-Z0-9_-]{1,32}$/.test(request))return;
@@ -716,7 +743,7 @@ wss.on('connection', async (ws, info) => {
           try{
             if(cloudDevices)await cloudDevices.setAccess(id,field,enabled);
             if(devices.get(id)!==d)return;
-            d[field]=enabled;saveDevices();activity.record(token,d,field==='paused'?(enabled?'paused':'resumed'):(enabled?'calendar_allowed':'calendar_denied'));
+            d[field]=enabled;saveDevices();activity.record(token,d,field==='paused'?(enabled?'paused':'resumed'):(enabled?'calendar_allowed':'calendar_denied'));ops.emit(token,field==='paused'?(enabled?'paused':'resumed'):(enabled?'calendar_allowed':'calendar_denied'));
             for(const p of room.phones){if(!p.dev||p.dev.id!==id)continue;
               if(d.paused===true){pauseSocket(p,room);continue;}
               if(field==='calendar'){const allowed=mayReadCalendar(d);send(p,{type:'calendar_access',calendar:allowed});if(allowed)send(p,calendarFor(room,token));}
@@ -732,7 +759,7 @@ wss.on('connection', async (ws, info) => {
           const d = devices.get(id);
           if (d && d.token === token) {
             if(cloudDevices){try{await cloudDevices.remove(id);}catch{console.warn('Paired phone removal could not be saved to Neon.');return send(ws,{type:'status',message:'Could not remove phone. Database unavailable; try again.'});}}
-            devices.delete(id); saveDevices();activity.record(token,d,'removed');
+            devices.delete(id); saveDevices();activity.record(token,d,'removed');ops.emit(token,'removed');
             room.phones.forEach((p) => { if (p.dev && p.dev.id === id) p.close(4005, 'removed'); });
             log(rid, `paired phone removed by ${who}: ${d.name || id}`);
           }
@@ -942,11 +969,11 @@ wss.on('connection', async (ws, info) => {
     clearTimeout(authTimer);
     if (ws.joined) log(rid, `${role === 'pc' ? 'PC' : role === 'agent' ? 'PC helper' : 'phone'} disconnected: ${who}${code === 4000 ? ' (replaced by another PC)' : ''}`);
     if (role === 'agent') {
-      if (room.agent === ws) { room.calendar=calendarCache.get(token);room.agent=null;room.agentYt=false;room.lastAgent=Date.now();if(!shuttingDown)system.transition(token,'helper',false);tellPhones(room);sendCalendar(room,token); }
+      if (room.agent === ws) { room.calendar=calendarCache.get(token);room.agent=null;room.agentYt=false;room.lastAgent=Date.now();if(!shuttingDown){system.transition(token,'helper',false);ops.conn(token,'helper',false);}tellPhones(room);sendCalendar(room,token); }
     } else if (role === 'pc') {
       if (room.pc === ws) {
         room.pc = null;
-        if(!shuttingDown)system.transition(token,'pc',false);
+        if(!shuttingDown){system.transition(token,'pc',false);ops.conn(token,'pc',false);}
         room.lastSeen = Date.now();
         tellPhones(room);
       }
@@ -981,7 +1008,20 @@ const calendarTimer = setInterval(() => {
 }, 30000); calendarTimer.unref();
 wss.on('close', () => clearInterval(calendarTimer));
 let shuttingDown=false;
-const systemTimer=setInterval(()=>{if(shuttingDown)return;system.observe([...rooms.values()].some(r=>r.pc||r.agent||r.phones.size));void system.flush();},60000);systemTimer.unref();wss.on('close',()=>clearInterval(systemTimer));
+let lastOpsFlush=0;const pushedAt=new Map();const alertStart=Date.now();
+function dispatchSystemAlerts(){
+  if(!accessCode())return;
+  const now=Date.now();
+  for(const [url,sub] of calendarSubscriptions){
+    if(!ops.pushEnabled(sub.roomKey))continue;
+    const last=pushedAt.get(url)||alertStart;
+    if(now-last<300000||!ops.recentAlerts(sub.roomKey,last).length)continue;
+    pushedAt.set(url,now);
+    push.sendPush(url).then(status=>{if(status===404||status===410)return serializeSubscription(async()=>{if(calendarSubscriptions.get(url)!==sub)return;if(cloudCalendar)await cloudCalendar.unsubscribe(url,sub.roomKey,pushKeyId);calendarSubscriptions.delete(url);});}).catch(()=>{});
+  }
+  for(const url of pushedAt.keys())if(!calendarSubscriptions.has(url))pushedAt.delete(url);
+}
+const systemTimer=setInterval(()=>{if(shuttingDown)return;system.observe([...rooms.values()].some(r=>r.pc||r.agent||r.phones.size));void system.flush();ops.tick();dispatchSystemAlerts();if(Date.now()-lastOpsFlush>=300000){lastOpsFlush=Date.now();void ops.flush();}},60000);systemTimer.unref();wss.on('close',()=>clearInterval(systemTimer));
 const activityTimer=setInterval(()=>{void activity.flush();},15000);activityTimer.unref();wss.on('close',()=>clearInterval(activityTimer));
 
 // Heartbeat: drop dead connections, keep proxies from idling us out.
@@ -989,7 +1029,7 @@ const heartbeat = setInterval(() => {
   wss.clients.forEach((ws) => {
     if (!ws.isAlive) return ws.terminate();
     ws.isAlive = false;
-    try { ws.ping(); } catch { /* socket is going away */ }
+    try { ws.pingAt=Date.now();ws.ping(); } catch { /* socket is going away */ }
   });
 }, 25000);
 heartbeat.unref();
@@ -1007,7 +1047,7 @@ if (require.main === module) {
   const shutdown = () => {
     if(shuttingDown)return;shuttingDown=true;clearInterval(systemTimer);
     wss.clients.forEach((c) => { try { c.close(1001, 'server restarting'); } catch { /* ignore */ } });
-    server.close(async()=>{await Promise.allSettled([calendarCache.flush(),subscriptionTail,activity.flush()]);await system.stop();process.exit(0);});
+    server.close(async()=>{await Promise.allSettled([calendarCache.flush(),subscriptionTail,activity.flush()]);await system.stop();ops.emit(null,'relay_stopped');await ops.flush();process.exit(0);});
     setTimeout(()=>process.exit(0),8000).unref();
   };
   process.on('SIGTERM', shutdown);
@@ -1031,6 +1071,8 @@ if (require.main === module) {
     }
     await activity.init();
     await system.init();
+    await ops.init();
+    console.log('System Center 2.0 ready ('+ops.mode+').');
     console.log('System Center ready ('+(cloudQuery?'Neon':'memory')+').');
     console.log('Device activity history ready ('+activity.mode+').');
     server.listen(PORT,()=>console.log(`YTM remote relay listening on :${PORT}`));
