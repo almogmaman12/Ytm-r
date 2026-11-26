@@ -1,0 +1,25 @@
+name: Windows companion build
+on:
+  push:
+    branches: [feature/windows-companion]
+    paths: ['companion/**', '.github/workflows/companion-build.yml']
+  pull_request:
+    paths: ['companion/**', '.github/workflows/companion-build.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Build Windows x64
+        run: dotnet publish companion/YtmCompanion.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o companion/out
+      - uses: actions/upload-artifact@v4
+        with:
+          name: YtmCompanion-windows-x64-test-build
+          path: companion/out/
+          retention-days: 7
