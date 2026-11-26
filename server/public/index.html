@@ -919,6 +919,7 @@
   .system-event span { flex:1; }
   .system-event small { font-size:11px;color:var(--muted);text-align:right; }
   .system-section-title { font-size:15px;margin:16px 0 8px; }
+  .system-tabs {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));}.system-tabs button{min-height:40px;}.ops-filters{display:flex;gap:8px;margin:10px 0;}.ops-filters input,.ops-filters select{min-width:0;flex:1;padding:10px;border:1px solid var(--line);border-radius:12px;background:var(--bg);color:var(--ink);}.ops-actions{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0;}.ops-actions button{flex:1;min-height:42px;font-size:12px;border-radius:12px;}.ops-unread{font-size:11px;color:var(--accent);}.ops-alert-row{padding:11px 0;border-bottom:1px solid var(--line);}.ops-alert-row strong{display:block;font-size:13px;}.ops-alert-row small{color:var(--muted);font-size:11px;}.ops-plot{width:100%;height:145px;margin:10px 0;}.ops-report{white-space:pre-wrap;overflow-wrap:anywhere;max-height:200px;overflow:auto;font-size:11px;padding:12px;border:1px solid var(--line);border-radius:12px;}.ops-recommendation{padding:11px;border-radius:12px;background:var(--phone-soft);margin:8px 0;font-size:12px;line-height:1.5;}
   @media (prefers-reduced-motion: reduce) { * { transition:none !important;animation:none !important; } }
 </style>
 </head>
@@ -1290,7 +1291,7 @@
       </div>
       <p class="small" style="margin-top:10px">Changing the token disconnects this phone until you enter a new one.</p>
     </details>
-    <details id="systemSec"><summary>System Center</summary><section class="relay-health-card"><div class="relay-health-head"><h3>App updates</h3><button id="systemCheckUpdate">Check</button></div><p id="systemVersion" class="relay-health-caption"></p><p id="systemUpdateState" class="relay-health-caption">Updates are checked while connected.</p><button id="systemApplyUpdate" class="activity-open" hidden>Update now</button></section><section id="systemOwner" class="relay-health-card"><div class="relay-health-head"><h3>System Center</h3><button id="systemRefresh">Refresh</button></div><div class="system-tabs"><button data-system-tab="history" aria-pressed="true">Connections</button><button data-system-tab="usage" aria-pressed="false">Database usage</button></div><p id="systemStatus" class="relay-health-caption" role="status"></p><div id="systemResults"></div></section></details>
+    <details id="systemSec"><summary>System Center</summary><section class="relay-health-card"><div class="relay-health-head"><h3>App updates</h3><button id="systemCheckUpdate">Check</button></div><p id="systemVersion" class="relay-health-caption"></p><p id="systemUpdateState" class="relay-health-caption">Updates are checked while connected.</p><button id="systemApplyUpdate" class="activity-open" hidden>Update now</button></section><section id="systemOwner" class="relay-health-card"><div class="relay-health-head"><h3>System Center</h3><button id="systemRefresh">Refresh</button></div><div class="system-tabs"><button data-system-tab="overview" aria-pressed="true">Notifications</button><button data-system-tab="history" aria-pressed="false">Connection history</button><button data-system-tab="analytics" aria-pressed="false">Connection analytics</button><button data-system-tab="usage" aria-pressed="false">Database usage</button><button data-system-tab="optimization" aria-pressed="false">Neon optimization</button><button data-system-tab="logs" aria-pressed="false">Live relay logs</button><button data-system-tab="security" aria-pressed="false">Security</button><button data-system-tab="report" aria-pressed="false">Diagnostic report</button></div><p id="systemStatus" class="relay-health-caption" role="status"></p><div id="systemResults"></div></section></details>
   </div>
   <div class="sheetFoot"><button id="closeSettings" class="secondary">Close</button></div>
 </dialog>
@@ -1567,6 +1568,7 @@ function connect() {
     else if (m.type === 'devices') renderDevices(m.list);
     else if(m.type==='relay_health')relayHealthReceive(m);
     else if(m.type==='system_history'||m.type==='system_usage')systemReceive(m);
+    else if(typeof m.type==='string'&&m.type.startsWith('ops_'))opsReceive(m);
     else if(m.type==='device_activity')activityReceive(m);
     else if (m.type === 'challenge') answerChallenge(sock, m.nonce);
     else if (m.type === 'calendar') renderCalendar(m);
@@ -3426,7 +3428,8 @@ document.querySelectorAll('[data-activity]').forEach(b=>b.onclick=()=>{activityF
 /* System Center: update checks only while the relay is already connected. */
 const APP_BUILD='__YTM_APP_VERSION__';
 let nextRelease=null,updateBusy=false,lastUpdateCheck=0,dismissedRelease='',appCheckInFlight=false;
-let systemTab='history',systemId='',systemTimer=null;
+let systemTab='overview',systemId='',systemTimer=null;
+let opsData=null,opsSearch='',opsSeverity='all',opsLive=false,opsPendingAction='',opsReport=null;
 $('systemVersion').textContent='Installed app build: '+APP_BUILD;
 function releaseNote(data){return Array.isArray(data.notes)?data.notes.filter(n=>typeof n==='string').slice(0,5).join(' '):'A new version is available.';}
 async function checkAppUpdate(manual=false){
@@ -3469,16 +3472,17 @@ function systemOpen(){
   checkAppUpdate(false);
   if(!$('systemOwner').hidden)systemRequest();
 }
-function systemRequest(){
+function systemRequest(live=false){
   if(!getToken()||!getCode())return;
-  clearTimeout(systemTimer);systemId=reqId();$('systemRefresh').disabled=true;$('systemStatus').textContent='Loading…';$('systemResults').textContent='';
-  if(!rawCmd('system_'+systemTab,{request:systemId})){systemDisconnected();return;}
+  opsPendingAction='';opsLive=live===true;
+  clearTimeout(systemTimer);systemId=reqId();$('systemRefresh').disabled=true;$('systemStatus').textContent=opsLive?'Refreshing live events…':'Loading…';if(!opsLive)$('systemResults').textContent='';
+  if(!rawCmd((['history','usage'].includes(systemTab)?'system_':'ops_')+systemTab,{request:systemId,live:opsLive})){systemDisconnected();return;}
   systemTimer=setTimeout(()=>{systemId='';$('systemRefresh').disabled=false;$('systemStatus').textContent='No response. Try again.';},25000);
 }
-$('systemRefresh').onclick=systemRequest;
+$('systemRefresh').onclick=()=>systemRequest();
 document.querySelectorAll('[data-system-tab]').forEach(b=>b.onclick=()=>{
   if(systemTab===b.dataset.systemTab)return;
-  systemTab=b.dataset.systemTab;document.querySelectorAll('[data-system-tab]').forEach(x=>x.setAttribute('aria-pressed',String(x===b)));systemRequest();
+  systemTab=b.dataset.systemTab;opsData=null;opsSearch='';opsSeverity='all';opsReport=null;document.querySelectorAll('[data-system-tab]').forEach(x=>x.setAttribute('aria-pressed',String(x===b)));systemRequest();
 });
 function sysEl(tag,cls,txt){const e=document.createElement(tag);if(cls)e.className=cls;if(txt!=null)e.textContent=txt;return e;}
 function sysBytes(n){n=Number(n)||0;return n>=1048576?(n/1048576).toFixed(2)+' MB':(n/1024).toFixed(1)+' KB';}
@@ -3522,6 +3526,76 @@ function systemReceive(m){
     root.append(sysEl('p','relay-health-caption','Storage includes tables, indexes and allocated database pages. Last measured '+dateTime(d.storage?.at)+'.'));
   }
 }
+/* System Center 2.0 owner-only views */
+function opsMetric(root,pairs){const g=sysEl('div','system-metrics');for(const [label,value] of pairs){const c=sysEl('div','system-metric');c.append(sysEl('small','',label),sysEl('strong','',String(value)));g.append(c);}root.append(g);}
+function opsButton(root,label,fn){const b=sysEl('button','secondary',label);b.type='button';b.onclick=fn;root.append(b);return b;}
+function opsAction(command,value={}){if(systemId||!getToken()||!getCode())return;systemId=reqId();opsPendingAction=command;$('systemRefresh').disabled=true;$('systemStatus').textContent='Saving…';if(!rawCmd('ops_'+command,{request:systemId,...value})){systemDisconnected();return;}clearTimeout(systemTimer);systemTimer=setTimeout(()=>{systemId='';opsPendingAction='';$('systemRefresh').disabled=false;$('systemStatus').textContent='No response. Refresh to try again.';},20000);}
+function opsReceive(m){
+  if(!getToken()||m.request!==systemId||m.type!=='ops_'+(opsPendingAction||systemTab))return;
+  clearTimeout(systemTimer);systemId='';$('systemRefresh').disabled=false;
+  if(m.error){opsPendingAction='';$('systemStatus').textContent=m.error;return;}
+  if(opsPendingAction){opsPendingAction='';if(opsData)opsData.prefs=m.data.prefs;opsDraw();return;}
+  const data=m.data||{};
+  if(systemTab==='logs'&&opsLive&&opsData){data.events=[...new Map([...(opsData.events||[]),...(data.events||[])].map(e=>[e.id,e])).values()].sort((a,b)=>b.at-a.at).slice(0,400);}
+  opsData=data;opsDraw();
+}
+function opsEvents(root,events){
+  for(const e of events){const row=sysEl('div','ops-alert-row');row.append(sysEl('strong','',e.message),sysEl('small','',dateTime(e.at)+' · '+e.severity+' · '+e.category));root.append(row);}
+  if(!events.length)root.append(sysEl('p','relay-health-caption','No matching events yet.'));
+}
+function opsDraw(){
+  const d=opsData||{},root=$('systemResults'),status=$('systemStatus');root.textContent='';
+  if(systemTab==='overview'){
+    const events=d.events||[],p=d.prefs||{},unread=events.filter(e=>e.at>(p.readAt||0)).length;
+    status.textContent=unread+' unread · last 30 days · '+(d.mode==='neon'?'Saved in Neon':'Session only');
+    opsMetric(root,[['Unread alerts',unread],['Push alerts',p.push?'On':'Off']]);
+    const a=sysEl('div','ops-actions');opsButton(a,'Mark all read',()=>opsAction('mark_read'));opsButton(a,p.push?'Disable push alerts':'Enable push alerts',()=>opsAction('push',{enabled:!p.push}));root.append(a);
+    root.append(sysEl('p','relay-health-caption','Alerts cover database errors/recovery, failed calendar backups, pairing, rate-limit blocks and observed PC outages of 15+ minutes. Push uses your existing calendar notification subscription and is best-effort while the relay runs.'));
+    for(const e of events){const row=sysEl('div','ops-alert-row');row.append(sysEl('strong','',e.message),sysEl('small','',dateTime(e.at)+(e.at>(p.readAt||0)?' · Unread':'')));root.append(row);}
+    if(!events.length)root.append(sysEl('p','relay-health-caption','No alerts yet.'));
+  }else if(systemTab==='logs'||systemTab==='security'){
+    const events=d.events||[];
+    status.textContent=systemTab==='logs'?'Sanitized structured events · auto-refresh from relay memory while viewing':'Security events are grouped to limit repeated attempts. Relay-wide failures have no IP addresses or attempted secrets.';
+    if(systemTab==='security'){opsMetric(root,[['Rejected attempts',events.filter(e=>['auth_failed','pair_failed','device_key_failed'].includes(e.kind)).length],['Block events',events.filter(e=>e.kind==='blocked').length],['Blocked requests',events.filter(e=>e.kind==='blocked_request').length],['Device events',events.filter(e=>e.category==='device').length]]);}
+    const filters=sysEl('div','ops-filters'),input=sysEl('input'),select=sysEl('select');input.placeholder='Search events';input.value=opsSearch;input.setAttribute('aria-label','Search events');for(const k of ['all','info','success','warning','error']){const o=sysEl('option','',k==='all'?'All levels':k);o.value=k;select.append(o);}select.value=opsSeverity;select.setAttribute('aria-label','Severity');filters.append(input,select);root.append(filters);
+    const list=sysEl('div');root.append(list);
+    const draw=()=>{list.textContent='';opsEvents(list,events.filter(e=>(opsSeverity==='all'||e.severity===opsSeverity)&&[e.message,e.category,e.severity].join(' ').toLowerCase().includes(opsSearch.toLowerCase())));};
+    input.oninput=()=>{opsSearch=input.value;draw();};select.onchange=()=>{opsSeverity=select.value;draw();};draw();
+  }else if(systemTab==='optimization'){
+    if(!d.usage?.configured){status.textContent='Neon is not configured.';return;}
+    status.textContent='Today (UTC) · measured application requests by feature. System telemetry SQL is excluded.';
+    const f=d.features||[],n=f.reduce((a,b)=>a+b.calls,0),err=f.reduce((a,b)=>a+b.errors,0),ms=f.reduce((a,b)=>a+b.ms,0);
+    const tables=d.usage.storage?.tables||[],total=tables.reduce((a,b)=>a+b.bytes,0);
+    opsMetric(root,[['Measured requests',n],['Failed',err],['Average latency',n?Math.round(ms/n)+' ms':'No samples'],['Allocated storage',sysBytes(total)]]);
+    sysTitle(root,'Requests by feature');
+    for(const x of f){const row=sysEl('div','system-storage'),track=sysEl('div','system-storage-track'),bar=sysEl('i');bar.style.width=(n?100*x.calls/n:0)+'%';track.append(bar);row.append(sysEl('div','',x.name+' · '+x.calls+' calls · '+x.errors+' failed'),track);root.append(row);}
+    sysTitle(root,'Optimization suggestions');
+    if(err)root.append(sysEl('p','ops-recommendation','Database errors observed. Check connection diagnostics before changing query frequency.'));
+    if(f[0]&&n>=20&&f[0].calls/n>=.5)root.append(sysEl('p','ops-recommendation',f[0].name+' accounts for '+Math.round(100*f[0].calls/n)+'% of measured requests. Review its query cadence and batch writes if practical.'));
+    if(n&&ms/n>=500)root.append(sysEl('p','ops-recommendation','Average response is above 500 ms. Cold starts and network delay may contribute; this does not prove SQL inefficiency.'));
+    const largest=[...tables].sort((a,b)=>b.bytes-a.bytes)[0];if(largest&&total>0)root.append(sysEl('p','ops-recommendation','Largest allocated table group: '+largest.name+' ('+sysBytes(largest.bytes)+'). PostgreSQL allocation includes indexes and unused pages; size alone does not indicate waste.'));
+    root.append(sysEl('p','relay-health-caption','No automatic deletes, SQL tuning or paid changes. Use Neon’s dashboard for actual compute and storage quotas.'));
+  }else if(systemTab==='analytics'){
+    status.textContent='Last 24 hours of sampled WebSocket round-trip times. History gaps are estimates, not independently monitored downtime.';
+    const cutoff=Date.now()-86400000,points=(d.points||[]).filter(p=>p.at>=cutoff&&Number.isFinite(p.ms)),events=(d.history?.entries||[]).filter(e=>e.at>=cutoff),pc=events.filter(e=>e.kind==='pc_connected').length;
+    const sorted=points.map(p=>p.ms).sort((a,b)=>a-b),avg=sorted.length?Math.round(sorted.reduce((a,b)=>a+b,0)/sorted.length):null;
+    opsMetric(root,[['Avg sampled RTT',avg===null?'No samples':avg+' ms'],['95th percentile',sorted.length?sorted[Math.ceil(sorted.length*.95)-1]+' ms':'No samples'],['PC connects',pc],['Samples',sorted.length]]);
+    const sessions=(d.history?.sessions||[]).map(s=>[Math.max(cutoff,s.started),Math.min(Date.now(),s.ended||s.observed)]).filter(([a,b])=>b>a).sort((a,b)=>a[0]-b[0]);
+    let observed=0,end=cutoff;for(const [a,b] of sessions){if(b>end){observed+=b-Math.max(a,end);end=b;}}
+    opsMetric(root,[['Estimated observed relay span',sysDuration(observed)],['Unobserved time',sysDuration(Math.max(0,86400000-observed))]]);
+    sysTitle(root,'Latency by connection');
+    const colors={pc:'#b8a5ff',helper:'#67d4a1',phone:'#edb17b'},max=Math.max(1,...sorted);
+    const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.setAttribute('viewBox','0 0 320 145');svg.setAttribute('class','ops-plot');svg.setAttribute('role','img');svg.setAttribute('aria-label','Latency samples over the last 24 hours');
+    for(const role of ['pc','helper','phone']){const pp=points.filter(p=>p.role===role);const line=document.createElementNS(svg.namespaceURI,'polyline');line.setAttribute('points',pp.map(p=>(8+304*(p.at-cutoff)/86400000).toFixed(1)+','+(130-120*p.ms/max).toFixed(1)).join(' '));line.setAttribute('fill','none');line.setAttribute('stroke',colors[role]);line.setAttribute('stroke-width','2');svg.append(line);for(const p of pp){const dot=document.createElementNS(svg.namespaceURI,'circle');dot.setAttribute('cx',8+304*(p.at-cutoff)/86400000);dot.setAttribute('cy',130-120*p.ms/max);dot.setAttribute('r','2');dot.setAttribute('fill',colors[role]);svg.append(dot);}const v=pp.map(p=>p.ms);sysEvent(root,role==='pc'?'PC playback':role==='helper'?'PC helper':'Phone',v.length?Math.round(v.reduce((a,b)=>a+b,0)/v.length)+' ms average · '+v.length+' samples':'No samples',v.length?'good':'');}
+    root.append(svg,sysEl('p','relay-health-caption','Left: 24 hours ago · right: now · vertical scale: 0–'+max+' ms. Purple PC, green helper, orange phone. Connection counts are observed, not proof of outages.'));
+  }else if(systemTab==='report'){
+    status.textContent='Sanitized report generated '+dateTime(d.generatedAt)+'. Review before sharing.';
+    const report=JSON.stringify(d,null,2);opsReport=report;
+    opsMetric(root,[['App build',d.appBuild||'Unknown'],['PC',d.pc?'Connected':'Offline'],['Helper',d.helper?'Connected':'Offline'],['Calendar backup',d.calendar?.savedAt?'Saved':'Not saved']]);
+    const a=sysEl('div','ops-actions');opsButton(a,'Download JSON',()=>{const url=URL.createObjectURL(new Blob([report],{type:'application/json'})),link=document.createElement('a');link.href=url;link.download='ytmr-diagnostics.json';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);});opsButton(a,'Copy report',async()=>{try{await navigator.clipboard.writeText(report);toast('Diagnostic report copied');}catch{toast('Copy unavailable. Download the report instead.');}});root.append(a,sysEl('pre','ops-report',report));
+  }
+}
+setInterval(()=>{if(systemTab==='logs'&&!systemId&&!document.hidden&&$('settings').open&&$('systemSec').open&&!$('systemSec').hidden&&ws?.readyState===1&&getToken()&&getCode()){const active=document.activeElement;if(active&&active.matches('#systemResults input,#systemResults select'))return;systemRequest(true);}},15000);
 resetColour();
 show();
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
