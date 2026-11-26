@@ -2534,7 +2534,12 @@ async function syncPush(create, epoch=calendarEpoch) {
   const reg = await navigator.serviceWorker.ready;
   if (epoch !== calendarEpoch || !calendarAllowed) return;
   let sub = await reg.pushManager.getSubscription();
-  if (sub && !sameKey(sub,calendarKey)) { await sub.unsubscribe(); sub = null; }
+  if(sub&&!sameKey(sub,calendarKey)){
+    const oldEndpoint=sub.endpoint;
+    await sub.unsubscribe();sub=null;create=true;
+    if(epoch!==calendarEpoch||!calendarAllowed)return;
+    rawCmd('calendar_push_unsub',oldEndpoint);
+  }
   if (!sub && create) sub = await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:keyBytes(calendarKey)});
   if (epoch !== calendarEpoch || !calendarAllowed) return;
   calendarSub = sub; pushUI();
