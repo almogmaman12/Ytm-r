@@ -676,6 +676,22 @@
   #waking .secondary { width:100%;margin-top:8px; }
   @media(max-width:360px) { .app-top { padding-left:10px;padding-right:10px; } .app-actions .icon-btn { width:37px; } .view { padding-left:12px;padding-right:12px; } ul.tracks .acts3 .act { width:32px; } .phone-page-head h2.section { font-size:29px; } #quickRow { gap:5px; } }
   @media(max-height:740px) { #art { width:min(100%,33dvh,390px); } #toggle { height:66px; } .controls { margin-top:8px; } .meta { margin-top:13px; } }
+  #miniCard.queue-swipe { touch-action:none; }
+  #libRecent { margin:0 0 18px; }
+  #libRecent h3 { margin:0 0 9px; font-size:17px; font-weight:750; letter-spacing:-.02em; }
+  #libRecentItems { display:flex; gap:10px; overflow-x:auto; padding:0 0 7px; scroll-snap-type:x proximity; scrollbar-width:thin; }
+  .recent-card { flex:0 0 112px; min-width:0; text-align:start; scroll-snap-align:start; padding:7px; background:var(--surface); border:1px solid var(--phone-edge); border-radius:16px; }
+  .recent-card .th { width:100%; aspect-ratio:1; border-radius:12px; background:var(--phone-panel) center/cover; }
+  .recent-card strong,.recent-card small { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .recent-card strong { font-size:12px; margin-top:6px; font-weight:750; }
+  .recent-card small { font-size:10px; color:var(--muted); margin:3px 0; }
+  #libList .pin-btn { width:36px; height:40px; }
+  #libList .pin-btn[aria-pressed="true"] svg { fill:currentColor; }
+  #libList.grid-library .pin-btn { align-self:flex-end; }
+  #suggest li button { border:1px solid var(--phone-edge); border-radius:14px; margin:4px 0; padding:10px; background:var(--surface); font-size:14px; }
+  #settings .sheetFoot { background:var(--phone-panel); }
+  .view:not([hidden]) { animation:phone-enter .15s ease-out; }
+  @keyframes phone-enter { from { opacity:.65; } to { opacity:1; } }
   @media (prefers-reduced-motion: reduce) { * { transition:none !important;animation:none !important; } }
 </style>
 </head>
@@ -683,6 +699,7 @@
 
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
   <defs>
+    <symbol id="i-pin" viewBox="0 0 24 24"><path d="m16 3 5 5-4 2-2 6-3 1-5-5 1-3 6-2 2-4ZM7 17l-4 4"/></symbol>
     <symbol id="i-play" viewBox="0 0 24 24"><path fill="currentColor" d="M8 4.8v14.4L19.6 12z"/></symbol>
     <symbol id="i-pause" viewBox="0 0 24 24"><rect fill="currentColor" stroke="none" x="6.5" y="4.5" width="3.8" height="15" rx="1.2"/><rect fill="currentColor" stroke="none" x="13.7" y="4.5" width="3.8" height="15" rx="1.2"/></symbol>
     <symbol id="i-next" viewBox="0 0 24 24"><path fill="currentColor" d="M6 5.5v13l9-6.5z"/><path d="M18 5.5v13"/></symbol>
@@ -823,6 +840,7 @@
       <button class="chip" data-section="history" aria-pressed="false">Recently played</button>
     </div>
     <div class="library-tools"><span id="libCount" class="hint"></span><button id="libLayout" class="pill" aria-pressed="false">Grid view</button></div>
+    <section id="libRecent" hidden><h3>Recently played</h3><div id="libRecentItems" aria-label="Recently played tracks"></div></section>
     <div id="libMsg" class="hint"></div><div id="libLoading" class="loading-list" aria-hidden="true" hidden><i></i><i></i><i></i></div>
     <ul id="libList" class="tracks"></ul>
   </section>
@@ -1124,14 +1142,15 @@ function cmd(c, value) {
 const phoneScroll={};
 function setView(name) {
   if (!['playing','search','library','queue'].includes(name)) return;
-  if(view!==name)phoneScroll[view]=window.scrollY;
+  const changed=view!==name;if(changed)phoneScroll[view]=window.scrollY;
   view = name;
   document.body.dataset.view = name;
   for (const v of ['playing', 'search', 'library', 'queue']) $('v-' + v).hidden = v !== name;
   document.querySelectorAll('#tabs button').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.view === name)));
   $('mini').hidden = name === 'playing';
-  window.scrollTo(0,phoneScroll[name]||0);
+  if(changed)window.scrollTo(0,phoneScroll[name]||0);
   if (name === 'library') loadLibrary(false);
+  if(name==='search'){$('musicSearchClear').hidden=!$('q').value;if(!$('q').value&&!$('results').children.length)drawSuggest();}
 }
 document.querySelectorAll('#tabs button').forEach((b) => { b.onclick = () => { buzz(); setView(b.dataset.view); }; });
 $('miniCard').onclick = (e) => { if (!e.target.closest('button')) setView('playing'); };
@@ -1141,6 +1160,7 @@ function show() {
   $('setup').hidden = !!token;
   $('app').hidden = !token;
   $('glow').hidden = !token;
+  if(!token){$('queueNow').hidden=true;$('miniProgressFill').style.width='0%';$('libRecent').hidden=true;$('libRecentItems').textContent='';}
   if (token) {
     setView('playing');
     const want = new URLSearchParams(location.search).get('view');
@@ -1298,7 +1318,7 @@ function connect() {
     $('app').dataset.pc = 'off';
     if (ev.code === 4005) {
       // This phone was removed (or signed out): forget the key and go back to the start screen.
-      setDevice(null); token = null; last = null; artUrl = '';
+      setDevice(null); phoneClearPins(); token = null; last = null; artUrl = '';
       resetColour(); show();
       toast('This phone was removed. Pair it again to use it.');
       return;
@@ -1548,7 +1568,7 @@ function tick() {
   let pos = last.position || 0;
   // Glide between updates, but not while the PC is offline.
   if (last.playing && $('app').dataset.pc === 'on') pos += (Date.now() - lastAt) / 1000*(Number(last.speed)||1);
-  pos = Math.min(pos, last.duration);
+  pos = Math.max(0,Math.min(pos, last.duration));
   const pct=(pos/last.duration*100)+'%';$('fill').style.width=pct;$('miniProgressFill').style.width=pct;
   const eta=$('queueEta');eta.hidden=!(last.playing&&$('app').dataset.pc==='on'&&siteItems.length&&!last.ad);if(!eta.hidden)eta.textContent='Track ends in '+fmt((last.duration-pos)/(Number(last.speed)||1));
   $('cur').textContent = fmt(pos);
@@ -1633,9 +1653,9 @@ function removeSong(r, k) {
 }
 function moveSong(k, r, to) {
   if (to === k) return;
+  if(!cmd('yt_reorder', `${k}:${r.videoId}:${to}`))return;
   const moved = siteItems.splice(k, 1)[0];
   siteItems.splice(to, 0, moved);
-  cmd('yt_reorder', `${k}:${r.videoId}:${to}`);
   pendingSite = null;
   drawQueue();
 }
@@ -1757,7 +1777,7 @@ function attachDrag(li, grip, from) {
     if (e.button != null && e.button !== 0) return;
     e.preventDefault();
     const rows = [...$('ytqueue').children];
-    const h = li.offsetHeight;
+    const h = rows.length>1?Math.abs(rows[1].offsetTop-rows[0].offsetTop)||li.offsetHeight:li.offsetHeight;
     const startY = e.clientY;
     const startScroll = window.scrollY;
     let to = from, lastY = e.clientY;
@@ -1789,10 +1809,9 @@ function attachDrag(li, grip, from) {
       cancelAnimationFrame(raf);
       grip.onpointermove = grip.onpointerup = grip.onpointercancel = null;
       dragging = false;
-      if (!cancelled && to !== from) {
+      if (!cancelled && to !== from && siteItems[from] && cmd('yt_reorder', `${from}:${siteItems[from].videoId}:${to}`)) {
         const moved = siteItems.splice(from, 1)[0];
         siteItems.splice(to, 0, moved);
-        cmd('yt_reorder', `${from}:${moved.videoId}:${to}`);
         pendingSite = null;                    // our own order is the newest truth for now
       } else if (pendingSite) {
         siteItems = pendingSite; pendingSite = null;
@@ -1929,7 +1948,7 @@ function loadLibrary(force) {
     if(cmd('library',section))$('libMsg').textContent='Showing saved library · refreshing…';else $('libMsg').textContent='Showing saved library · PC offline';
     return;
   }
-  $('libList').textContent = '';$('libCount').textContent='';phoneLibSnapshot=null;
+  $('libList').textContent = '';$('libCount').textContent='';phoneLibSnapshot=null;phoneDrawRecent(section);
   $('libMsg').textContent = 'Loading…';
   if (!cmd('library', section)) { $('libMsg').textContent = 'Not connected to your PC yet.'; return; }
   clearTimeout(libTimer);
@@ -1947,13 +1966,13 @@ function renderLibrary(m) {
     try { const j = JSON.stringify(m); if (j.length < 400000) localStorage.setItem(LIB_KEY + m.section, j); } catch {}
   }
   if (wantPlaylist && m.section === 'playlists') { wantPlaylist = false; if (!m.error) openPlaylistPick(); else toast("Couldn't load your playlists: " + m.error); }
-  if (m.section !== libSection) return;
+  if (m.section !== libSection) { if(libSection==='home'&&m.section==='history')phoneDrawRecent('home');return; }
   clearTimeout(libTimer);
   if (m.error && libCache[m.section]) { $('libMsg').textContent='Showing saved library · refresh failed';return; }   // keep showing the old list if a quiet refresh fails
   drawLibrary(m);
 }
 function drawLibrary(m) {
-  phoneLibSnapshot=m;
+  phoneLibSnapshot=m;phoneDrawRecent(m.section,m);
   const list = $('libList');$('libCount').textContent=!m.error&&m.items?.length?m.items.length+' items':'';list.classList.toggle('grid-library',phoneLibraryGrid);
   list.textContent = '';
   if (m.error) { $('libMsg').textContent = "Couldn't load your library: " + m.error; return; }
@@ -1986,7 +2005,7 @@ $('searchForm').onsubmit = (e) => {
   e.preventDefault();
   const q = $('q').value.trim();
   if (!q) return;
-  $('q').blur();
+  $('q').blur();$('musicSearchClear').hidden=false;
   remember(q);
   $('suggest').hidden = true;
   lastQuery = `${searchKind}|${q}`;
@@ -2883,8 +2902,16 @@ $('libLayout').onclick=()=>{phoneLibraryGrid=!phoneLibraryGrid;phoneWrite('grid'
 phoneLayout();
 // Pins store only collection IDs on this phone, not titles or tokens. They are cleared on account changes.
 let phonePins=new Set();try{const a=JSON.parse(phoneRead('pins','[]'));if(Array.isArray(a))phonePins=new Set(a.filter(x=>typeof x==='string').slice(0,80));}catch{}
+function phoneDrawRecent(section,m){
+  const wrap=$('libRecent'),list=$('libRecentItems');list.textContent='';wrap.hidden=true;
+  if(section!=='home'&&section!=='history')return;
+  const source=section==='history'?m:(libCache.history||storedLib('history'));
+  const tracks=(source?.items||[]).filter(r=>r.kind==='song'&&r.videoId).slice(0,12);if(!tracks.length)return;
+  wrap.hidden=false;
+  for(const r of tracks){const b=document.createElement('button'),art=document.createElement('div'),title=document.createElement('strong'),sub=document.createElement('small');b.className='recent-card';b.type='button';art.className='th';if(r.thumb)art.style.backgroundImage=cssUrl(r.thumb);title.textContent=r.title;sub.textContent=r.subtitle||'';b.append(art,title,sub);b.onclick=()=>{buzz();if(cmd('play_video',r.videoId)){toast('Starting '+r.title);setView('playing');}};list.append(b);}
+}
 function phonePinnedOrder(items){return [...items].sort((a,b)=>Number(phonePins.has(b.playlistId))-Number(phonePins.has(a.playlistId)));}
-function phoneLibraryRow(r){const li=itemRow(r);if(!r.playlistId||!['playlist','album'].includes(r.kind))return li;const pin=actionButton('i-plus','Pin collection on this phone',()=>{if(phonePins.has(r.playlistId))phonePins.delete(r.playlistId);else if(phonePins.size<80)phonePins.add(r.playlistId);phoneWrite('pins',JSON.stringify([...phonePins]));if(phoneLibSnapshot)drawLibrary(phoneLibSnapshot);});pin.classList.add('pin-btn');pin.setAttribute('aria-pressed',String(phonePins.has(r.playlistId)));pin.setAttribute('aria-label',phonePins.has(r.playlistId)?'Unpin collection':'Pin collection');const actions=li.querySelector('.acts3');(actions||li).append(pin);return li;}
+function phoneLibraryRow(r){const li=itemRow(r);if(!r.playlistId||!['playlist','album'].includes(r.kind))return li;const pin=actionButton('i-pin','Pin collection on this phone',()=>{if(phonePins.has(r.playlistId))phonePins.delete(r.playlistId);else if(phonePins.size<80)phonePins.add(r.playlistId);phoneWrite('pins',JSON.stringify([...phonePins]));if(phoneLibSnapshot)drawLibrary(phoneLibSnapshot);});pin.classList.add('pin-btn');pin.setAttribute('aria-pressed',String(phonePins.has(r.playlistId)));pin.setAttribute('aria-label',phonePins.has(r.playlistId)?'Unpin collection':'Pin collection');li.append(pin);return li;}
 function phoneClearPins(){phonePins.clear();phoneWrite('pins','[]');phoneLibSnapshot=null;for(const k of Object.keys(phoneScroll))delete phoneScroll[k];}
 $('forget').addEventListener('click',phoneClearPins);
 $('devLeave').addEventListener('click',phoneClearPins);
