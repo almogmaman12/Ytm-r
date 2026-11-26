@@ -21,11 +21,11 @@ function createActivity(query,{now=Date.now,id=()=>crypto.randomBytes(16).toStri
   async function flush(){
     if(!query)return true;
     if(flight)return flight;
-    if(!pending.length)return true;
+    if(!pending.length&&now()-lastPrune<86400000)return true;
     flight=(async()=>{
       const batch=pending.slice();
       try{
-        await query(`INSERT INTO ytmr_device_activity_v1 (id,room_key,at_ms,data)
+        if(batch.length)await query(`INSERT INTO ytmr_device_activity_v1 (id,room_key,at_ms,data)
           SELECT x->>'id',x->>'room_key',(x->>'at')::bigint,x - 'room_key' FROM jsonb_array_elements($1::jsonb) AS t(x)
           ON CONFLICT (id) DO NOTHING`,[JSON.stringify(batch)]);
         const done=new Set(batch.map(r=>r.id));pending=pending.filter(r=>!done.has(r.id));
@@ -40,11 +40,12 @@ function createActivity(query,{now=Date.now,id=()=>crypto.randomBytes(16).toStri
   async function list(token,deviceId=''){
     const key=roomKey(token),cutoff=now()-TTL;
     let rows=[];
+    const before=query?pending.slice():[];
     if(query){
       const result=await query("SELECT data::text AS data FROM ytmr_device_activity_v1 WHERE room_key=$1 AND at_ms>$2::bigint AND ($3::text='' OR data->>'deviceId'=$3) ORDER BY at_ms DESC,id DESC LIMIT 200",[key,String(cutoff),deviceId]);
       rows=result.map(r=>JSON.parse(r.data));
     }
-    for(const row of (query?pending:memory))if(row.room_key===key&&row.at>cutoff&&(!deviceId||row.deviceId===deviceId))rows.push(row);
+    for(const row of (query?[...before,...pending]:memory))if(row.room_key===key&&row.at>cutoff&&(!deviceId||row.deviceId===deviceId))rows.push(row);
     const unique=new Map(rows.map(r=>[r.id,r]));
     return [...unique.values()].sort((a,b)=>b.at-a.at).slice(0,LIMIT).map(({id,at,deviceId,name,type})=>({id,at,deviceId,name,type}));
   }
