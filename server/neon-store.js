@@ -65,6 +65,11 @@ function createDeviceStore(query) {
     await query("UPDATE ytmr_devices_v1 SET data=data || jsonb_build_object('name',$2::text,'lastSeen',$3::bigint) WHERE id=$1",
       [id, name, String(lastSeen)]);
   }
-  return { init, insert, remove, rename };
+  async function setAccess(id, field, enabled) {
+    if (!['paused','calendar'].includes(field) || typeof enabled !== 'boolean') throw new Error('Invalid device permission');
+    await query('UPDATE ytmr_devices_v1 SET data=data || jsonb_build_object($2::text,$3::boolean) WHERE id=$1',
+      [id, field, String(enabled)]);
+  }
+  return { init, insert, remove, rename, setAccess };
 }
 module.exports = { neonQuery, createDeviceStore, validDevice, cleanDevices };
