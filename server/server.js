@@ -918,9 +918,9 @@ wss.on('connection', async (ws, info) => {
 
 // Remind only from fresh DOM snapshots, once per event/device, 10 minutes before it starts.
 const calendarTimer = setInterval(() => {
+  calendarCache.sweep();
   if (!calendarSecure()) return;
   const now = Date.now();
-  calendarCache.sweep();
   for (const [token,room] of rooms) {
     const cal=room.calendar;
     if(!room.agent||!cal||cal.status!=='ok'||now-cal.at>180000)continue;
