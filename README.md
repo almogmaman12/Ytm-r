@@ -1,6 +1,20 @@
-# YT Music Remote (self-hosted, updates over the air)
+# YTM Remote
 
-Control YouTube Music playing on a PC from your phone, with no shared Google account.
+**Self-hosted YouTube Music and YouTube remote, with over-the-air PC updates and an installable phone web app.** Control playback, browse your library, manage paired devices, view your Google Calendar, and monitor your own relay. No shared Google account is needed on the phone.
+
+[OTA branch](https://github.com/almogmaman12/Ytm-r/tree/feature/ota-remote-loader) · Chrome extension shell 2.4.3 · Node.js 18+ · Optional Neon PostgreSQL
+
+## Quick navigation
+
+- [Features](#features)
+- [Setup](#setup-about-10-minutes)
+- [Persistent storage with Neon](#persistent-storage-with-neon)
+- [Calendar and reminders](#optional-google-calendar-website-grabber-and-push-reminders)
+- [Paired phones](#pair-a-second-phone-with-a-short-code)
+- [System Center](#phone-system-center)
+- [Updating and extension reloads](#updating-the-point-of-all-this)
+- [Security](#trust-model-read-this)
+- [Troubleshooting](#if-something-goes-wrong)
 
 > **This is the self-updating version.** If you would rather install an extension once and update it by hand, use the simpler version on the [`main` branch](https://github.com/almogmaman12/Ytm-r/tree/main).
 
@@ -21,48 +35,51 @@ your git repo --push--> your relay server <--wss--> phone page
 | `server/public/ota/` | **The part that updates over the air.** `page.js` and `content.js` (the code that runs on music.youtube.com) and `ota.json` (which files, and where they run). |
 | `extension/` | The **shell**, installed once. It stores your relay address and token, downloads the files listed by your relay, checks them, and runs them on `music.youtube.com` (and on `www.youtube.com` only if you switch that on). |
 
-## What you can do from the phone
-- Play, pause, next, previous, seek and volume (the volume is the site's own player volume, shown live).
-- **Search** songs, albums, artists or playlists (chips under the search box). Tap a song, album or playlist to play it; it starts the way a click on the site would, so the page, title and queue follow. Tap an artist to see their songs and albums, with a **Back** button.
-- **Play next / add to end:** every song, album and playlist has two buttons. They put a song, or a whole album or playlist, into YouTube Music's own queue right after the current song, or at the very end. If the site refuses a single song, it goes into a short "Waiting to be queued" list on the phone and plays when the current song ends.
-- **Library:** your playlists (with Liked songs first), saved albums and **Recently played** songs, from your own signed-in YouTube Music. Same tap and buttons as search results, so you can go back to a song from earlier.
-- **Radio:** start a radio from the current song (button on the Playing screen) or from any song in search or your library (the radio icon on a row).
-- **Device names:** name your phone in Settings ("Almog's phone"). The name shows in the relay log and next to songs you add to the queue ("added by …").
-- **Connection check:** Settings → **Check** tests each part of the site integration (player, volume, navigation, queue, search, library) and shows which still work, with the reason for any that don't. **Deep check** also adds and removes a copy of the current song. When YouTube changes something you see exactly what broke; the fix is a push to `server/public/ota/page.js`.
-- **Home:** the first tab in Library shows your YouTube Music home shelves ("Listen again", mixes and so on), each with the same tap and buttons as search results.
-- **Similar songs** and **Artist page:** buttons on the Playing screen. Similar songs lists what the site's own radio would play next for the current song; Artist page opens the current artist's songs and albums. Album and playlist rows also have a **Show songs** button to see the tracks before playing.
-- **Search suggestions and history:** suggestions appear as you type, and an empty search box lists your recent searches (kept on the phone only, with a clear button).
-- **Update notice:** when the code on your PC changes after a push, the phone says so ("The PC picked up an update: version …"), and Settings shows the version running on the PC.
-- **Repair note:** shortly after the PC connects (and when the version changes, or every 30 minutes), the phone quietly runs the quick connection check. If something fails it shows a plain-language note, for example that queue changes may not work while playback still does.
-- **Force refresh:** the round arrow at the top of the Playing screen reconnects, clears what the phone remembered and asks the PC to resend everything (song, queue, volume, block list) and to look for a code update, without interrupting the music. Settings also has **Reload this page** and **Reload YouTube Music on the PC** (stops the music for a few seconds; use it after an update that asks for a reload).
-- **Undo:** after removing a song, removing several, clearing the queue, or blocking a song or artist, a toast with an **Undo** button appears for a few seconds. (Undo for a very long queue brings back the first 60 songs.)
-- **Queue editing:** in **Edit** mode each row also has **Move to top** and **Move to bottom** buttons. **Select** lets you tick up to 40 songs and then move them to the top or bottom, or remove them, in one go. Adding a song that is already coming up asks first, with **Add anyway**.
-- **Explicit songs** show a small **E** in results, the library and the queue.
-- **Waking-relay screen:** if the connection to the relay is lost for more than a few seconds (free hosting sleeps when idle), the phone shows "Waking up your relay" with a timer and keeps checking, then reconnects by itself. The phone page also keeps a copy of itself, so it still opens while the relay is asleep.
-- **Do-not-play list:** **Never play…** on the Playing screen blocks the current song or its artist. Blocked songs are skipped automatically on the PC, even from autoplay or radio (if everything coming up is blocked it pauses instead of skipping forever). The list is in Settings, where each entry has **Allow again**. Songs you pick yourself on the phone still play. The list is kept in the PC's browser, not on the relay.
-- **Save the queue as a playlist:** Up next → *Save queue as a playlist*. Pick a name and the playing song plus everything coming up is saved as a private playlist in your YouTube Music library (Library → Playlists). A song queued twice is saved once; autoplay suggestions are not included. Needs YouTube Music signed in on the PC.
-- **Hints on long-press:** hold any button for half a second and a small label says what it does, like Android's own apps (the tap that follows the hold is ignored, so holding never presses anything). Works for icon buttons, chips, the bottom tabs and the buttons in song rows. It also works on song titles and artist names that are cut off with “…” (search results, library, Up next, the big title on the Playing screen and the mini player): hold one to read the full title and artist, and the row is not played. Titles that already fit do nothing special.
-- **No "Leave site?" prompt:** the payload stops YouTube's own "Changes you made may not be saved" prompt from appearing when the phone reloads the tab or switches between YouTube and YouTube Music, so nothing waits for a click on the PC. (Only on tabs the extension runs on.)
-- **Open or switch the site on the PC (TV):** the screen icon at the top of the phone page (or tapping the badge on the cover) opens a sheet: **Switch to YouTube** / **Switch to YouTube Music**, or open the other one as well. Switching reuses the current tab, so the window stays where it is (full-screen on a TV stays full-screen) and the other site is gone; if both are open, the other site's tabs are closed. A tab opened this way connects to the phone straight away. If nothing is open it opens a new tab. This uses the extension's helper (the "Let my phone wake YouTube Music…" option, on by default), so it needs **extension 2.2.0: reload it once in `chrome://extensions`**. Regular YouTube must be switched on in the extension's Advanced settings; the phone tells you if it isn't.
-- **Which site is playing:** a badge on the cover says **YouTube Music** (round icon) or **YouTube** (play-button icon), and the mini player shows it too.
-- **Add to playlist:** the **Playlist** button adds the playing song to one of your own YouTube Music playlists (the list comes from your Library).
-- **Instant Library and a snappier Play button:** the Library shows what it loaded last time immediately and refreshes quietly behind it; Play/Pause reacts at once instead of waiting for the PC to answer. Ads on either site show a banner on the phone.
-- **Like, Shuffle, Repeat:** buttons under the volume slider press the site's own buttons and show their state (liked heart, shuffle on, repeat off, all or one). On regular YouTube, Like works and Repeat loops the video; Shuffle is hidden.
-- **Speed and ±10 seconds:** the **1x** button picks 0.75x to 2x for the playing tab; the two round arrows next to Play jump back or forward 10 seconds.
-- **Sleep timer:** the moon button stops the music after 15, 30, 45, 60 or 90 minutes, or after the current song. It fades the volume out over the last 20 seconds (6 for "after this song"), pauses, then puts the volume back. The timer runs on the PC, so it still works if the phone goes to sleep or loses signal. The button shows the countdown.
-- **Lock-screen and notification controls (optional):** Settings → *On this phone*. Android then shows the song, cover, play, pause, previous, next and seek on the lock screen and in the notification shade. It works by playing a silent sound on the phone, which can pause other audio there, so it is off by default.
-- **Keep screen on / volume limit (optional):** also in *On this phone*. The limit stops the phone's volume slider above a chosen level (the PC's own volume is not capped).
-- **Home-screen shortcuts:** long-press the installed app icon for Search, Library and Up next.
-- **Regular YouTube (optional):** tick **Also control regular YouTube** in the extension's Advanced settings and approve Chrome's prompt. It then works much like YouTube Music: play, pause, seek, volume, speed, like, repeat, ±10 seconds, sleep timer, search for videos, and a **real queue** (play next, add to end, jump, remove, reorder, multi-select, undo, clear, auto-advance when a video ends). The queue is kept by the extension on the PC (it survives a page reload), and videos start through YouTube's own in-page navigation, so the player doesn't reload. YouTube's suggested videos show as *Autoplay*, **Similar** lists related videos, and **Radio** queues them. Ads are shown on the phone with a **Skip ad** button when YouTube offers one. Library, albums, artist pages and the block list stay YouTube Music only. A YouTube tab only takes over the connection once a video plays in it, so it doesn't push out your YouTube Music tab.
-- **Reopen YouTube Music:** if the tab was closed, the phone shows an **Open YouTube Music on the PC** button instead of leaving you at "PC offline". While no tab is open the extension keeps one idle connection to your relay (using the same PC code), and the button makes it open `music.youtube.com`. That connection can do nothing else. Chrome itself must still be running on the PC. You can turn it off with the checkbox in the extension's Advanced settings (reload the extension once after updating).
-- **Up next:** shows YouTube Music's real queue. Tap a song to jump to it, press ✕ to remove it, press **Edit** to drag the handles and reorder, or **Clear** to remove everything coming up (the song playing stays). When the queue itself is empty, the songs YouTube Music will autoplay next are shown under an **Autoplay** heading (tap one to play it now).
+## Features
+
+| Area | Capabilities |
+|---|---|
+| Now playing | Artwork, live playback state, seek, volume, play/pause, skip, like, shuffle, repeat, speed, radio, similar songs, artist pages, ad status and available skip-ad action. |
+| Playback studio | Speed 0.25x–2x, boost 100–500%, sleep timer 1–720 minutes or end of song. PC-side sleep timer continues when the phone disconnects. |
+| Search and library | Songs, albums, artists and playlists; suggestions, local search history, home shelves, Liked songs, saved albums, recently played, grid/list layouts, pinned collections and browsable album/playlist/artist pages. |
+| Queue | Real site queue, play next, add to end, jump, drag reorder, multi-select, remove, clear, undo, duplicate warning, autoplay suggestions, save queue as a playlist. |
+| Phone experience | Installable web app, mini player, gestures, dark/AMOLED themes, accents, density, haptics, optional lock-screen controls, screen-on setting, volume limit and home-screen shortcuts. |
+| Paired phones | Single-use pairing codes, online/offline status, individual calendar permission, pause/resume without re-pairing, permanent removal and private activity history. |
+| Calendar | Read-only Google Calendar website grabber, week/month/day views, timed events and end times, remaining-event filter, server cache and optional owner reminders. |
+| Reliability | Automatic reconnect, cached phone shell, PC wake/open/switch, quick and deep PC checks, relay diagnostics, automatic phone update detection and System Center. |
+| Persistent storage | Optional Neon database for devices, calendar snapshots, notification configuration, activity history, connection history and application usage metrics. |
+
+### Playback details
+
+- Play next / add to end supports songs and whole collections. If YouTube Music refuses a single song, it can enter the waiting queue. Up next edits the site's own queue; undo restores at most the first 60 removed songs, and multi-select supports up to 40.
+- Browse artist, album and playlist pages before playing. Pin favorite collections locally and add the current or selected song directly to a playlist. YouTube Music library features require the signed-in PC session.
+- The do-not-play list is stored in the PC browser. It skips blocked autoplay/radio tracks; explicitly selected tracks can still play.
+- Sleep timers run on the PC and fade out near the end. Boost uses dynamic audio processing; reduce speaker volume before using high levels.
+- Optional Android lock-screen controls use silent audio on the phone, which can interrupt other phone audio. They are off by default.
+- Press and hold an icon to see a hint, or a truncated song title to read the full title. The long press does not activate the item.
+- Regular YouTube support is optional. It has playback, search, video queue, similar videos, radio and ads; YouTube Music library and block-list features remain site-specific.
+- The helper can wake a tab and open/switch between YouTube Music and regular YouTube while Chrome is running. This cannot power on an offline PC. See [sound activation](#sound-in-a-tab-you-havent-clicked) for the optional Tap PC feature.
+
+### Phone settings
+
+| Page | Purpose |
+|---|---|
+| Appearance & feel | Theme, accent, list density, haptics and gestures. |
+| Do-not-play list | Manage blocked songs and artists. |
+| On this phone | Lock-screen controls, screen-on behavior and phone volume limit. |
+| Connection & diagnostics | Live relay and Neon check, PC/helper status, calendar backup timestamp, notification registration, quick/deep PC checks and repair tools. |
+| Paired phones | Pair, pause, resume, remove, grant calendar access and inspect device activity. |
+| Security | Access code and connection token. |
+| System Center | Phone updates, connection history and application database usage. |
+
+Settings that administer the relay or other devices are owner-only. The full System Center history and usage views additionally require a configured phone access code.
 
 ## Setup (about 10 minutes)
 
 ### 1. Fork and deploy your relay
-Fork this repo on GitHub. Any host with Node and WebSockets over HTTPS works (Render, Fly.io, Railway, a small VPS).
+Fork this repo on GitHub and select the OTA branch (`feature/ota-remote-loader`) or the equivalent branch in your fork. Any host with Node.js 18+ and WebSockets over HTTPS works.
 
-On Render: New → Web Service → connect **your fork**, **Root Directory** `server`, **Build Command** `npm install`, **Start Command** `npm start`. Auto-deploy on push is what makes updates automatic. Free instances sleep when idle, so the first connection can take a while.
+On Render: New → Web Service → connect **your fork**, select the OTA branch, set **Root Directory** to `server`, **Build Command** to `npm install`, and **Start Command** to `npm start`. Enable auto-deploy. Free instances may sleep when idle, so the first connection can take a while. Set random `ACCESS_CODE` and `PC_CODE` environment variables before connecting devices.
 
 Local test: `cd server && npm install && npm start`, then open http://localhost:3000.
 
@@ -77,6 +94,27 @@ Needs Chrome 135 or newer.
 ### 3. Open the phone page
 Visit your relay address on your phone, paste the same token, and tap Connect. Use "Add to Home screen" to install it.
 
+## Persistent storage with Neon
+
+Neon PostgreSQL is optional but recommended for hosts with an ephemeral filesystem. It uses SQL over HTTPS and the existing Node runtime; no additional package or database service is needed.
+
+1. Create a private Neon project and PostgreSQL database (prefer a region near your relay).
+2. Copy the Neon connection string, including the generated credentials, into a private Render environment variable named `DATABASE_URL`.
+3. Redeploy the relay. Tables are created automatically; no manual SQL setup is required.
+4. Verify the startup logs: `Neon paired-phone persistence ready`, `Neon calendar cache and notification persistence ready`, `Device activity history ready (neon)`, and `System Center ready (Neon)`.
+
+| Data | Storage / retention |
+|---|---|
+| Paired devices, names, pause state and calendar grants | Neon; until revoked. |
+| Calendar snapshots | Neon + RAM; 14 days, up to 80 events per snapshot. |
+| Push subscriptions and VAPID identity | Neon; existing private VAPID environment override takes precedence. |
+| Device activity | Neon; last 30 days, up to 200 entries shown. |
+| Relay/PC connection history and SQL metrics | Neon; 30-day retention, recent activity and seven-day usage view. |
+| Playback state, one-time pairing codes | RAM; not persistent. |
+| Appearance settings, pins, phone credentials | Local phone browser storage. |
+
+Without Neon, devices and calendar use private local files, and activity/history use process memory. Free Render storage may disappear on restart. Never commit `DATABASE_URL`, private keys, access codes or room tokens. The database contains private calendar titles and times and device authentication records. Treat it accordingly. Consult the provider's actual quota dashboard; this app's metrics are not a billing guarantee.
+
 ## Optional Google Calendar website grabber and push reminders
 
 No Calendar API, OAuth or credentials. Enable Calendar access under extension Options → Advanced and approve Chrome's optional site permission. Any open Google Calendar tab can sync automatically, including Agenda and Week. Keep the Calendar display timezone equal to the PC timezone. Hebrew and English time ranges are supported when the displayed date and time are readable. Only rendered events are fetched; browse additional dates to cache them. Google markup changes may need OTA fixes.
@@ -89,10 +127,10 @@ Enable notifications on the phone for generic reminders 10 minutes before readab
 
 With Neon, push subscription endpoints, recent successful reminder markers and the VAPID private key are saved in the database. Existing `VAPID_PRIVATE_JWK` takes precedence; otherwise a persistent key is created automatically. Never expose either secret. Open the owner phone once after the first deploy so its existing subscription can register again (a mismatched key is renewed if permission is granted). Reminders remain owner-only and require fresh live calendar data and an awake relay; persistence does not turn cached events into guaranteed offline notifications. Without Neon, set `VAPID_PRIVATE_JWK` from `node server/calendar-push.js` for stable keys; subscriptions then last only for the running process. Android Chrome is the primary target; iOS requires an installed web app.
 
-The cache and event-end-time update requires extension 2.4.3 (reload once). Event end times are preserved where the site shows a readable range; no duration is guessed. Subsequent changes to `server/public/ota/calendar.js`, the phone interface and relay are OTA. The calendar payload is isolated from music scripts and only registered on the explicitly permitted Calendar origin.
+The calendar grabber and end-time support require extension shell 2.4.3. If you already have that shell installed, the newer server-side cache, sharing and diagnostics features require no extension reload. Event end times are preserved where the site shows a readable range; no duration is guessed. Subsequent changes to `server/public/ota/calendar.js`, the phone interface and relay are OTA. The calendar payload is isolated from music scripts and only registered on the explicitly permitted Calendar origin.
 
 ## Updating (the point of all this)
-Change anything under `server/` (including `server/public/ota/`), commit and push. Your host redeploys. The extension checks the relay about every 10 minutes and whenever a YouTube Music tab loads, or press **Check for update now** in its settings. A new version is applied to the open tab without reloading it.
+Change anything under `server/` (including `server/public/ota/`), commit and push. Your host redeploys. Phone-only changes are delivered by the web app and can be detected by System Center. Server-only changes (including Neon schema and device administration) require no extension reload. The extension checks the relay about every 10 minutes and whenever a YouTube Music tab loads, or press **Check for update now** in its settings. A new version is applied to the open tab without reloading it.
 
 What the extension checks before it runs anything:
 - the file list comes from your relay's `/ota/manifest.json` (a SHA-256 for every file, computed by the server);
@@ -128,34 +166,38 @@ Chrome keeps a tab silent until it has had a real click or key press, so a YouTu
 **Artist radio**: tap **Radio** on Now Playing and choose Artist radio (it uses the artist of the playing song), or open an artist from Search and tap **Start artist radio**. It starts the artist's own Radio from their YouTube Music page. YouTube Music only.
 
 ## Pair a second phone with a short code
-On a phone that is already connected: **Settings, Phones, Pair another phone**. It shows a code like `ABCD-EFGH` that works once and lasts 2 minutes. On the other phone open your relay's address, tap **I have a pairing code** and type it. That phone gets its own key, so it never needs the token or the access code. The Phones list shows each paired phone and when it was last seen, and **Remove** signs one out immediately. Paired phones can control the music but cannot pair or remove other phones. Up to 8 phones; wrong codes count towards the same address block as wrong access codes.
+On the main (token-authenticated) phone: **Settings → Paired phones → Pair another phone**. It shows a code like `ABCD-EFGH` that works once and lasts 2 minutes. On the other phone open your relay's address, tap **I have a pairing code** and type it. That phone gets its own key, so it never needs the token or the access code. The list shows whether a device is connected, offline or paused. **Pause access** blocks its music and calendar access while retaining its key; **Resume access** lets it reconnect automatically. **Remove** permanently revokes its key. **Calendar access** is off by default for each paired phone and can be granted or revoked by the owner. Paired phones cannot manage other devices or enable calendar reminders. Up to 8 phones; wrong codes count towards the same address block as wrong access codes.
 
 With `DATABASE_URL`, paired phones, pause status and calendar permissions are persisted in Neon. Otherwise they are stored in `devices.json`; set `DEVICES_FILE` on a persistent disk to keep them across redeploys. The database and file contain private room tokens and hashed device keys; never expose them.
 
+### Device activity
+
+Open **Settings → Paired phones → View device activity**, or use the Activity history button on an individual device. The owner can filter access changes and music requests, including records for removed devices. History records pairing, connections, disconnections, renaming, pause/resume, calendar grants/revocations, removals and selected remote command categories. Music requests are grouped over 30 seconds; a request is not proof that the PC executed it. Song titles, search terms, IP addresses and credentials are not stored in this history. Entries begin with the deployment that introduced history; they are not reconstructed from older logs.
+
 ## If someone finds your token (access codes)
-A token alone can be stolen (a screenshot, a shared link). Set two codes as **environment variables** on your host (on Render: your service → **Environment**). The codes are never sent over the wire: the relay and each device prove they know them with a one-time challenge (HMAC-SHA256), so a stolen token is useless without them.
+A token alone can be stolen (a screenshot, a shared link). Set two codes as **environment variables** on your host (on Render: your service → **Environment**). The codes are not sent directly over the wire: connecting clients prove knowledge of the corresponding code using a one-time HMAC-SHA256 challenge. Use HTTPS and random, strong codes.
 - `ACCESS_CODE`: required by phones. The phone page asks for it once and remembers it.
 - `PC_CODE`: required by the PC extension (Options → "PC code"; reload the extension once after updating). Without it nobody who has your token can take the PC's place on the relay.
-- 6 or more characters, no spaces. Use random ones.
+- Use at least 10 random characters without spaces. Calendar requires both codes to be at least 8 characters.
 - After 5 wrong codes from one address in 10 minutes, that address is blocked for 15 minutes.
-- **No PC needed to lock everyone out:** if a phone is lost or a token leaks, open your host's dashboard from any phone, change `ACCESS_CODE`, and redeploy. Every device that knew the old code is refused immediately. Then enter the new code on your own phone (Settings → Change access code).
+- **Lost phone or leaked credentials:** change `ACCESS_CODE` and redeploy to invalidate the old phone access code. Paired-device keys authenticate independently, so also remove or pause any lost/untrusted paired devices from the owner phone. If the token itself leaks, rotate it on the relay clients and PC. Changing the owner access code alone does not revoke existing paired keys.
 - The relay log shows `refused` lines with the device and address for every failed attempt.
 
 ## Who is using it (relay logs)
-The relay prints one line per event to its normal output (on Render: the service's **Logs** tab), for example:
+The relay prints connection and command information to its normal output (on Render: the service's **Logs** tab), for example:
 ```
 2026-10-24T19:39:06Z [room 6b353d] phone connected: Android Chrome, 203.0.113.7  (1 phone)
 2026-10-24T19:39:08Z [room 6b353d] command play_video AAAAAAAAAA1  from Android Chrome, 203.0.113.7
 ```
 - Each line shows the device (system and browser, from its User-Agent) and the network address it connected from. Connections, disconnections, a PC being replaced, refused commands and rejected connection attempts are logged too.
-- The token is never logged; `room` is a short fingerprint of it, so lines from one setup can be matched up. An address you don't recognise next to a `command` line means someone has your token: generate a new one.
+- The token is never logged; `room` is a short fingerprint of it, so lines from one setup can be matched up. An unfamiliar address next to a command is worth investigating; it may be a legitimate paired device, a changed network or an unauthorized client. Revoke suspicious devices and rotate leaked credentials.
 - Volume, seek and state requests fire constantly, so they are left out. Set `LOG_ALL=1` to include them, or `LOG_COMMANDS=0` to log only connections.
 - The address comes from your host's proxy header, so it is the real client address on Render, Fly and similar hosts. It can be faked by someone talking to the server directly, so treat it as a clue.
 
 ## Other security notes
 - Without access codes the token is the only credential for the phone side (see above to add them). Use 20+ random characters and HTTPS. Anyone with it can control playback and see the current track title.
 - The relay accepts only a fixed list of commands, clamps values, rate-limits and caps message sizes. Its CORS headers are open only under `/ota/` (public code, no secrets).
-- The extension asks for access to `music.youtube.com`, plus `storage`, `alarms` and `userScripts`. Access to `www.youtube.com` is optional: it is requested only when you tick the box in the settings, and Chrome shows its own permission prompt. Token and relay address are kept on this PC (`storage.local`), not synced.
+- The extension asks for access to `music.youtube.com`, plus `storage`, `alarms`, `userScripts` and the declared `debugger` permission for opt-in sound activation. Access to `www.youtube.com` and `calendar.google.com` is optional and requires the corresponding setting and Chrome permission prompt. Token and relay address are kept on this PC (`storage.local`), not synced.
 
 ## Work computers
 Check your workplace's IT policy before installing extensions or sending traffic to an external server. This project does not try to hide itself from IT or monitoring tools.
@@ -176,10 +218,6 @@ Check your workplace's IT policy before installing extensions or sending traffic
 - If the queue panel never shows your songs on the phone, open the PC's page console (F12): the script logs a warning there saying which step failed.
 - Run tests with `cd server && npm test`.
 
-## License
-MIT
-
-
 ## Phone System Center
 
 Open Settings → System Center. All paired phones can check the phone app build; a code-authenticated owner can also view connection history and database usage. The relay computes a fingerprint from the phone HTML and service worker at startup, exposes only the build and release notes at `/app-version.json`, and embeds the build into the served HTML. Update release notes in `APP_RELEASE` in `server/server.js` when shipping a new phone feature. A user-approved update fetches the current phone page without reloading the PC extension or deleting local settings. Update checks run only while the phone is visible and already connected.
@@ -187,3 +225,6 @@ Open Settings → System Center. All paired phones can check the phone app build
 Connection history starts with the first System Center deployment and keeps 30 days of room-scoped PC/helper transitions and relay-wide start/stop and database error/recovery events. A relay heartbeat is recorded at most every 30 minutes while clients are connected. Unobserved gaps are not measured downtime; no external monitor or idle keep-alive is installed.
 
 The database dashboard shows relay-wide app SQL-over-HTTPS request counts, failed requests and average response times by UTC day, plus the allocated PostgreSQL table/index storage for this application's tables. Storage measurements are cached for five minutes. Internal System Center SQL is excluded from request counts to avoid self-counting; metrics are batched, and a sudden stop can lose unflushed metrics. This is not a Neon billing, compute or account-wide usage meter. No new environment variables or dependencies are required.
+
+## License
+MIT
