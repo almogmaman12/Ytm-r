@@ -12,6 +12,7 @@ const push = require('./calendar-push');
 const {createCalendarCache,TTL:CAL_CACHE_TTL}=require('./calendar-cache');
 const {neonQuery,createDeviceStore}=require('./neon-store');
 const {createCalendarCloud,roomKey,hashKey}=require('./calendar-neon');
+const {createActivity}=require('./device-activity');
 
 const PORT = process.env.PORT || 3000;
 const PUBLIC_DIR = path.resolve(__dirname, 'public');
@@ -209,6 +210,8 @@ const devices = new Map();        // id -> { id, name, hash, token, created, las
 const cloudQuery=process.env.DATABASE_URL?neonQuery(process.env.DATABASE_URL):null;
 const cloudDevices=cloudQuery?createDeviceStore(cloudQuery):null;
 const cloudCalendar=cloudQuery?createCalendarCloud(cloudQuery):null;
+const activity=createActivity(cloudQuery);
+const relayStarted=Date.now();
 const pendingPairs=new Map();
 const deviceAccessPending=new Set();
 try {
@@ -245,7 +248,7 @@ function deviceFromKey(key) {
   return a.length === b.length && crypto.timingSafeEqual(a, b) ? d : null;
 }
 const deviceList = (token) => [...devices.values()].filter((d) => d.token === token)
-  .map((d) => ({ id:d.id,name:d.name||'Phone',created:d.created,ago:Date.now()-(d.lastSeen||d.created),paused:d.paused===true,calendar:d.calendar===true }));
+  .map((d) => ({ id:d.id,name:d.name||'Phone',created:d.created,ago:Date.now()-(d.lastSeen||d.created),paused:d.paused===true,calendar:d.calendar===true,online:[...(rooms.get(token)?.phones||[])].some(p=>p.dev===d&&p.readyState===1) }));
 // Sharing calendar data is explicitly granted by an owner, and never works while paused.
 function deviceActive(d){return !d||(devices.get(d.id)===d&&d.paused!==true);}
 // Explicit pause notification, independent of delivery of a WebSocket close code.
@@ -498,7 +501,7 @@ wss.on('connection', async (ws, info) => {
       try{await cloudDevices.insert(record);}catch{console.warn('Paired phone could not be saved to Neon.');return ws.close(1013,'database unavailable');}
       finally{const n=(pendingPairs.get(entry.token)||1)-1;if(n)pendingPairs.set(entry.token,n);else pendingPairs.delete(entry.token);}
     }
-    devices.set(id,record);saveDevices();
+    devices.set(id,record);saveDevices();activity.record(entry.token,record,'paired');
     log(roomId(entry.token), `phone paired with a code: ${device}, ${ip}`);
     send(ws, { type: 'paired', device: `${id}.${secret}` });
     const r = rooms.get(entry.token);
@@ -539,6 +542,8 @@ wss.on('connection', async (ws, info) => {
   };
 
   let authed = false;
+  let lastDiag=0,lastActivityRead=0;
+  const actionLogged=new Map();
   const calendarOwner = () => role === 'phone' && !viaDevice && calendarSecure();
   const calendarReader = () => role === 'phone' && mayReadCalendar(viaDevice);
   let authTimer = null;
@@ -562,6 +567,7 @@ wss.on('connection', async (ws, info) => {
       tellPhones(room);
     } else {
       room.phones.add(ws);
+      if(viaDevice){activity.record(token,viaDevice,'connected');notifyDeviceOwners(room,token);}
       ws.who = who;
       log(rid, `phone connected: ${who}  (${room.phones.size} phone${room.phones.size === 1 ? '' : 's'})`);
       send(ws, pcStatus(room));
@@ -614,7 +620,7 @@ wss.on('connection', async (ws, info) => {
         if(d){
           const wanted=name;
           if(cloudDevices){try{await cloudDevices.rename(d.id,wanted,Date.now());}catch{console.warn('Paired phone name could not be saved to Neon.');return;}}
-          if(devices.get(d.id)===d){d.name=wanted;saveDevices();}
+          if(devices.get(d.id)===d){d.name=wanted;saveDevices();activity.record(token,d,'renamed');notifyDeviceOwners(room,token);}
         }
       }
       if (who !== before) log(rid, `phone renamed: ${before} -> ${who}`);
@@ -642,6 +648,22 @@ wss.on('connection', async (ws, info) => {
     if (role === 'phone') {
       if (raw.length > MAX_PHONE_MSG_BYTES || msg.type !== 'cmd') return;
       if (overLimit(MAX_CMDS_PER_SEC)) return;
+      if(msg.cmd==='relay_health'||msg.cmd==='device_activity'){
+        if(viaDevice)return;
+        const request=String(msg.value?.request||'').slice(0,32);
+        if(!/^[a-zA-Z0-9_-]{1,32}$/.test(request))return;
+        if(msg.cmd==='relay_health'){
+          if(Date.now()-lastDiag<3000)return send(ws,{type:'relay_health',request,error:'Please wait a few seconds before checking again.'});
+          lastDiag=Date.now();const start=Date.now();let db=cloudQuery?'unavailable':'not_configured',latency=null;
+          if(cloudQuery){try{await cloudQuery('SELECT 1 AS ok');db='connected';latency=Date.now()-start;}catch{}}
+          if(ws.readyState!==1)return;
+          const cal=calendarCache.diagnostics(token),snapshot=calendarFor(room,token);
+          return send(ws,{type:'relay_health',request,checkedAt:Date.now(),uptime:Date.now()-relayStarted,db,latency,pc:!!room.pc,helper:!!room.agent,version:room.pc?room.version||'':'',calendar:{...cal,status:!calendarSecure()?'locked':snapshot.status},subscriptions:subscriptionsFor(token).length,pushStable:!!cloudCalendar||!!process.env.VAPID_PRIVATE_JWK,devices:deviceList(token).length,activityStorage:activity.mode});
+        }
+        if(Date.now()-lastActivityRead<2000)return send(ws,{type:'device_activity',request,error:'Please wait a moment before refreshing.'});
+        lastActivityRead=Date.now();const filter=String(msg.value?.deviceId||'');if(filter&&!/^[0-9a-f]{16}$/.test(filter))return;
+        try{const entries=await activity.list(token,filter);return send(ws,{type:'device_activity',request,entries,storage:activity.mode});}catch{return send(ws,{type:'device_activity',request,error:'Could not load saved activity. Try again.'});}
+      }
       if (['calendar_get','calendar_push_sub','calendar_push_unsub','calendar_push_test'].includes(msg.cmd)) {
         if(msg.cmd==='calendar_get'){if(calendarReader())send(ws,calendarFor(room,token));return;}
         if (!calendarOwner()) return;
@@ -663,7 +685,7 @@ wss.on('connection', async (ws, info) => {
         if (msg.cmd === 'device_leave') {
           if(viaDevice){
             if(cloudDevices){try{await cloudDevices.remove(viaDevice.id);}catch{console.warn('Paired phone sign-out could not be saved to Neon.');return send(ws,{type:'status',message:'Could not sign out. Database unavailable; try again.'});}}
-            devices.delete(viaDevice.id);saveDevices();log(rid,`paired phone signed itself out: ${who}`);room.phones.forEach(p=>{if(p.dev&&p.dev.id===viaDevice.id)p.close(4005,'removed');});
+            devices.delete(viaDevice.id);saveDevices();activity.record(token,viaDevice,'signed_out');log(rid,`paired phone signed itself out: ${who}`);room.phones.forEach(p=>{if(p.dev&&p.dev.id===viaDevice.id)p.close(4005,'removed');});
           }
           return;
         }
@@ -680,7 +702,7 @@ wss.on('connection', async (ws, info) => {
           try{
             if(cloudDevices)await cloudDevices.setAccess(id,field,enabled);
             if(devices.get(id)!==d)return;
-            d[field]=enabled;saveDevices();
+            d[field]=enabled;saveDevices();activity.record(token,d,field==='paused'?(enabled?'paused':'resumed'):(enabled?'calendar_allowed':'calendar_denied'));
             for(const p of room.phones){if(!p.dev||p.dev.id!==id)continue;
               if(d.paused===true){pauseSocket(p,room);continue;}
               if(field==='calendar'){const allowed=mayReadCalendar(d);send(p,{type:'calendar_access',calendar:allowed});if(allowed)send(p,calendarFor(room,token));}
@@ -696,7 +718,7 @@ wss.on('connection', async (ws, info) => {
           const d = devices.get(id);
           if (d && d.token === token) {
             if(cloudDevices){try{await cloudDevices.remove(id);}catch{console.warn('Paired phone removal could not be saved to Neon.');return send(ws,{type:'status',message:'Could not remove phone. Database unavailable; try again.'});}}
-            devices.delete(id); saveDevices();
+            devices.delete(id); saveDevices();activity.record(token,d,'removed');
             room.phones.forEach((p) => { if (p.dev && p.dev.id === id) p.close(4005, 'removed'); });
             log(rid, `paired phone removed by ${who}: ${d.name || id}`);
           }
@@ -821,6 +843,10 @@ wss.on('connection', async (ws, info) => {
       if (LOG_COMMANDS && (process.env.LOG_ALL === '1' || !QUIET_CMDS.has(out.cmd))) {
         log(rid, `command ${out.cmd}${out.value != null && out.value !== '' ? ' ' + clean(out.value) : ''}  from ${who}${room.pc ? '' : '  (PC offline, not delivered)'}`);
       }
+      if(viaDevice&&room.pc?.readyState===1){
+        const kind=['play','pause','toggle','next','previous','play_video','play_collection','yt_jump','radio','artist_radio','seek','skip'].includes(out.cmd)?'playback':['play_next','queue_end','queue_remove','yt_remove','yt_reorder','yt_remove_many','yt_move_many','queue_clear','queue_restore','collection_next','collection_end'].includes(out.cmd)?'queue':['volume','boost'].includes(out.cmd)?'volume':['save_playlist','add_to_playlist'].includes(out.cmd)?'playlist':'';
+        if(kind&&Date.now()-(actionLogged.get(kind)||0)>=30000){actionLogged.set(kind,Date.now());activity.record(token,viaDevice,kind);}
+      }
       send(room.pc, out);
       return;
     }
@@ -911,6 +937,7 @@ wss.on('connection', async (ws, info) => {
       }
     } else {
       room.phones.delete(ws);
+      if(viaDevice&&ws.joined){if(deviceActive(viaDevice)&&code!==1001){viaDevice.lastSeen=Date.now();activity.record(token,viaDevice,'disconnected');}notifyDeviceOwners(room,token);}
     }
     cleanupRoom(token);
   });
@@ -938,6 +965,7 @@ const calendarTimer = setInterval(() => {
   }
 }, 30000); calendarTimer.unref();
 wss.on('close', () => clearInterval(calendarTimer));
+const activityTimer=setInterval(()=>{void activity.flush();},15000);activityTimer.unref();wss.on('close',()=>clearInterval(activityTimer));
 
 // Heartbeat: drop dead connections, keep proxies from idling us out.
 const heartbeat = setInterval(() => {
@@ -961,7 +989,7 @@ if (require.main === module) {
   // Hosts send SIGTERM on every deploy: close cleanly so clients reconnect right away.
   const shutdown = () => {
     wss.clients.forEach((c) => { try { c.close(1001, 'server restarting'); } catch { /* ignore */ } });
-    server.close(async()=>{await Promise.allSettled([calendarCache.flush(),subscriptionTail]);process.exit(0);});
+    server.close(async()=>{await Promise.allSettled([calendarCache.flush(),subscriptionTail,activity.flush()]);process.exit(0);});
     setTimeout(()=>process.exit(0),8000).unref();
   };
   process.on('SIGTERM', shutdown);
@@ -983,6 +1011,8 @@ if (require.main === module) {
       }
       console.log('Neon calendar cache and notification persistence ready ('+calendarSubscriptions.size+' subscriptions).');
     }
+    await activity.init();
+    console.log('Device activity history ready ('+activity.mode+').');
     server.listen(PORT,()=>console.log(`YTM remote relay listening on :${PORT}`));
   }
   start().catch(()=>{console.error('Neon initialization failed. Verify DATABASE_URL and the database connection. The relay will not start with stale credentials.');process.exit(1);});
