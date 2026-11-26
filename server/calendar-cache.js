@@ -65,6 +65,12 @@ function createCalendarCache(file,{now=Date.now,io=fs,warn=()=>console.warn('Cal
   }
   function remove(token){const k=key(token);if(cloud){data.delete(k);dirty.set(k,null);persist();}else if(data.delete(k))persist();}
   function sweep(){if(prune()||!lastWriteOk||dirty.size)persist();}
-  return {get,put,remove,sweep,init,flush};
+  function diagnostics(token){
+    const k=key(token),current=get(token),durable=saved.get(k);
+    return {mode:cloud?'neon':'file',at:current?.at||null,count:current?.items.length||0,
+      savedAt:cloud?(valid(durable)?durable.at:null):(lastWriteOk?current?.at||null:null),
+      pending:cloud&&dirty.has(k),writeFailed:!lastWriteOk};
+  }
+  return {get,put,remove,sweep,init,flush,diagnostics};
 }
 module.exports={createCalendarCache,TTL};
