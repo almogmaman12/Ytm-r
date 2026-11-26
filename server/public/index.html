@@ -920,6 +920,61 @@
   .system-event small { font-size:11px;color:var(--muted);text-align:right; }
   .system-section-title { font-size:15px;margin:16px 0 8px; }
   .system-tabs {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));}.system-tabs button{min-height:40px;}.ops-filters{display:flex;gap:8px;margin:10px 0;}.ops-filters input,.ops-filters select{min-width:0;flex:1;padding:10px;border:1px solid var(--line);border-radius:12px;background:var(--bg);color:var(--ink);}.ops-actions{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0;}.ops-actions button{flex:1;min-height:42px;font-size:12px;border-radius:12px;}.ops-unread{font-size:11px;color:var(--accent);}.ops-alert-row{padding:11px 0;border-bottom:1px solid var(--line);}.ops-alert-row strong{display:block;font-size:13px;}.ops-alert-row small{color:var(--muted);font-size:11px;}.ops-plot{width:100%;height:145px;margin:10px 0;}.ops-report{white-space:pre-wrap;overflow-wrap:anywhere;max-height:200px;overflow:auto;font-size:11px;padding:12px;border:1px solid var(--line);border-radius:12px;}.ops-recommendation{padding:11px;border-radius:12px;background:var(--phone-soft);margin:8px 0;font-size:12px;line-height:1.5;}
+  /* Mobile settings navigation */
+  #settings [hidden] {display:none!important;}
+  #settings .settings-top {gap:10px;padding:14px 16px;background:var(--phone-panel);}
+  #settings .settings-top h2 {font-size:23px;line-height:1.15;overflow-wrap:anywhere;}
+  #settings .settings-top .page-eyebrow {font-size:10px;letter-spacing:.055em;}
+  #settings .sheetBody {padding:16px 16px 24px;}
+  #settings[data-page="home"] .sheetFoot {display:none;}
+  #settings .sheetFoot {border-top:1px solid var(--line);padding:9px 16px calc(10px + var(--safe-b,0px));}
+  #settings .sheetFoot button {min-height:46px;border-radius:14px;}
+  .settings-hero {background:var(--surface);border:1px solid var(--phone-edge);border-radius:23px;padding:14px;margin-bottom:12px;}
+  .settings-hero-top {display:flex;align-items:center;gap:12px;margin-bottom:13px;}
+  .settings-hero-icon {display:grid;place-items:center;width:46px;height:46px;border-radius:15px;background:var(--phone-soft);color:var(--accent);flex:none;}
+  .settings-hero-copy {flex:1;min-width:0;}
+  .settings-hero-copy small {display:block;color:var(--muted);font-size:11px;margin-bottom:3px;}
+  .settings-hero-copy strong {display:block;font-size:18px;overflow-wrap:anywhere;}
+  #settingsEditDevice {min-height:40px;border-radius:12px;padding:7px 13px;font-size:12px;}
+  #settings .settings-connection {width:100%;text-align:left;margin:0;padding:11px;border-radius:14px;gap:10px;}
+  .settings-connection>div {flex:1;min-width:0;}
+  .settings-connection>span:last-child {font-size:21px;color:var(--muted);}
+  .settings-dot {width:10px;height:10px;border-radius:50%;background:var(--muted);flex:none;}
+  .settings-dot.good {background:#67d4a1;}
+  .settings-dot.warn {background:#edb17b;}
+  #settings .settings-shortcuts {display:flex;gap:7px;margin:0 0 17px;}
+  #settings .settings-shortcuts button {flex:1;min-width:0;min-height:74px;padding:10px 7px;text-align:center;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;font-size:11px;}
+  #settings .settings-shortcuts .i {margin:0;}
+  .settings-search-wrap {display:flex;align-items:center;gap:9px;padding:0 12px;border:1px solid var(--line);background:var(--surface);border-radius:15px;min-height:48px;margin-bottom:21px;}
+  .settings-search-wrap .i {width:19px;height:19px;flex:none;color:var(--muted);}
+  #settingsSearch {flex:1;min-width:0;width:100%;border:0;background:transparent;padding:10px 0;font-size:16px;outline:none;color:var(--ink);}
+  #settingsSearchClear {width:32px;min-height:36px;font-size:23px;background:transparent;color:var(--muted);}
+  .settings-group {margin:0 0 19px;}
+  .settings-group>h3 {font-size:12px;font-weight:750;color:var(--muted);margin:0 0 8px 5px;}
+  .settings-group-body {border:1px solid var(--phone-edge);background:var(--surface);border-radius:19px;overflow:hidden;}
+  #settings .settings-nav-row {display:flex;align-items:center;gap:12px;text-align:left;width:100%;border:0;border-radius:0;background:transparent;color:var(--ink);padding:11px 12px;min-height:66px;}
+  .settings-nav-row+.settings-nav-row {border-top:1px solid var(--line)!important;}
+  #settings .settings-nav-row:active {background:var(--phone-soft);}
+  #settings .settings-section-copy strong {font-size:14px;font-weight:750;}
+  #settings .settings-section-copy small {font-size:11px;line-height:1.4;margin-top:3px;}
+  #settings .settings-section-arrow {font-size:22px;font-weight:400;}
+  .settings-home-foot,.settings-intro {font-size:12px;color:var(--muted);line-height:1.5;margin:0 0 16px;}
+  .settings-home-foot {text-align:center;margin-top:24px;}
+  #settings[data-page="sub"] details[open] {border:0;padding:0;background:none;margin:0;}
+  #settings .optrow {min-height:58px;gap:12px;}
+  #settings .optrow input[type=checkbox] {flex:none;width:44px;height:26px;}
+  #settings .optrow input[type=checkbox]::after {width:20px;height:20px;}
+  #settings .optrow input[type=checkbox]:checked::after {left:20px;}
+  #settings #systemOwner {border:0;background:none;padding:0;margin:0;}
+  #settings #systemOwner .relay-health-head h3 {font-size:14px;color:var(--muted);}
+  #settings .system-metric strong {font-size:20px;}
+  #settings .system-event {gap:8px;align-items:flex-start;}
+  #settings .system-event small {max-width:48%;overflow-wrap:anywhere;}
+  #settings .ops-filters {flex-wrap:wrap;}
+  #settings .ops-filters input {flex:2 1 150px;min-height:44px;font-size:16px;}
+  #settings .ops-filters select {flex:1 1 100px;min-height:44px;}
+  #settings button:focus-visible,#settings input:focus-visible {outline:2px solid var(--accent);outline-offset:-2px;}
+  @media(max-width:600px){#settings .settings-top{padding-top:max(14px,env(safe-area-inset-top));}}
   @media (prefers-reduced-motion: reduce) { * { transition:none !important;animation:none !important; } }
 </style>
 </head>
@@ -1218,12 +1273,14 @@
   </div>
 </dialog>
 <dialog id="settings" aria-labelledby="settingsHeading">
-  <header class="settings-top"><button id="settingsBack" class="icon-btn" aria-label="Back to settings" hidden><svg class="i" viewBox="0 0 24 24"><path d="M19 12H5m7-7-7 7 7 7"/></svg></button><div class="settings-title"><span class="page-eyebrow">YTM Remote</span><h2 id="settingsHeading">Settings</h2></div><button id="settingsCloseTop" class="icon-btn" aria-label="Close settings"><svg class="i"><use href="#i-x"/></svg></button></header>
-  <div class="sheetBody"><div id="settingsHome"><div class="settings-connection"><svg class="i"><use href="#i-swap"/></svg><div><strong id="settingsPcStatus">Connecting…</strong><small id="settingsPcNote">Remote connection</small></div></div><div class="settings-profile">
-    <label class="lbl" for="deviceName">This device's name</label>
-    <input id="deviceName" type="text" maxlength="24" placeholder="For example: Almog's phone" autocomplete="off" spellcheck="false">
-    <p class="small">Shown in the relay's log and next to songs you add to the queue.</p>
-    <p id="verLine" class="small"></p></div><div class="settings-shortcuts"><button id="settingsStudio"><svg class="i"><use href="#i-speed"/></svg>Playback studio</button><button id="settingsCalendar"><svg class="i" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M7 3v4m10-4v4M3 10h18"/></svg>Calendar</button></div></div>
+  <header class="settings-top"><button id="settingsBack" class="icon-btn" aria-label="Back to settings" hidden><svg class="i" viewBox="0 0 24 24"><path d="M19 12H5m7-7-7 7 7 7"/></svg></button><div class="settings-title"><span id="settingsBreadcrumb" class="page-eyebrow">YTM Remote</span><h2 id="settingsHeading">Settings</h2></div><button id="settingsCloseTop" class="icon-btn" aria-label="Close settings"><svg class="i"><use href="#i-x"/></svg></button></header>
+  <div class="sheetBody"><div id="settingsHome">
+    <section class="settings-hero"><div class="settings-hero-top"><span class="settings-hero-icon"><svg class="i"><use href="#i-user"/></svg></span><div class="settings-hero-copy"><small id="settingsRole">Owner device</small><strong id="settingsDeviceTitle">This phone</strong></div><button type="button" id="settingsEditDevice" class="secondary">Edit</button></div>
+    <button type="button" id="settingsConnectionLink" class="settings-connection"><span id="settingsConnectionDot" class="settings-dot"></span><div><strong id="settingsPcStatus">Connecting…</strong><small id="settingsPcNote">Remote connection</small></div><span aria-hidden="true">›</span></button></section>
+    <div class="settings-shortcuts"><button id="settingsStudio"><svg class="i"><use href="#i-speed"/></svg><span>Playback studio</span></button><button id="settingsCalendar"><svg class="i" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M7 3v4m10-4v4M3 10h18"/></svg><span>Calendar</span></button><button type="button" id="settingsSystemQuick"><svg class="i"><use href="#i-swap"/></svg><span>System Center</span></button></div>
+    <div class="settings-search-wrap"><svg class="i" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4 4"/></svg><input id="settingsSearch" type="search" placeholder="Find a setting" aria-label="Search settings" autocomplete="off"><button type="button" id="settingsSearchClear" aria-label="Clear search" hidden>×</button></div>
+    <div id="settingsGroups"></div><p id="settingsEmpty" class="small" hidden>No matching settings. Try another search.</p>
+    <p class="settings-home-foot">YTM Remote · Settings are saved on this phone unless otherwise noted.</p></div>
 
     <details open>
       <summary>Appearance &amp; feel</summary><div id="settingsThemePreview"><div class="theme-preview-row"><span class="theme-preview-art">♪</span><div class="theme-preview-copy">Your music<small>Live appearance preview</small></div><span class="theme-preview-play"><svg class="i"><use href="#i-play"/></svg></span></div><div class="theme-preview-bar"><i></i></div></div>
@@ -1243,7 +1300,7 @@
     </details>
 
     <details>
-      <summary>On this phone</summary>
+      <summary>On this phone</summary><div class="settings-profile"><label class="lbl" for="deviceName">Device name</label><input id="deviceName" type="text" maxlength="24" placeholder="My phone" autocomplete="off" spellcheck="false"><p class="small">Shown next to songs you add and in device activity.</p></div>
       <label class="optrow"><input type="checkbox" id="optMedia"><span>Lock-screen and notification controls<small>Plays a silent sound so Android shows play, pause, skip and the song's cover. It can pause other audio on this phone.</small></span></label>
       <label class="optrow"><input type="checkbox" id="optKeepOn"><span>Keep the screen on while the app is open</span></label>
       <label class="lbl" for="volMax" style="margin-top:10px">Volume limit: <span id="volMaxLbl">No limit</span></label>
@@ -1252,7 +1309,7 @@
     </details>
 
     <details id="maint">
-      <summary>Fix and check</summary><section id="relayHealthCard" class="relay-health-card"><div class="relay-health-head"><h3>Connection health</h3><button id="relayHealthRefresh">Check now</button></div><p id="relayHealthStatus" class="relay-health-caption" role="status">Check your relay, database and calendar storage without interrupting music.</p><div id="relayHealthRows"></div></section>
+      <summary>Fix and check</summary><p id="verLine" class="small"></p><section id="relayHealthCard" class="relay-health-card"><div class="relay-health-head"><h3>Connection health</h3><button id="relayHealthRefresh">Check now</button></div><p id="relayHealthStatus" class="relay-health-caption" role="status">Check your relay, database and calendar storage without interrupting music.</p><div id="relayHealthRows"></div></section>
       <div class="row">
         <button id="reloadPage" class="secondary">Reload this page</button>
         <button id="reloadPc" class="secondary">Reload YouTube Music on the PC</button>
@@ -1291,7 +1348,7 @@
       </div>
       <p class="small" style="margin-top:10px">Changing the token disconnects this phone until you enter a new one.</p>
     </details>
-    <details id="systemSec"><summary>System Center</summary><section class="relay-health-card"><div class="relay-health-head"><h3>App updates</h3><button id="systemCheckUpdate">Check</button></div><p id="systemVersion" class="relay-health-caption"></p><p id="systemUpdateState" class="relay-health-caption">Updates are checked while connected.</p><button id="systemApplyUpdate" class="activity-open" hidden>Update now</button></section><section id="systemOwner" class="relay-health-card"><div class="relay-health-head"><h3>System Center</h3><button id="systemRefresh">Refresh</button></div><div class="system-tabs"><button data-system-tab="overview" aria-pressed="true">Notifications</button><button data-system-tab="history" aria-pressed="false">Connection history</button><button data-system-tab="analytics" aria-pressed="false">Connection analytics</button><button data-system-tab="usage" aria-pressed="false">Database usage</button><button data-system-tab="optimization" aria-pressed="false">Neon optimization</button><button data-system-tab="logs" aria-pressed="false">Live relay logs</button><button data-system-tab="security" aria-pressed="false">Security</button><button data-system-tab="report" aria-pressed="false">Diagnostic report</button></div><p id="systemStatus" class="relay-health-caption" role="status"></p><div id="systemResults"></div></section></details>
+    <details id="systemSec"><summary>System Center</summary><div id="systemMenu"><p class="settings-intro">Check, troubleshoot and manage your remote.</p><section class="settings-group" data-system-owner-group><h3>Health & activity</h3><div class="settings-group-body"><button type="button" class="settings-nav-row" data-system-tab="overview"><span class="settings-section-icon"><svg class="i"><use href="#i-user"/></svg></span><span class="settings-section-copy"><strong>Notifications</strong><small>System alerts and push settings</small></span><span class="settings-section-arrow">›</span></button><button type="button" class="settings-nav-row" data-system-tab="history"><span class="settings-section-icon"><svg class="i"><use href="#i-swap"/></svg></span><span class="settings-section-copy"><strong>Connection history</strong><small>Relay sessions and recent connections</small></span><span class="settings-section-arrow">›</span></button><button type="button" class="settings-nav-row" data-system-tab="analytics"><span class="settings-section-icon"><svg class="i"><use href="#i-swap"/></svg></span><span class="settings-section-copy"><strong>Connection analytics</strong><small>Latency charts and observed uptime</small></span><span class="settings-section-arrow">›</span></button></div></section><section class="settings-group" data-system-owner-group><h3>Database & troubleshooting</h3><div class="settings-group-body"><button type="button" class="settings-nav-row" data-system-tab="usage"><span class="settings-section-icon"><svg class="i"><use href="#i-lib"/></svg></span><span class="settings-section-copy"><strong>Database usage</strong><small>Storage and SQL request totals</small></span><span class="settings-section-arrow">›</span></button><button type="button" class="settings-nav-row" data-system-tab="optimization"><span class="settings-section-icon"><svg class="i"><use href="#i-speed"/></svg></span><span class="settings-section-copy"><strong>Neon optimization</strong><small>Requests by feature and suggestions</small></span><span class="settings-section-arrow">›</span></button><button type="button" class="settings-nav-row" data-system-tab="logs"><span class="settings-section-icon"><svg class="i"><use href="#i-lib"/></svg></span><span class="settings-section-copy"><strong>Live relay logs</strong><small>Search and filter sanitized events</small></span><span class="settings-section-arrow">›</span></button></div></section><section class="settings-group" data-system-owner-group><h3>Security & support</h3><div class="settings-group-body"><button type="button" class="settings-nav-row" data-system-tab="security"><span class="settings-section-icon"><svg class="i"><use href="#i-block"/></svg></span><span class="settings-section-copy"><strong>Security monitor</strong><small>Rejected codes and rate-limit blocks</small></span><span class="settings-section-arrow">›</span></button><button type="button" class="settings-nav-row" data-system-tab="report"><span class="settings-section-icon"><svg class="i"><use href="#i-lib"/></svg></span><span class="settings-section-copy"><strong>Diagnostic report</strong><small>Copy or download troubleshooting data</small></span><span class="settings-section-arrow">›</span></button></div></section><section class="settings-group"><h3>Application</h3><div class="settings-group-body"><button type="button" class="settings-nav-row" data-system-tab="updates"><span class="settings-section-icon"><svg class="i"><use href="#i-swap"/></svg></span><span class="settings-section-copy"><strong>App updates</strong><small>Check for a new phone app build</small></span><span class="settings-section-arrow">›</span></button></div></section><p id="systemOwnerNote" class="small" hidden>System diagnostics are available on the owner phone with an access code.</p></div><section id="systemUpdateCard" class="relay-health-card" hidden><div class="relay-health-head"><h3>App updates</h3><button id="systemCheckUpdate">Check</button></div><p id="systemVersion" class="relay-health-caption"></p><p id="systemUpdateState" class="relay-health-caption">Updates are checked while connected.</p><button id="systemApplyUpdate" class="activity-open" hidden>Update now</button></section><section id="systemOwner" class="relay-health-card" hidden><div class="relay-health-head"><h3 id="systemViewTitle">System Center</h3><button id="systemRefresh">Refresh</button></div><p id="systemStatus" class="relay-health-caption" role="status"></p><div id="systemResults"></div></section></details>
   </div>
   <div class="sheetFoot"><button id="closeSettings" class="secondary">Close</button></div>
 </dialog>
@@ -2723,12 +2780,12 @@ $('saveToken').onclick = () => {
   setToken(t); show();
 };
 $('tokenInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('saveToken').click(); });
-$('settingsBtn').onclick = () => { phoneSettingsPage(-1); const paired = !getToken() && !!getDevice(); $('ownerPhones').hidden = paired; $('pairedInfo').hidden = !paired; $('forget').hidden = paired; $('changeCode').hidden = paired; if (!paired) rawCmd('device_list'); $('deviceName').value = getName(); cmd('block_list'); $('settings').showModal(); $('deviceName').blur(); };
+$('settingsBtn').onclick = () => { settingsHomeScroll=0;$('settingsSearch').value='';phoneSettingsPage(-1); const paired = !getToken() && !!getDevice(); $('ownerPhones').hidden = paired; $('pairedInfo').hidden = !paired; $('forget').hidden = paired; $('changeCode').hidden = paired; if (!paired) rawCmd('device_list'); $('deviceName').value = getName(); cmd('block_list'); $('settings').showModal(); $('deviceName').blur(); };
 $('deviceName').onchange = () => {
   const n = $('deviceName').value.replace(/[^\p{L}\p{N} ._'’-]/gu, '').trim().slice(0, 24);
   $('deviceName').value = n;
   try { n ? localStorage.setItem('deviceName', n) : localStorage.removeItem('deviceName'); } catch {}
-  sendName();
+  sendName();phoneSettingsStatus();
 };
 $('codeOk').onclick = () => {
   const c = $('codeInput').value;
@@ -3247,20 +3304,58 @@ $('forget').addEventListener('click',phoneClearPins);
 
 /* Phone-only submenu navigation and confirmations. */
 function phoneTrackKey(s=last){return JSON.stringify([s?.videoId||'',s?.title||'',s?.artist||'',s?.art||'',s?.site||'']);}
-const phoneSettingsMeta=[['Appearance & feel','Theme, colors, density and gestures','i-sliders'],['Do-not-play list','Manage blocked songs and artists','i-block'],['On this phone','Lock screen, display and volume limit','i-vol-hi'],['Connection & diagnostics','Relay, database, calendar and PC health','i-swap'],['Paired phones','Manage remote devices','i-user'],['Security','Access code and connection token','i-block'],['System Center','App updates, connections and database usage','i-swap']];
+const phoneSettingsMeta=[['Appearance & feel','Theme, colors, density and gestures','i-sliders','theme accent dark amoled haptic gestures'],['Do-not-play list','Manage blocked songs and artists','i-block','blocked blacklist music'],['On this phone','Device name, lock screen, display and volume limit','i-vol-hi','rename profile name screen volume media'],['Connection & diagnostics','Relay, PC and calendar health, repair tools','i-swap','health database check reload troubleshoot'],['Paired phones','Pair, pause, resume and view activity','i-user','devices guest calendar permission history'],['Security','Change access code or connection token','i-block','password authentication token'],['System Center','Notifications, analytics, Neon, logs, security and updates','i-swap','alerts report update database usage optimization log latency']];
 const phoneSettingsSections=Array.from($('settings').querySelectorAll('.sheetBody > details'));
-function phoneSettingsStatus(){$('settingsPcStatus').textContent=$('status').textContent||'Connecting…';$('settingsPcNote').textContent=$('app').dataset.pc==='on'?'PC is available for remote playback':'Phone settings remain available offline';}
+const settingsBody=$('settings').querySelector('.sheetBody');
+let settingsIndex=-1,settingsHomeScroll=0,settingsSystemScroll=0;
+function phoneSettingsStatus(){
+  const connected=$('app').dataset.pc==='on',relay=ws?.readyState===1&&!phonePaused;
+  $('settingsPcStatus').textContent=connected?'PC connected':relay?'PC offline':$('status').textContent||'Connecting…';
+  $('settingsPcNote').textContent=connected?'Ready for playback':relay?'Relay connected · PC unavailable':'Remote connection · tap to check';
+  $('settingsConnectionDot').className='settings-dot '+(connected?'good':relay?'warn':'');
+  $('settingsRole').textContent=getToken()?'Owner device':'Paired device';
+  $('settingsDeviceTitle').textContent=getName()||'This phone';
+}
+function phoneSettingsFilter(){
+  const q=$('settingsSearch').value.trim().toLowerCase();let count=0;
+  $('settingsSearchClear').hidden=!q;
+  for(const group of $('settingsGroups').querySelectorAll('.settings-group')){
+    let visible=0;
+    for(const row of group.querySelectorAll('[data-settings-index]')){
+      const index=Number(row.dataset.settingsIndex),allowed=index!==5||!!getToken();
+      row.hidden=!allowed||!phoneSettingsMeta[index].join(' ').toLowerCase().includes(q);
+      if(!row.hidden){visible++;count++;}
+    }
+    group.hidden=!visible;
+  }
+  $('settingsEmpty').hidden=!!count;
+}
 function phoneSettingsPage(index){
-  const detail=phoneSettingsSections[index];$('settings').dataset.page=detail?'sub':'home';
-  $('settingsHome').hidden=!!detail;$('settingsBack').hidden=!detail;$('settingsHeading').textContent=detail?phoneSettingsMeta[index][0]:'Settings';$('closeSettings').textContent=detail?'Back to settings':'Close';
-  phoneSettingsSections.forEach((d,i)=>{d.hidden=!!detail&&i!==index;d.open=i===index;});$('settings').querySelector('.sheetBody').scrollTop=0;phoneSettingsStatus();
+  if(settingsIndex===-1&&index>=0)settingsHomeScroll=settingsBody.scrollTop;
+  settingsIndex=index;const detail=phoneSettingsSections[index];$('settings').dataset.page=detail?'sub':'home';
+  $('settingsHome').hidden=!!detail;$('settingsBack').hidden=!detail;$('settingsHeading').textContent=detail?phoneSettingsMeta[index][0]:'Settings';$('settingsBreadcrumb').textContent=detail?'Settings':'YTM Remote';$('closeSettings').textContent=detail?'Back to settings':'Close';
+  phoneSettingsSections.forEach((d,i)=>{d.hidden=i!==index;d.open=i===index;});
+  settingsBody.scrollTop=detail?0:settingsHomeScroll;phoneSettingsStatus();phoneSettingsFilter();
   if(index===3){$('relayHealthCard').hidden=!getToken();if(getToken())relayHealthRequest();}
   if(index===6)systemOpen();
 }
-phoneSettingsSections.forEach((d,i)=>{const summary=d.querySelector('summary'),[title,sub,icon]=phoneSettingsMeta[i];summary.textContent='';const badge=document.createElement('span'),copy=document.createElement('span'),name=document.createElement('strong'),desc=document.createElement('small'),arrow=document.createElement('span');badge.className='settings-section-icon';badge.innerHTML='<svg class="i"><use href="#'+icon+'"/></svg>';copy.className='settings-section-copy';name.textContent=title;desc.textContent=sub;copy.append(name,desc);arrow.className='settings-section-arrow';arrow.textContent='›';summary.append(badge,copy,arrow);summary.onclick=e=>{e.preventDefault();phoneSettingsPage(i);buzz();};});
-$('settingsBack').onclick=()=>phoneSettingsPage(-1);$('settingsCloseTop').onclick=()=>$('settings').close();
-$('closeSettings').onclick=()=>{if($('settings').dataset.page==='sub')phoneSettingsPage(-1);else $('settings').close();};
-$('settings').addEventListener('cancel',e=>{if($('settings').dataset.page==='sub'){e.preventDefault();phoneSettingsPage(-1);}});
+function phoneSettingsBack(){
+  if(settingsIndex===6&&systemTab){systemShowMenu(true);return;}
+  phoneSettingsPage(-1);
+}
+for(const [title,indices] of [['Personalize',[0,2]],['Music',[1]],['Devices & access',[4,5]],['Support & system',[3,6]]]){
+  const section=document.createElement('section'),heading=document.createElement('h3'),body=document.createElement('div');section.className='settings-group';heading.textContent=title;body.className='settings-group-body';
+  for(const i of indices){const [name,sub,icon]=phoneSettingsMeta[i],button=document.createElement('button'),badge=document.createElement('span'),copy=document.createElement('span'),strong=document.createElement('strong'),desc=document.createElement('small'),arrow=document.createElement('span');button.type='button';button.className='settings-nav-row';button.dataset.settingsIndex=i;badge.className='settings-section-icon';badge.innerHTML='<svg class="i"><use href="#'+icon+'"/></svg>';copy.className='settings-section-copy';strong.textContent=name;desc.textContent=sub;copy.append(strong,desc);arrow.className='settings-section-arrow';arrow.textContent='›';button.append(badge,copy,arrow);button.onclick=()=>{phoneSettingsPage(i);buzz();};body.append(button);}
+  section.append(heading,body);$('settingsGroups').append(section);
+}
+$('settingsSearch').oninput=phoneSettingsFilter;
+$('settingsSearchClear').onclick=()=>{$('settingsSearch').value='';phoneSettingsFilter();$('settingsSearch').focus();};
+$('settingsEditDevice').onclick=()=>phoneSettingsPage(2);
+$('settingsConnectionLink').onclick=()=>phoneSettingsPage(3);
+$('settingsSystemQuick').onclick=()=>phoneSettingsPage(6);
+$('settingsBack').onclick=phoneSettingsBack;$('settingsCloseTop').onclick=()=>$('settings').close();
+$('closeSettings').onclick=()=>{if(settingsIndex>=0)phoneSettingsBack();else $('settings').close();};
+$('settings').addEventListener('cancel',e=>{if(settingsIndex>=0){e.preventDefault();phoneSettingsBack();}});
 new MutationObserver(phoneSettingsStatus).observe($('status'),{childList:true,subtree:true,characterData:true});phoneSettingsPage(-1);
 let phoneConfirmAction=null;
 function phoneConfirm(title,description,label,action){$('phoneConfirmTitle').textContent=title;$('phoneConfirmText').textContent=description;$('phoneConfirmYes').textContent=label;phoneConfirmAction=action;$('phoneConfirm').showModal();}
@@ -3429,7 +3524,7 @@ document.querySelectorAll('[data-activity]').forEach(b=>b.onclick=()=>{activityF
 /* System Center: update checks only while the relay is already connected. */
 const APP_BUILD='__YTM_APP_VERSION__';
 let nextRelease=null,updateBusy=false,lastUpdateCheck=0,dismissedRelease='',appCheckInFlight=false;
-let systemTab='overview',systemId='',systemTimer=null;
+let systemTab='',systemId='',systemTimer=null;
 let opsData=null,opsSearch='',opsSeverity='all',opsLive=false,opsPendingAction='',opsReport=null;
 $('systemVersion').textContent='Installed app build: '+APP_BUILD;
 function releaseNote(data){return Array.isArray(data.notes)?data.notes.filter(n=>typeof n==='string').slice(0,5).join(' '):'A new version is available.';}
@@ -3468,23 +3563,33 @@ setInterval(()=>checkAppUpdate(false),180000);
 function systemDisconnected(){
   clearTimeout(systemTimer);systemId='';$('systemRefresh').disabled=false;$('systemResults').textContent='';$('systemStatus').textContent='Disconnected. Refresh after reconnecting.';
 }
-function systemOpen(){
-  $('systemOwner').hidden=!getToken()||!getCode();
-  checkAppUpdate(false);
-  if(!$('systemOwner').hidden)systemRequest();
+const systemTitles={overview:'Notifications',history:'Connection history',analytics:'Connection analytics',usage:'Database usage',optimization:'Neon optimization',logs:'Live relay logs',security:'Security monitor',report:'Diagnostic report',updates:'App updates'};
+function systemShowMenu(restore=false){
+  clearTimeout(systemTimer);systemId='';opsPendingAction='';opsData=null;opsReport=null;systemTab='';
+  $('systemMenu').hidden=false;$('systemOwner').hidden=true;$('systemUpdateCard').hidden=true;
+  $('systemResults').textContent='';$('systemRefresh').disabled=false;
+  const owner=!!getToken()&&!!getCode();
+  document.querySelectorAll('[data-system-owner-group]').forEach(g=>g.hidden=!owner);
+  $('systemOwnerNote').hidden=owner;$('settingsHeading').textContent='System Center';$('settingsBreadcrumb').textContent='Settings';$('closeSettings').textContent='Back to settings';settingsBody.scrollTop=restore?settingsSystemScroll:0;
+}
+function systemOpen(){settingsSystemScroll=0;systemShowMenu();checkAppUpdate(false);}
+function systemSelect(tab){
+  if(!systemTitles[tab]||(tab!=='updates'&&(!getToken()||!getCode())))return;
+  if(!systemTab)settingsSystemScroll=settingsBody.scrollTop;
+  clearTimeout(systemTimer);systemId='';opsPendingAction='';opsData=null;opsSearch='';opsSeverity='all';opsReport=null;systemTab=tab;
+  $('systemMenu').hidden=true;$('systemOwner').hidden=tab==='updates';$('systemUpdateCard').hidden=tab!=='updates';
+  $('settingsHeading').textContent=systemTitles[tab];$('settingsBreadcrumb').textContent='Settings / System Center';$('closeSettings').textContent='Back to System Center';$('systemViewTitle').textContent=systemTitles[tab];settingsBody.scrollTop=0;
+  if(tab==='updates')checkAppUpdate(false);else systemRequest();
 }
 function systemRequest(live=false){
-  if(!getToken()||!getCode())return;
+  if(!getToken()||!getCode()||!systemTab||systemTab==='updates')return;
   opsPendingAction='';opsLive=live===true;
   clearTimeout(systemTimer);systemId=reqId();$('systemRefresh').disabled=true;$('systemStatus').textContent=opsLive?'Refreshing live events…':'Loading…';if(!opsLive)$('systemResults').textContent='';
   if(!rawCmd((['history','usage'].includes(systemTab)?'system_':'ops_')+systemTab,{request:systemId,live:opsLive})){systemDisconnected();return;}
   systemTimer=setTimeout(()=>{systemId='';$('systemRefresh').disabled=false;$('systemStatus').textContent='No response. Try again.';},25000);
 }
 $('systemRefresh').onclick=()=>systemRequest();
-document.querySelectorAll('[data-system-tab]').forEach(b=>b.onclick=()=>{
-  if(systemTab===b.dataset.systemTab)return;
-  systemTab=b.dataset.systemTab;opsData=null;opsSearch='';opsSeverity='all';opsReport=null;document.querySelectorAll('[data-system-tab]').forEach(x=>x.setAttribute('aria-pressed',String(x===b)));systemRequest();
-});
+document.querySelectorAll('[data-system-tab]').forEach(b=>b.onclick=()=>{systemSelect(b.dataset.systemTab);buzz();});
 function sysEl(tag,cls,txt){const e=document.createElement(tag);if(cls)e.className=cls;if(txt!=null)e.textContent=txt;return e;}
 function sysBytes(n){n=Number(n)||0;return n>=1048576?(n/1048576).toFixed(2)+' MB':(n/1024).toFixed(1)+' KB';}
 function sysDuration(ms){const m=Math.max(0,Math.round(ms/60000));return m>=60?Math.floor(m/60)+'h '+m%60+'m':m+' min';}
