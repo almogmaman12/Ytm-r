@@ -10,6 +10,7 @@ const path = require('path');
 const { WebSocketServer } = require('ws');
 const push = require('./calendar-push');
 const {createCalendarCache,TTL:CAL_CACHE_TTL}=require('./calendar-cache');
+const {neonQuery,createDeviceStore}=require('./neon-store');
 
 const PORT = process.env.PORT || 3000;
 const PUBLIC_DIR = path.resolve(__dirname, 'public');
@@ -204,6 +205,8 @@ const PAIR_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';   // no 0/O/1/I, so it
 const MAX_DEVICES_PER_ROOM = 8;
 const pairCodes = new Map();      // code -> { token, exp }
 const devices = new Map();        // id -> { id, name, hash, token, created, lastSeen }
+const cloudDevices=process.env.DATABASE_URL?createDeviceStore(neonQuery(process.env.DATABASE_URL)):null;
+const pendingPairs=new Map();
 try {
   const saved = JSON.parse(fs.readFileSync(DEVICES_FILE, 'utf8'));
   for (const d of Array.isArray(saved) ? saved : []) {
@@ -212,6 +215,7 @@ try {
 } catch { /* none yet */ }
 let devSaveTimer = null;
 function saveDevices() {
+  if(cloudDevices)return; // never fall back to an ephemeral file in cloud mode
   clearTimeout(devSaveTimer);
   devSaveTimer = setTimeout(() => {
     try {
@@ -413,7 +417,7 @@ server.on('upgrade', (req, socket, head) => {
   });
 });
 
-wss.on('connection', (ws, info) => {
+wss.on('connection', async (ws, info) => {
   let { token } = info;
   const { role, ip, device } = info;
   ws.on('error', () => {});
@@ -426,11 +430,16 @@ wss.on('connection', (ws, info) => {
       return ws.close(4006, 'bad pair code');
     }
     pairCodes.delete(info.pair);
-    if (deviceList(entry.token).length >= MAX_DEVICES_PER_ROOM) return ws.close(4007, 'too many paired phones');
+    if (deviceList(entry.token).length+(pendingPairs.get(entry.token)||0) >= MAX_DEVICES_PER_ROOM) return ws.close(4007, 'too many paired phones');
     const id = crypto.randomBytes(8).toString('hex');
     const secret = crypto.randomBytes(24).toString('base64url');
-    devices.set(id, { id, name: '', hash: sha(secret), token: entry.token, created: Date.now(), lastSeen: Date.now() });
-    saveDevices();
+    const record={id,name:'',hash:sha(secret),token:entry.token,created:Date.now(),lastSeen:Date.now()};
+    if(cloudDevices){
+      pendingPairs.set(entry.token,(pendingPairs.get(entry.token)||0)+1);
+      try{await cloudDevices.insert(record);}catch{console.warn('Paired phone could not be saved to Neon.');return ws.close(1013,'database unavailable');}
+      finally{const n=(pendingPairs.get(entry.token)||1)-1;if(n)pendingPairs.set(entry.token,n);else pendingPairs.delete(entry.token);}
+    }
+    devices.set(id,record);saveDevices();
     log(roomId(entry.token), `phone paired with a code: ${device}, ${ip}`);
     send(ws, { type: 'paired', device: `${id}.${secret}` });
     const r = rooms.get(entry.token);
@@ -512,7 +521,7 @@ wss.on('connection', (ws, info) => {
     authTimer = setTimeout(() => { log(rid, `${role} did not answer the code challenge: ${who}`); ws.close(4003, 'code required'); }, AUTH_TIMEOUT_MS);
   }
 
-  ws.on('message', (raw) => {
+  ws.on('message', async (raw) => {
     let msg;
     try { msg = JSON.parse(raw.toString()); } catch { return; }
     if (!msg || typeof msg !== 'object') return;
@@ -537,7 +546,14 @@ wss.on('connection', (ws, info) => {
     if (role === 'phone' && msg.type === 'name') {
       const before = who;
       setName(msg.name);
-      if (viaDevice && name && viaDevice.name !== name) { viaDevice.name = name; saveDevices(); }
+      if (viaDevice && name && viaDevice.name !== name) {
+        const d=devices.get(viaDevice.id);
+        if(d){
+          const wanted=name;
+          if(cloudDevices){try{await cloudDevices.rename(d.id,wanted,Date.now());}catch{console.warn('Paired phone name could not be saved to Neon.');return;}}
+          if(devices.get(d.id)===d){d.name=wanted;saveDevices();}
+        }
+      }
       if (who !== before) log(rid, `phone renamed: ${before} -> ${who}`);
       return;
     }
@@ -585,7 +601,10 @@ wss.on('connection', (ws, info) => {
       }
       if (msg.cmd === 'pair_start' || msg.cmd === 'device_list' || msg.cmd === 'device_revoke' || msg.cmd === 'device_leave') {
         if (msg.cmd === 'device_leave') {
-          if (viaDevice) { devices.delete(viaDevice.id); saveDevices(); log(rid, `paired phone signed itself out: ${who}`); ws.close(4005, 'removed'); }
+          if(viaDevice){
+            if(cloudDevices){try{await cloudDevices.remove(viaDevice.id);}catch{console.warn('Paired phone sign-out could not be saved to Neon.');return send(ws,{type:'status',message:'Could not sign out. Database unavailable; try again.'});}}
+            devices.delete(viaDevice.id);saveDevices();log(rid,`paired phone signed itself out: ${who}`);room.phones.forEach(p=>{if(p.dev&&p.dev.id===viaDevice.id)p.close(4005,'removed');});
+          }
           return;
         }
         if (viaDevice) return;                     // paired phones cannot manage other phones
@@ -594,6 +613,7 @@ wss.on('connection', (ws, info) => {
           const id = String(msg.value || '');
           const d = devices.get(id);
           if (d && d.token === token) {
+            if(cloudDevices){try{await cloudDevices.remove(id);}catch{console.warn('Paired phone removal could not be saved to Neon.');return send(ws,{type:'status',message:'Could not remove phone. Database unavailable; try again.'});}}
             devices.delete(id); saveDevices();
             room.phones.forEach((p) => { if (p.dev && p.dev.id === id) p.close(4005, 'removed'); });
             log(rid, `paired phone removed by ${who}: ${d.name || id}`);
@@ -604,7 +624,7 @@ wss.on('connection', (ws, info) => {
         const now = Date.now();
         if (now - (room.lastPair || 0) < 3000) return;
         room.lastPair = now;
-        if (deviceList(token).length >= MAX_DEVICES_PER_ROOM) return send(ws, { type: 'status', message: `You can pair up to ${MAX_DEVICES_PER_ROOM} phones. Remove one first.` });
+        if (deviceList(token).length+(pendingPairs.get(token)||0) >= MAX_DEVICES_PER_ROOM) return send(ws, { type: 'status', message: `You can pair up to ${MAX_DEVICES_PER_ROOM} phones. Remove one first.` });
         log(rid, `pairing code created by ${who}`);
         return send(ws, { type: 'pair_code', code: newPairCode(token), ttl: PAIR_TTL_MS / 1000 });
       }
@@ -865,7 +885,15 @@ if (require.main === module) {
   process.on('SIGTERM', shutdown);
   process.on('SIGINT', shutdown);
 
-  server.listen(PORT, () => console.log(`YTM remote relay listening on :${PORT}`));
+  async function start(){
+    if(cloudDevices){
+      const saved=await cloudDevices.init([...devices.values()]);
+      devices.clear();for(const d of saved)devices.set(d.id,d);
+      console.log('Neon paired-phone persistence ready ('+devices.size+' devices).');
+    }
+    server.listen(PORT,()=>console.log(`YTM remote relay listening on :${PORT}`));
+  }
+  start().catch(()=>{console.error('Neon initialization failed. Verify DATABASE_URL and the database connection. The relay will not start with stale credentials.');process.exit(1);});
 }
 
 module.exports = { server, wss };
