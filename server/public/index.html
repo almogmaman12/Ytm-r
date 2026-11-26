@@ -844,6 +844,28 @@
   .browse-indexed li.now-track .browse-index { color:var(--accent);font-weight:800; }
   .browse-empty { text-align:center;color:var(--muted);padding:25px 12px;border:1px dashed var(--line);border-radius:18px;font-size:13px; }
   @media(max-width:360px) { .browse-hero { padding:17px 12px; } .browse-actions { gap:4px; } .browse-actions button { min-width:40px;padding:6px; } .browse-index { min-width:12px; } }
+  /* Device access management */
+  #devList li.device-card { display:block;padding:13px;margin:9px 0;border:1px solid var(--phone-edge);border-radius:18px;background:var(--surface); }
+  .device-head { display:flex;align-items:center;gap:10px; }
+  .device-icon { width:42px;height:42px;display:grid;place-items:center;flex:none;border-radius:14px;background:var(--phone-soft);color:var(--accent); }
+  .device-icon .i { width:23px;height:23px; }
+  #devList .device-head .n { flex:1; }
+  .device-status { font-size:11px;color:var(--accent);font-weight:750; }
+  .device-status.is-paused { color:#ffbd83; }
+  .device-access-row { display:flex;align-items:center;gap:10px;margin-top:13px;padding:10px 0;border-top:1px solid var(--line); }
+  .device-access-copy { flex:1;font-size:13px;font-weight:700;min-width:0; }
+  .device-access-copy small { display:block;font-size:11px;font-weight:400;color:var(--muted);margin-top:3px; }
+  .device-access-row button { min-height:40px;min-width:68px;border-radius:13px;background:var(--bg);color:var(--muted);font-size:12px;font-weight:750;border:1px solid var(--line); }
+  .device-access-row button[aria-pressed="true"] { color:var(--accent);background:var(--phone-soft);border-color:var(--accent); }
+  .device-actions { display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px; }
+  .device-actions button { min-height:44px;font-size:12px;font-weight:750;border-radius:14px; }
+  .device-actions .device-pause { color:var(--accent);background:var(--phone-soft);border:1px solid var(--accent); }
+  #devicePausedDlg { width:min(92vw,390px);border-radius:28px;padding:28px 22px;text-align:center;background:var(--phone-panel);border:1px solid var(--phone-edge);color:var(--ink); }
+  #devicePausedDlg::backdrop { background:var(--bg); }
+  #devicePausedDlg .paused-icon { width:70px;height:70px;border-radius:25px;background:var(--phone-soft);color:var(--accent);display:grid;place-items:center;margin:0 auto 17px; }
+  #devicePausedDlg .paused-icon .i { width:34px;height:34px; }
+  #devicePausedDlg p { font-size:14px;line-height:1.5;color:var(--muted); }
+  #devicePausedDlg button { width:100%;min-height:48px;margin-top:14px;border-radius:16px; }
   @media (prefers-reduced-motion: reduce) { * { transition:none !important;animation:none !important; } }
 </style>
 </head>
@@ -1128,7 +1150,7 @@
       <button id="calendarFilterRemaining" aria-pressed="false">Remaining</button>
     </div>
     <div id="calendarItems" aria-labelledby="calendarViewLabel"></div>
-    <details class="cal-reminders">
+    <details class="cal-reminders" id="calendarReminders">
       <summary><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9m-8 12a2 2 0 0 0 4 0"/></svg> Event reminders <svg class="i cal-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></summary>
       <p id="calendarPushStatus" role="status">Get a push notification 10 minutes before readable timed events.</p>
       <div class="row">
@@ -1198,7 +1220,7 @@
           <p id="pairHelp" class="small"></p>
         </div>
         <ul id="devList"></ul>
-        <p class="small" style="margin-top:10px">A paired phone connects with its own key, so it never needs the token or access code. Paired phones can control the music but cannot pair or remove phones. Remove one here at any time.</p>
+        <p class="small" style="margin-top:10px">Paired phones use their own key. Pause a device to temporarily stop its access, or grant it read-only calendar access. Calendar sharing is off by default. Remove permanently revokes its key.</p>
       </div>
       <div id="pairedInfo" hidden>
         <p class="small">This phone was paired with a code.</p>
@@ -1264,11 +1286,13 @@
   <p id="studioNote" class="studio-note" role="status" aria-live="polite"></p>
 </dialog>
 <dialog id="trackActions" aria-labelledby="trackActionHeading"><div class="studio-top"><div><span class="page-eyebrow">Track actions</span><h2 id="trackActionHeading">Make it yours</h2></div><button id="trackActionClose" class="icon-btn" aria-label="Close track actions"><svg class="i"><use href="#i-x"/></svg></button></div><div class="studio-track"><div id="trackActionArt" class="studio-art"></div><div class="studio-track-copy"><strong id="trackActionTitle"></strong><small id="trackActionArtist"></small></div></div><div id="trackActionGrid" class="track-action-grid"></div></dialog>
+<dialog id="devicePausedDlg" aria-labelledby="devicePausedHeading"><div class="paused-icon"><svg class="i"><use href="#i-pause"/></svg></div><span class="page-eyebrow">DEVICE ACCESS</span><h2 id="devicePausedHeading">Access paused</h2><p>The owner has temporarily paused this device. Your pairing is still saved. The app will reconnect automatically when access is restored.</p><button id="devicePausedRetry" class="secondary">Check again</button></dialog>
 
 <script>
 const $ = (id) => document.getElementById(id);
 const root = document.documentElement;
 let ws = null, token = null, retry = 1000, retryTimer = null, lastRx = 0;
+let phonePaused=false;
 let volTimer = null, volDragging = false, volSentAt = 0;
 let last = null, lastAt = 0, artUrl = '', searchTimer = null, toastTimer = null, view = 'playing', lastQuery = '';
 const TOKEN_RE = /^[A-Za-z0-9_-]{20,}$/;
@@ -1304,6 +1328,7 @@ function toast(msg, action) {
   toastTimer = setTimeout(() => t.classList.remove('show'), action ? 7000 : 3500);
 }
 function cmd(c, value) {
+  if(phonePaused)return false;
   if (!ws || ws.readyState !== 1) { toast('Not connected. Reconnecting…'); return false; }
   if ($('app').dataset.pc !== 'on') { toast('Your PC is offline.'); return false; }
   ws.send(JSON.stringify({ type: 'cmd', cmd: c, value }));
@@ -1345,7 +1370,7 @@ function show() {
 let downSince = 0, wakeHidden = false;
 function wakeTick() {
   const up = ws && ws.readyState === 1;
-  if (!token || up || needCode) { downSince = 0; wakeHidden = false; $('waking').classList.remove('on'); return; }
+  if (!token || up || needCode || phonePaused) { downSince = 0; wakeHidden = false; $('waking').classList.remove('on'); return; }
   if (!downSince) downSince = Date.now();
   const secs = Math.round((Date.now() - downSince) / 1000);
   if (secs < 5 || wakeHidden) return;
@@ -1459,7 +1484,7 @@ function connect() {
   sock.onopen = () => {
     if (ws !== sock) return;
     retry = 1000; lastRx = Date.now();
-    $('status').textContent = 'Waiting for PC…';
+    if(!phonePaused)$('status').textContent = 'Waiting for PC…';
   };
   sock.onmessage = (ev) => {
     if (ws !== sock) return;
@@ -1480,17 +1505,19 @@ function connect() {
     else if (m.type === 'devices') renderDevices(m.list);
     else if (m.type === 'challenge') answerChallenge(sock, m.nonce);
     else if (m.type === 'calendar') renderCalendar(m);
+    else if(m.type==='calendar_access'){calendarAuth(m);}
     else if (m.type === 'calendar_push') $('calendarPushStatus').textContent = m.message;
-    else if (m.type === 'authed') { needCode = false; sendName(); calendarAuth(m); }
+    else if (m.type === 'authed') { needCode=false;phoneSetPaused(false);sendName();calendarAuth(m); }
   };
   sock.onclose = (ev) => {
     if (ws !== sock) return;
     ws = null;
-    calendarDisconnect(ev.code===4003||ev.code===4005);
+    calendarDisconnect(ev.code===4003||ev.code===4005||ev.code===4008);
     $('app').dataset.pc = 'off';
+    if(ev.code===4008){phoneSetPaused(true);retryTimer=setTimeout(connect,20000);return;}
     if (ev.code === 4005) {
       // This phone was removed (or signed out): forget the key and go back to the start screen.
-      if($('settings').open)$('settings').close();
+      phoneSetPaused(false);if($('settings').open)$('settings').close();
       setDevice(null); phoneClearPins(); token = null; last = null; artUrl = '';
       resetColour(); show();
       toast('This phone was removed. Pair it again to use it.');
@@ -1505,6 +1532,7 @@ function connect() {
       askCode(wrong ? 'That code was not accepted. Check it and try again.' : '');
       return;
     }
+    if(phonePaused){retryTimer=setTimeout(connect,20000);return;}
     $('status').textContent = 'Reconnecting…';
     retryTimer = setTimeout(connect, retry);
     retry = Math.min(retry * 2, 15000);
@@ -2466,8 +2494,9 @@ function drawCalendar() {
     body.append(row);if(focusedEvent===key)main.focus({preventScroll:true});
   }
 }
+function calendarIdentity(){return getToken()||getDevice()||'';}
 function renderCalendar(m) {
-  if(!calendarAllowed||!calendarConnected||calendarOwnerToken!==getToken())return;
+  if(!calendarAllowed||!calendarConnected||calendarOwnerToken!==calendarIdentity())return;
   calendarData=m;
   drawCalendar();
 }
@@ -2482,6 +2511,7 @@ function clearCalendarView() {
   $('calendarItems').textContent='';$('calendarDays').textContent='';
 }
 function pushUI() {
+  $('calendarReminders').hidden=!getToken();
   $('calendarEnablePush').hidden = !!calendarSub;
   $('calendarTestPush').hidden = $('calendarDisablePush').hidden = !calendarSub;
 }
@@ -2506,16 +2536,16 @@ async function syncPush(create, epoch=calendarEpoch) {
 }
 function calendarDisconnect(revoked) {
   calendarEpoch++;calendarConnected=false;calendarKey='';calendarSub=null;pushUI();
-  if(revoked||calendarOwnerToken!==getToken()){
+  if(revoked||!getToken()||calendarOwnerToken!==calendarIdentity()){
     calendarAllowed=false;calendarOwnerToken='';forgetSavedCalendar();clearCalendarView();$('calendarBtn').hidden=true;
     if($('calendarDlg').open)$('calendarDlg').close();
   }else{calendarData=cachedPhoneData()||calendarData;drawCalendar();}
 }
 function calendarAuth(m) {
-  calendarEpoch++;calendarConnected=true;calendarAllowed=m.calendar===true&&!!getToken();calendarKey=m.pushKey||'';
+  calendarEpoch++;calendarConnected=true;calendarAllowed=m.calendar===true&&!!calendarIdentity();calendarKey=getToken()?(m.pushKey||''):'';pushUI();
   $('calendarBtn').hidden=!calendarAllowed;
   if(!calendarAllowed){calendarDisconnect(true);return;}
-  calendarOwnerToken=getToken();calendarData=cachedPhoneData()||calendarData;
+  calendarOwnerToken=calendarIdentity();calendarData=cachedPhoneData()||calendarData;
   drawCalendar();rawCmd('calendar_get');syncPush(false).catch(()=>{});
 }
 $('calendarBtn').onclick=()=>{
@@ -2551,6 +2581,7 @@ $('calendarDisablePush').onclick=async()=>{
 
 /* ---------- pairing ---------- */
 function rawCmd(c, value) {   // like cmd(), but works while the PC is offline
+  if(phonePaused)return false;
   if (!ws || ws.readyState !== 1) { toast('Not connected. Reconnecting…'); return false; }
   ws.send(JSON.stringify({ type: 'cmd', cmd: c, value }));
   return true;
@@ -2573,20 +2604,22 @@ function ago(ms) {
   const m = Math.round(ms / 60000);
   return m < 2 ? 'just now' : m < 90 ? m + ' min ago' : m < 2880 ? Math.round(m / 60) + ' h ago' : Math.round(m / 1440) + ' days ago';
 }
-function renderDevices(list) {
-  const ul = $('devList');
-  ul.textContent = '';
-  for (const d of list || []) {
-    const li = document.createElement('li');
-    const n = document.createElement('div'); n.className = 'n';
-    n.textContent = d.name;
-    const sm = document.createElement('small'); sm.textContent = 'Last seen ' + ago(d.ago);
-    n.append(sm);
-    const b = document.createElement('button'); b.className = 'secondary danger'; b.textContent = 'Remove';
-    b.onclick = () => { if (confirm(`Remove "${d.name}"? It will be signed out.`)) rawCmd('device_revoke', d.id); };
-    li.append(n, b); ul.append(li);
+function renderDevices(list){
+  const ul=$('devList');ul.textContent='';
+  for(const d of list||[]){
+    const li=document.createElement('li');li.className='device-card';
+    const head=document.createElement('div'),icon=document.createElement('span'),name=document.createElement('div'),seen=document.createElement('small'),status=document.createElement('span');
+    head.className='device-head';icon.className='device-icon';icon.innerHTML='<svg class="i" viewBox="0 0 24 24"><rect x="6" y="2" width="12" height="20" rx="3"/><path d="M10 18h4"/></svg>';name.className='n';name.textContent=d.name;seen.textContent='Last seen '+ago(d.ago);name.append(seen);status.className='device-status'+(d.paused?' is-paused':'');status.textContent=d.paused?'Paused':'Enabled';head.append(icon,name,status);li.append(head);
+    const access=document.createElement('div'),copy=document.createElement('div'),note=document.createElement('small'),toggle=document.createElement('button');
+    access.className='device-access-row';copy.className='device-access-copy';copy.textContent='Calendar access';note.textContent=d.paused?'Saved permission applies when resumed':'Read-only events and schedule';copy.append(note);toggle.type='button';toggle.textContent=d.calendar?'Allowed':'Off';toggle.setAttribute('aria-pressed',String(!!d.calendar));toggle.onclick=()=>{
+      const change=()=>{if(rawCmd('device_access',d.id+':calendar:'+(d.calendar?'0':'1')))toast('Updating calendar access…');};
+      if(d.calendar)change();else phoneConfirm('Share your calendar?','Allow '+d.name+' to view your calendar events, including event titles and times.','Allow access',change);
+    };access.append(copy,toggle);li.append(access);
+    const actions=document.createElement('div'),pause=document.createElement('button'),remove=document.createElement('button');actions.className='device-actions';pause.type=remove.type='button';pause.className='device-pause';pause.textContent=d.paused?'Resume access':'Pause access';pause.onclick=()=>{if(rawCmd('device_access',d.id+':paused:'+(d.paused?'0':'1')))toast(d.paused?'Resuming device…':'Pausing device…');};
+    remove.className='secondary danger';remove.textContent='Remove';remove.onclick=()=>phoneConfirm('Remove device?','Remove '+d.name+' permanently. It will need a new pairing code.','Remove',()=>rawCmd('device_revoke',d.id));
+    actions.append(pause,remove);li.append(actions);ul.append(li);
   }
-  if (!list || !list.length) { const li = document.createElement('li'); li.className = 'small'; li.textContent = 'No paired phones yet.'; ul.append(li); }
+  if(!list||!list.length){const li=document.createElement('li');li.className='small';li.textContent='No paired phones yet.';ul.append(li);}
 }
 $('pairNew').onclick = () => rawCmd('pair_start');
 $('devLeave').onclick=()=>{if(confirm('Sign out of this phone? You will need a new pairing code.')){if(rawCmd('device_leave'))toast('Signing out…');}};
@@ -3058,6 +3091,7 @@ function setupMedia() {
 }
 function syncMedia() {
   if (!('mediaSession' in navigator)) return;
+  if(phonePaused){if(silent&&!silent.paused)silent.pause();return;}
   if (!getOpt('media')) { if (silent && !silent.paused) silent.pause(); return; }
   if (!silent) { silent = new Audio(URL.createObjectURL(silentWav())); silent.loop = true; setupMedia(); }
   if (last && last.title && silent.paused) silent.play().catch(() => {});   // needs a tap first after a reload
@@ -3071,7 +3105,7 @@ function syncMedia() {
   ms.playbackState = last.playing ? 'playing' : 'paused';
   try { if (last.duration) ms.setPositionState({ duration: last.duration, position: Math.min(last.position || 0, last.duration), playbackRate: last.speed || 1 }); } catch {}
 }
-document.addEventListener('pointerdown', () => { if (getOpt('media') && silent && silent.paused && last && last.title) silent.play().catch(() => {}); }, { passive: true });
+document.addEventListener('pointerdown', () => { if (!phonePaused && getOpt('media') && silent && silent.paused && last && last.title) silent.play().catch(() => {}); }, { passive: true });
 $('optMedia').onchange = (e) => { setOpt('media', e.target.checked); syncMedia(); if (e.target.checked && !('mediaSession' in navigator)) toast('This browser has no lock-screen controls.'); };
 
 $('optMedia').checked = getOpt('media');
@@ -3228,6 +3262,20 @@ $('trackActions').addEventListener('close',()=>{if(!$('trackActions').open){$('t
 new MutationObserver(()=>{if($('studioDlg').open)studioSync();$('settingsCalendar').hidden=$('calendarBtn').hidden;}).observe($('app'),{attributes:true,attributeFilter:['data-pc']});
 new MutationObserver(()=>{$('settingsCalendar').hidden=$('calendarBtn').hidden;}).observe($('calendarBtn'),{attributes:true,attributeFilter:['hidden']});
 $('settingsCalendar').hidden=$('calendarBtn').hidden;
+function phoneSetPaused(paused){
+  if(paused){
+    phonePaused=true;$('status').textContent='Device paused';$('waking').classList.remove('on');
+    calendarDisconnect(true);document.querySelectorAll('dialog[open]').forEach(d=>{if(d.id!=='devicePausedDlg')d.close();});
+    $('app').hidden=true;$('glow').hidden=true;
+    if(silent&&!silent.paused)silent.pause();
+    try{if(navigator.mediaSession){navigator.mediaSession.metadata=null;navigator.mediaSession.playbackState='none';mediaKey='';}}catch{}
+    if(!$('devicePausedDlg').open)$('devicePausedDlg').showModal();
+  }else if(phonePaused){
+    phonePaused=false;if($('devicePausedDlg').open)$('devicePausedDlg').close();$('app').hidden=!token;$('glow').hidden=!token;syncMedia();
+  }
+}
+$('devicePausedDlg').addEventListener('cancel',e=>e.preventDefault());
+$('devicePausedRetry').onclick=()=>{if(phonePaused)reconnectNow();};
 resetColour();
 show();
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
