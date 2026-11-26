@@ -32,9 +32,8 @@ A Windows CI workflow is provided in `.github/workflows/companion-build.yml`. Te
 development builds, not production installers. Do not enable automatic updates until the signer and
 the initial signed release have been verified.
 
-Open the companion once, create a local password, choose the exact unpacked extension directory that
-is already loaded in Chrome, and paste the trusted P-256 release **public** key. Enable automatic updates
-and startup only if desired. The public key is not a password; keep the private key offline.
+Open the companion once, create a local password (minimum six characters; a longer unique password is recommended), choose the exact unpacked extension directory that
+is already loaded in Chrome. You can save initial settings without a release key. Once a signed release is available, open Advanced: release verification key and paste the trusted P-256 release **public** key. Automatic extension updates stay disabled until a key is provided. Enable updates and startup only if desired. The public key is not a password; keep the private key offline.
 
 Routine checks occur every six hours when Chrome is closed. If Chrome is running, the updater waits
 locally and checks again in two minutes, without downloading anything. Chrome can keep running after
