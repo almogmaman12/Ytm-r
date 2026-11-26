@@ -32,8 +32,15 @@ A Windows CI workflow is provided in `.github/workflows/companion-build.yml`. Te
 development builds, not production installers. Do not enable automatic updates until the signer and
 the initial signed release have been verified.
 
-Open the companion once, create a local password (minimum six characters; a longer unique password is recommended), choose the exact unpacked extension directory that
-is already loaded in Chrome. You can save initial settings without a release key. Once a signed release is available, open Advanced: release verification key and paste the trusted P-256 release **public** key. Automatic extension updates stay disabled until a key is provided. Enable updates and startup only if desired. The public key is not a password; keep the private key offline.
+Open the companion once, create a local password (minimum six characters; a longer unique password is recommended), and choose the exact unpacked extension directory already loaded in Chrome. In a publisher-key build, verification is built in and no public key entry appears. Enable updates and startup only if desired.
+
+Unsigned development builds without a bundled key still allow initial setup, but automatic extension updates remain disabled until a trusted public key is configured in Advanced settings. A bundled key takes precedence over an older locally configured key. If the trust anchor changes, automatic updates are disabled until the owner explicitly enables them again. Existing passwords and the selected extension folder are retained.
+
+### One-time publisher setup
+
+Generate the release signing key pair on your own trusted signing machine, outside the repository (see below). Keep the private key offline, and never add it to repository variables, commits, build artifacts, or the companion. For GitHub Actions test builds, add the contents of the **public** PEM file as the repository Actions variable `YTM_EXTENSION_PUBLIC_KEY_PEM` (Settings > Secrets and variables > Actions > Variables). The next build validates the P-256 public key and embeds it as an assembly resource. Without that variable, CI builds the development edition.
+
+For the production MSIX package, the public PEM file is required by the packaging script. This is a release-maintainer step, not an installation step on the companion PC. All future releases should use the same trusted publisher key unless a reviewed key rotation is needed.
 
 Routine checks occur every six hours when Chrome is closed. If Chrome is running, the updater waits
 locally and checks again in two minutes, without downloading anything. Chrome can keep running after
@@ -42,7 +49,7 @@ automatically. The update can be deferred indefinitely when Chrome never fully s
 
 ## Publish an extension release (trusted maintainer)
 
-Use a separate P-256 key pair and keep the private key off GitHub and off the companion PC.
+Use a separate P-256 key pair and keep the private key off GitHub and off the companion PC. Run the following outside the repository on a trusted signing machine.
 For example, on a trusted signing machine:
 
 ```sh
@@ -72,11 +79,11 @@ updates is made.
 
 ## Companion auto-update (signed package)
 
-On a trusted Windows signing machine, with the Windows SDK (makeappx and signtool on PATH) and a
+On a trusted Windows signing machine, with .NET 8, Node.js, the Windows SDK (makeappx and signtool on PATH) and a
 legitimate, trusted code-signing certificate already installed, run:
 
 ```powershell
-.\release\package-msix.ps1 -Publisher 'CN=Your actual publisher' -CertificateThumbprint 'YOUR_CERT_THUMBPRINT' -Version '0.1.0.0' -OutputDirectory .\signed-release
+.\release\package-msix.ps1 -Publisher 'CN=Your actual publisher' -CertificateThumbprint 'YOUR_CERT_THUMBPRINT' -Version '0.1.0.0' -OutputDirectory .\signed-release -ExtensionPublicKeyPath C:\path\to\extension-signing-public.pem
 ```
 
 Use the exact same publisher and package identity for every release. Increment the four-part MSIX
