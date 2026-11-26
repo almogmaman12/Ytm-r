@@ -46,7 +46,7 @@ internal static class Store
     }
     public static void SetPassword(Settings s, string password)
     {
-        if (password.Length < 12) throw new ArgumentException("Use at least 12 characters.");
+        if (password.Length < 6) throw new ArgumentException("Use at least 6 characters.");
         var salt = RandomNumberGenerator.GetBytes(32);
         s.Salt = Convert.ToBase64String(salt);
         s.PasswordHash = Convert.ToBase64String(Rfc2898DeriveBytes.Pbkdf2(password, salt, 600000, HashAlgorithmName.SHA256, 32));
@@ -158,6 +158,11 @@ internal sealed class CompanionContext : ApplicationContext
         if (busy || settingsOpen || string.IsNullOrEmpty(settings.PasswordHash) || (!manual && !settings.AutomaticUpdates)) return;
         if (!manual && DateTime.UtcNow < nextCheck) return;
         if (manual && !Unlock()) return;
+        if (string.IsNullOrWhiteSpace(settings.PublicKey) || string.IsNullOrWhiteSpace(settings.ExtensionFolder))
+        {
+            Status("Extension updates not configured; choose a folder and trusted publisher key in Settings.");
+            return;
+        }
         busy = true;
         nextCheck = DateTime.UtcNow.AddHours(6);
         try
@@ -196,14 +201,22 @@ internal sealed class SettingsForm : Form
         var browse = new Button { Text = "Choose extension folder", AutoSize = true };
         browse.Click += (_, _) => { using var picker = new FolderBrowserDialog(); if (picker.ShowDialog() == DialogResult.OK) folder.Text = picker.SelectedPath; };
         panel.Controls.Add(browse);
-        Label("Trusted release public key (PEM). Obtain this from your own release signing setup.");
-        var key = new TextBox { Text = current.PublicKey, Width = 525, Height = 90, Multiline = true, ScrollBars = ScrollBars.Vertical };
+        Label("Signed extension updates require a trusted publisher key. Leave it blank until a signed release is available.");
+        var keyToggle = new Button { Text = "Advanced: release verification key", AutoSize = true };
+        panel.Controls.Add(keyToggle);
+        var key = new TextBox { Text = current.PublicKey, Width = 525, Height = 90, Multiline = true, ScrollBars = ScrollBars.Vertical, Visible = false };
         panel.Controls.Add(key);
-        var auto = new CheckBox { Text = "Automatically install verified extension updates while Chrome is closed", AutoSize = true, Checked = current.AutomaticUpdates };
+        keyToggle.Click += (_, _) => key.Visible = !key.Visible;
+        var auto = new CheckBox { Text = "Automatically install verified extension updates while Chrome is closed", AutoSize = true, Checked = current.AutomaticUpdates && !string.IsNullOrWhiteSpace(current.PublicKey), Enabled = !string.IsNullOrWhiteSpace(current.PublicKey) };
+        key.TextChanged += (_, _) =>
+        {
+            auto.Enabled = !string.IsNullOrWhiteSpace(key.Text);
+            if (!auto.Enabled) auto.Checked = false;
+        };
         var startup = new CheckBox { Text = "Start YTM Remote Companion with Windows", AutoSize = true, Checked = current.StartWithWindows };
         panel.Controls.Add(auto); panel.Controls.Add(startup);
         if (Store.Packaged) { startup.Enabled = false; Label("For the MSIX edition, enable startup in Windows Settings > Apps > Startup."); }
-        Label(string.IsNullOrEmpty(current.PasswordHash) ? "Create a settings password (12+ characters)" : "New password (leave blank to keep current password)");
+        Label(string.IsNullOrEmpty(current.PasswordHash) ? "Create a settings password (6+ characters)" : "New password (leave blank to keep current password)");
         var password = new TextBox { UseSystemPasswordChar = true, Width = 525 };
         panel.Controls.Add(password);
         Label("Confirm new password");
@@ -217,13 +230,16 @@ internal sealed class SettingsForm : Form
             try
             {
                 var next = new Settings { ExtensionFolder = folder.Text.Trim(), PublicKey = key.Text.Trim(), AutomaticUpdates = auto.Checked, StartWithWindows = startup.Checked, Salt = current.Salt, PasswordHash = current.PasswordHash };
-                if (auto.Checked || next.ExtensionFolder.Length > 0 || next.PublicKey.Length > 0)
-                {
+                if (next.ExtensionFolder.Length > 0 || next.AutomaticUpdates)
                     ExtensionUpdater.ValidateFolder(next.ExtensionFolder);
+                if (next.PublicKey.Length > 0)
+                {
                     using var verify = ECDsa.Create();
                     verify.ImportFromPem(next.PublicKey);
                     if (verify.KeySize != 256) throw new ArgumentException("Use the trusted P-256 public key.");
                 }
+                if (next.AutomaticUpdates && next.PublicKey.Length == 0)
+                    throw new ArgumentException("Configure a trusted publisher key before enabling automatic updates.");
                 if (password.Text.Length > 0 || string.IsNullOrEmpty(next.PasswordHash))
                 {
                     if (password.Text != confirm.Text) throw new ArgumentException("Passwords do not match.");
