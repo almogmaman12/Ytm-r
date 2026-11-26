@@ -245,6 +245,16 @@ const deviceList = (token) => [...devices.values()].filter((d) => d.token === to
   .map((d) => ({ id:d.id,name:d.name||'Phone',created:d.created,ago:Date.now()-(d.lastSeen||d.created),paused:d.paused===true,calendar:d.calendar===true }));
 // Sharing calendar data is explicitly granted by an owner, and never works while paused.
 function deviceActive(d){return !d||(devices.get(d.id)===d&&d.paused!==true);}
+// Explicit pause notification, independent of delivery of a WebSocket close code.
+// Remove the socket from room broadcasts before sending anything.
+function pauseSocket(ws,room){
+  if(room)room.phones.delete(ws);
+  if(ws.pauseNotified)return;
+  ws.pauseNotified=true;
+  send(ws,{type:'device_paused',paused:true});
+  const timer=setTimeout(()=>{try{ws.close(4008,'device paused');}catch{}},350);
+  timer.unref();
+}
 function mayReadCalendar(d){return calendarSecure()&&deviceActive(d)&&(!d||d.calendar===true);}
 function sendCalendar(room,token){for(const p of room.phones)if(mayReadCalendar(p.dev))send(p,calendarFor(room,token));}
 function notifyDeviceOwners(room,token){for(const p of room.phones)if(!p.dev)send(p,{type:'devices',list:deviceList(token)});}
@@ -456,7 +466,7 @@ wss.on('connection', async (ws, info) => {
   if (info.devKey) {
     viaDevice = deviceFromKey(info.devKey);
     if (!viaDevice) { const f = noteBadCode(ip); log('------', `unknown or removed device key from ${device}, ${ip}  (${f.n} of ${MAX_BAD_CODES})`); return ws.close(4005, 'removed'); }
-    if(viaDevice.paused===true)return ws.close(4008,'device paused');
+    if(viaDevice.paused===true){log(roomId(viaDevice.token),'paused paired device attempted to reconnect');pauseSocket(ws);return;}
     token = viaDevice.token;
     viaDevice.lastSeen = Date.now();
     ws.dev = viaDevice;
@@ -551,7 +561,8 @@ wss.on('connection', async (ws, info) => {
       return;
     }
 
-    if(viaDevice&&!deviceActive(viaDevice)){return ws.close(devices.has(viaDevice.id)?4008:4005,devices.has(viaDevice.id)?'device paused':'removed');}
+    if(viaDevice&&!deviceActive(viaDevice)){if(devices.has(viaDevice.id))return pauseSocket(ws,room);return ws.close(4005,'removed');}
+    if(ws.pauseNotified)return;
     if (role === 'phone' && msg.type === 'name') {
       const before = who;
       setName(msg.name);
@@ -631,9 +642,10 @@ wss.on('connection', async (ws, info) => {
             if(devices.get(id)!==d)return;
             d[field]=enabled;saveDevices();
             for(const p of room.phones){if(!p.dev||p.dev.id!==id)continue;
-              if(d.paused===true){p.close(4008,'device paused');continue;}
+              if(d.paused===true){pauseSocket(p,room);continue;}
               if(field==='calendar'){const allowed=mayReadCalendar(d);send(p,{type:'calendar_access',calendar:allowed});if(allowed)send(p,calendarFor(room,token));}
             }
+            log(rid,'paired device '+(field==='paused'?(enabled?'paused':'resumed'):(enabled?'calendar allowed':'calendar denied'))+': '+(d.name||d.id));
             notifyDeviceOwners(room,token);
           }catch{send(ws,{type:'status',message:'Could not save device access. Try again.'});}
           finally{deviceAccessPending.delete(id);}
