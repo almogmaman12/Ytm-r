@@ -22,6 +22,8 @@ internal sealed class Settings
 {
     public string ExtensionFolder { get; set; } = "";
     public string PublicKey { get; set; } = "";
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string EffectivePublicKey => PublisherTrust.PublicKey ?? PublicKey;
     public bool AutomaticUpdates { get; set; }
     public bool StartWithWindows { get; set; }
     public string Salt { get; set; } = "";
@@ -34,8 +36,16 @@ internal static class Store
     private static string FilePath => Path.Combine(Folder, "settings.json");
     public static Settings Load()
     {
-        if (!File.Exists(FilePath)) return new Settings();
-        return JsonSerializer.Deserialize<Settings>(File.ReadAllText(FilePath)) ?? throw new InvalidDataException("Invalid companion settings.");
+        if (!File.Exists(FilePath)) return new Settings { PublicKey = PublisherTrust.PublicKey ?? "" };
+        var s = JsonSerializer.Deserialize<Settings>(File.ReadAllText(FilePath)) ?? throw new InvalidDataException("Invalid companion settings.");
+        if (PublisherTrust.PublicKey is string pinned)
+        {
+            // A changed trust anchor must be explicitly approved in settings.
+            if (!string.Equals(s.PublicKey.Trim(), pinned.Trim(), StringComparison.Ordinal))
+                s.AutomaticUpdates = false;
+            s.PublicKey = pinned;
+        }
+        return s;
     }
     public static void Save(Settings s)
     {
@@ -158,9 +168,9 @@ internal sealed class CompanionContext : ApplicationContext
         if (busy || settingsOpen || string.IsNullOrEmpty(settings.PasswordHash) || (!manual && !settings.AutomaticUpdates)) return;
         if (!manual && DateTime.UtcNow < nextCheck) return;
         if (manual && !Unlock()) return;
-        if (string.IsNullOrWhiteSpace(settings.PublicKey) || string.IsNullOrWhiteSpace(settings.ExtensionFolder))
+        if (string.IsNullOrWhiteSpace(settings.EffectivePublicKey) || string.IsNullOrWhiteSpace(settings.ExtensionFolder))
         {
-            Status("Extension updates not configured; choose a folder and trusted publisher key in Settings.");
+            Status("Extension updates not configured; select the extension folder and enable trusted updates in Settings.");
             return;
         }
         busy = true;
@@ -201,13 +211,14 @@ internal sealed class SettingsForm : Form
         var browse = new Button { Text = "Choose extension folder", AutoSize = true };
         browse.Click += (_, _) => { using var picker = new FolderBrowserDialog(); if (picker.ShowDialog() == DialogResult.OK) folder.Text = picker.SelectedPath; };
         panel.Controls.Add(browse);
-        Label("Signed extension updates require a trusted publisher key. Leave it blank until a signed release is available.");
-        var keyToggle = new Button { Text = "Advanced: release verification key", AutoSize = true };
+        var pinned = PublisherTrust.PublicKey;
+        Label(pinned != null ? "Publisher verification is built in. No key entry is needed." : "Development build: signed updates require a trusted publisher key.");
+        var keyToggle = new Button { Text = "Advanced: release verification key", AutoSize = true, Visible = pinned == null };
         panel.Controls.Add(keyToggle);
-        var key = new TextBox { Text = current.PublicKey, Width = 525, Height = 90, Multiline = true, ScrollBars = ScrollBars.Vertical, Visible = false };
+        var key = new TextBox { Text = current.EffectivePublicKey, Width = 525, Height = 90, Multiline = true, ScrollBars = ScrollBars.Vertical, Visible = false, ReadOnly = pinned != null };
         panel.Controls.Add(key);
-        keyToggle.Click += (_, _) => key.Visible = !key.Visible;
-        var auto = new CheckBox { Text = "Automatically install verified extension updates while Chrome is closed", AutoSize = true, Checked = current.AutomaticUpdates && !string.IsNullOrWhiteSpace(current.PublicKey), Enabled = !string.IsNullOrWhiteSpace(current.PublicKey) };
+        keyToggle.Click += (_, _) => { if (pinned == null) key.Visible = !key.Visible; };
+        var auto = new CheckBox { Text = "Automatically install verified extension updates while Chrome is closed", AutoSize = true, Checked = current.AutomaticUpdates && !string.IsNullOrWhiteSpace(current.EffectivePublicKey), Enabled = !string.IsNullOrWhiteSpace(current.EffectivePublicKey) };
         key.TextChanged += (_, _) =>
         {
             auto.Enabled = !string.IsNullOrWhiteSpace(key.Text);
@@ -229,14 +240,14 @@ internal sealed class SettingsForm : Form
         {
             try
             {
-                var next = new Settings { ExtensionFolder = folder.Text.Trim(), PublicKey = key.Text.Trim(), AutomaticUpdates = auto.Checked, StartWithWindows = startup.Checked, Salt = current.Salt, PasswordHash = current.PasswordHash };
+                var next = new Settings { ExtensionFolder = folder.Text.Trim(), PublicKey = pinned ?? key.Text.Trim(), AutomaticUpdates = auto.Checked, StartWithWindows = startup.Checked, Salt = current.Salt, PasswordHash = current.PasswordHash };
                 if (next.ExtensionFolder.Length > 0 || next.AutomaticUpdates)
                     ExtensionUpdater.ValidateFolder(next.ExtensionFolder);
                 if (next.PublicKey.Length > 0)
                 {
                     using var verify = ECDsa.Create();
                     verify.ImportFromPem(next.PublicKey);
-                    if (verify.KeySize != 256) throw new ArgumentException("Use the trusted P-256 public key.");
+                    if (verify.ExportParameters(false).Curve.Oid.Value != "1.2.840.10045.3.1.7") throw new ArgumentException("Use the trusted P-256 public key.");
                 }
                 if (next.AutomaticUpdates && next.PublicKey.Length == 0)
                     throw new ArgumentException("Configure a trusted publisher key before enabling automatic updates.");
