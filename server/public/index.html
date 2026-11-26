@@ -434,6 +434,49 @@
     .cal-agenda-filter { margin-bottom: 13px; }
     .cal-map-labels { font-size: 9px; }
   }
+  /* Interactive planner polish: quick find and expandable event cards. */
+  .cal-top { gap: 7px; }
+  .cal-top .icon-btn { width: 42px; height: 42px; }
+  #calendarSearchToggle[aria-expanded="true"] { color: var(--accent); background: var(--cal-soft); border-color: var(--cal-edge); }
+  .cal-search { margin: 0 0 20px; border: 1px solid var(--cal-edge); border-radius: 21px; padding: 13px; background: var(--cal-panel); }
+  .cal-search-field { display: flex; align-items: center; gap: 9px; padding: 0 11px; border-radius: 13px; background: var(--bg); border: 1px solid var(--line); }
+  .cal-search-field .i { width: 19px; height: 19px; flex: none; color: var(--muted); }
+  #calendarSearchInput { min-width: 0; width: 100%; flex: 1; height: 44px; padding: 0; margin: 0; background: transparent; color: var(--ink); border: 0; font-size: 16px; outline-offset: -2px; }
+  #calendarSearchClear { flex: none; width: 40px; height: 40px; display: grid; place-items: center; }
+  #calendarSearchSummary { font-size: 11px; color: var(--muted); margin: 11px 4px 4px; }
+  #calendarSearchResults { display: flex; flex-direction: column; max-height: 270px; overflow: auto; gap: 4px; }
+  .cal-result { display: flex; align-items: center; width: 100%; gap: 11px; border-radius: 12px; padding: 9px 7px; text-align: start; background: var(--surface); }
+  .cal-result-date { flex: 0 0 40px; min-width: 0; display: flex; flex-direction: column; align-items: center; color: var(--accent); font-size: 10px; font-weight: 700; }
+  .cal-result-date strong { font-size: 20px; line-height: 1.05; font-weight: 800; }
+  .cal-result-copy { flex: 1; min-width: 0; }
+  .cal-result-copy strong { display: block; overflow-wrap: anywhere; font-size: 14px; font-weight: 700; }
+  .cal-result-copy small { display: block; font-size: 11px; color: var(--muted); margin-top: 3px; }
+  .cal-result > .i { width: 16px; height: 16px; color: var(--muted); flex: none; }
+  .cal-event { display: block; padding: 0 !important; }
+  .cal-event-main { display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: center; gap: 9px; width: 100%; padding: 15px 13px 15px 18px; text-align: start; border-radius: inherit; }
+  .cal-event-main:focus-visible { outline-offset: -3px; }
+  .cal-group.single-day .cal-event-main { padding: 17px 15px 17px 20px; }
+  .cal-event-side { display: flex; flex-direction: column; align-items: flex-end; gap: 7px; }
+  .cal-event-side .i { width: 17px; height: 17px; color: var(--muted); transition: transform .18s; }
+  .cal-event-main[aria-expanded="true"] .cal-event-side .i { transform: rotate(180deg); color: var(--accent); }
+  .cal-event-details { margin: 0 14px 14px 18px; padding-top: 12px; border-top: 1px solid var(--line); }
+  .cal-event-details dl { display: grid; grid-template-columns: 1fr 1fr; gap: 11px; margin: 0; }
+  .cal-event-details dl > div { min-width: 0; padding: 9px 10px; border-radius: 10px; background: var(--surface); }
+  .cal-event-details dt { font-size: 10px; color: var(--muted); font-weight: 650; }
+  .cal-event-details dd { font-size: 13px; font-weight: 650; margin: 3px 0 0; overflow-wrap: anywhere; }
+  .cal-event-details p { font-size: 11px; margin: 10px 0 0; color: var(--muted); }
+  @media (hover:hover) { .cal-event-main:hover,.cal-result:hover { background: var(--surface); } }
+  @media(max-width:740px) {
+    .cal-group.single-day .cal-event-main { padding: 15px 13px 15px 17px; }
+    .cal-search { margin-bottom: 14px; }
+  }
+  @media(max-width:360px) {
+    .cal-top { gap: 4px; }
+    .cal-top .icon-btn { width: 39px; height: 44px; }
+    .cal-top h2 { font-size: 21px; }
+    .cal-event-main { padding: 12px 9px 12px 13px; }
+    .cal-event-details { margin: 0 10px 12px 13px; }
+  }
   dialog#settings { padding: 0; max-height: 90dvh; }
   dialog#settings[open] { display: flex; flex-direction: column; }
   .sheetBody { overflow-y: auto; padding: 22px 22px 6px; overscroll-behavior: contain; }
@@ -718,6 +761,7 @@
     <div class="cal-top">
       <button id="calendarClose" class="icon-btn" aria-label="Close calendar"><svg class="i" viewBox="0 0 24 24"><path d="M19 12H5m7-7-7 7 7 7"/></svg></button>
       <div class="cal-brand"><div class="cal-eyebrow">YTM Remote</div><h2 id="calendarHeading">Calendar</h2></div>
+      <button id="calendarSearchToggle" class="icon-btn" aria-label="Search saved events" aria-expanded="false" aria-controls="calendarSearchPanel"><svg class="i" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m16 16 4 4"/></svg></button>
       <button id="calendarRefresh" class="icon-btn" aria-label="Refresh calendar"><svg class="i"><use href="#i-refresh"/></svg></button>
     </div>
     <div class="cal-monthbar">
@@ -740,6 +784,14 @@
   </header>
   <div class="cal-scroll">
     <p id="calendarStatus" role="status" aria-live="polite"></p>
+    <section id="calendarSearchPanel" class="cal-search" aria-label="Search saved calendar events" hidden>
+      <div class="cal-search-field"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m16 16 4 4"/></svg>
+        <input id="calendarSearchInput" type="search" placeholder="Find an event…" aria-label="Find an event by title" autocomplete="off" maxlength="160">
+        <button id="calendarSearchClear" aria-label="Clear search"><svg class="i" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
+      </div>
+      <p id="calendarSearchSummary" role="status" aria-live="polite">Search all saved dates.</p>
+      <div id="calendarSearchResults"></div>
+    </section>
     <div id="calendarOverview" class="cal-overview" aria-label="Selected view summary" hidden>
       <div class="cal-stat"><strong id="calendarStatEvents">0</strong><span>Saved events</span></div>
       <div class="cal-stat"><strong id="calendarStatDays">0</strong><span id="calendarStatDaysLabel">Days with events</span></div>
@@ -1818,7 +1870,7 @@ $('searchForm').onsubmit = (e) => {
 /* ---------- Google Calendar grabber and Web Push ---------- */
 let calendarKey = '', calendarSub = null, calendarAllowed = false, calendarEpoch = 0;
 let calendarData = null, calendarSelected = '', calendarWeek = '', calendarFreshTimer = null;
-let calendarConnected=false, calendarOwnerToken='', calendarMode='week', calendarRemaining=false;
+let calendarConnected=false, calendarOwnerToken='', calendarMode='week', calendarRemaining=false, calendarExpanded='', calendarSearchOpen=false;
 const CAL_DISPLAY_TTL=14*86400000;
 try{localStorage.removeItem('ytmrCalendarSaved');}catch{}
 // The relay owns the cache; only keep the current in-memory view during a transient disconnect.
@@ -1834,8 +1886,8 @@ function calShiftMonth(key,n){const d=calDate(calMonth(key));d.setMonth(d.getMon
 function calPeriod(key){return calendarMode==='month'?calMonth(key):calWeek(key);}
 function calPeriodEnd(key){return calendarMode==='month'?calAdd(calShiftMonth(key,1),-1):calAdd(key,6);}
 function calScrollTop(){const scroll=$('calendarItems').closest('.cal-scroll');if(scroll)scroll.scrollTop=0;}
-function calSelectDay(date){calendarRemaining=false;calendarSelected=date;calendarWeek=calPeriod(date);drawCalendar();calScrollTop();}
-function calMove(n){calendarRemaining=false;calendarWeek=calendarMode==='month'?calShiftMonth(calendarWeek,n):calAdd(calendarWeek,n*7);calendarSelected='';drawCalendar();calScrollTop();}
+function calSelectDay(date){calendarExpanded='';calendarRemaining=false;calendarSelected=date;calendarWeek=calPeriod(date);drawCalendar();calScrollTop();}
+function calMove(n){calendarExpanded='';calendarRemaining=false;calendarWeek=calendarMode==='month'?calShiftMonth(calendarWeek,n):calAdd(calendarWeek,n*7);calendarSelected='';drawCalendar();calScrollTop();}
 function calMoveDay(n){if(!calendarSelected)return;const date=calAdd(calendarSelected,n);const periods=[calPeriod(calToday()),...calItems().map(e=>calPeriod(e.date))].sort();if(date<periods[0]||date>calPeriodEnd(periods[periods.length-1]))return;calSelectDay(date);}
 function calSetMode(mode){
   if(calendarMode===mode)return;
@@ -1883,9 +1935,38 @@ function calDrawDayMap(date,events,now,today,saved) {
   $('calendarMapTotal').textContent=data.total?calDuration(data.total)+' scheduled':'Start times only';
   $('calendarMapNote').textContent='Saved timed events'+(data.points.length?' · Gold marks: unknown end time':'')+(date===today?' · White line: current time':'')+'. Gaps may contain unsynced events.';
 }
+function calEventKey(e){return JSON.stringify([e.date,e.title,e.start??null,e.end??null,!!e.allDay,e.time||'']);}
+function calSearchClose(){
+  calendarSearchOpen=false;$('calendarSearchPanel').hidden=true;
+  $('calendarSearchToggle').setAttribute('aria-expanded','false');
+  $('calendarSearchInput').value='';$('calendarSearchResults').textContent='';$('calendarSearchSummary').textContent='Search all saved dates.';
+}
+function calDrawSearch(items){
+  if(!calendarSearchOpen)return;
+  const q=$('calendarSearchInput').value.trim().toLocaleLowerCase(),results=$('calendarSearchResults'),summary=$('calendarSearchSummary');
+  const matches=q?items.filter(e=>e.title.toLocaleLowerCase().includes(q)):[];
+  const text=q?matches.length+' saved '+(matches.length===1?'match':'matches'):'Search all saved dates.';
+  if(summary.textContent!==text)summary.textContent=text;
+  const fmt=new Intl.DateTimeFormat(undefined,{month:'short',year:'numeric'});
+  const clock=new Intl.DateTimeFormat(undefined,{hour:'numeric',minute:'2-digit'});
+  const oldFocus=results.contains(document.activeElement)?document.activeElement.dataset.eventKey:'';
+  results.textContent='';
+  for(const event of matches){
+    const button=document.createElement('button'),date=document.createElement('span'),day=document.createElement('strong'),month=document.createElement('span'),copy=document.createElement('span'),title=document.createElement('strong'),time=document.createElement('small'),arrow=document.createElement('span');
+    button.type='button';button.className='cal-result';button.dataset.eventKey=calEventKey(event);
+    date.className='cal-result-date';day.textContent=calDate(event.date).getDate();month.textContent=fmt.format(calDate(event.date));date.append(day,month);
+    copy.className='cal-result-copy';title.textContent=event.title;title.dir='auto';
+    time.textContent=event.allDay?'All day':Number.isFinite(event.start)?clock.format(new Date(event.start)):event.time||'Time unknown';copy.append(title,time);
+    arrow.innerHTML='<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>';
+    arrow.className='cal-result-arrow';arrow.style.color='var(--muted)';button.append(date,copy,arrow);
+    button.onclick=()=>{calSearchClose();calSelectDay(event.date);calendarExpanded=calEventKey(event);drawCalendar();const target=Array.from($('calendarItems').querySelectorAll('.cal-event-main')).find(b=>b.dataset.eventKey===calendarExpanded);if(target){target.focus({preventScroll:true});target.scrollIntoView({block:'nearest'});}};
+    results.append(button);if(oldFocus===button.dataset.eventKey)button.focus({preventScroll:true});
+  }
+}
 function drawCalendar() {
   if (!calendarAllowed || !$('calendarDlg').open) return;
   const now=Date.now(), today=calToday(), items=calItems(), week=calendarWeek||calPeriod(today), end=calPeriodEnd(week);
+  calDrawSearch(items);
   const monthMode=calendarMode==='month', current=calPeriod(today);
   const periods=[current,...items.map(x=>calPeriod(x.date))].sort();
   const shortDay=new Intl.DateTimeFormat(undefined,{weekday:'short'});
@@ -1979,6 +2060,7 @@ function drawCalendar() {
   viewDate.textContent=calendarSelected===today?longDay.format(calDate(today)):'';
   viewDate.dir='auto';
   $('calendarCount').textContent=saved?(calendarRemaining?agenda.length+' of '+shown.length+' saved events':shown.length+' saved '+(shown.length===1?'event':'events')):'Agenda not synced';
+  const focusedEvent=list.contains(document.activeElement)?document.activeElement.dataset.eventKey:'';
   list.textContent='';
   if(!agenda.length){
     const empty=document.createElement('div'),title=document.createElement('strong'),desc=document.createElement('div');
@@ -2007,12 +2089,26 @@ function drawCalendar() {
     time.innerHTML=event.allDay?'<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M7 3v4m10-4v4M3 10h18"/></svg>':'<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>';
     const label=document.createElement('span');label.textContent=timeText(event);label.dir='auto';time.append(label);
     if(hasEnd(event)){const duration=document.createElement('span');duration.className='cal-duration';duration.textContent=calDuration(event.end-event.start);time.append(duration);}
-    info.append(title,time);row.append(info);
-    if(active||soon){const state=document.createElement('small');state.className='cal-state';state.textContent=active?'In progress':'In '+Math.ceil((event.start-now)/60000)+' min';row.append(state);}
+    info.append(title,time);
+    const key=calEventKey(event),expanded=calendarExpanded===key,main=document.createElement('button'),side=document.createElement('span'),chevron=document.createElement('span'),details=document.createElement('div');
+    main.type='button';main.className='cal-event-main';main.dataset.eventKey=key;main.setAttribute('aria-expanded',String(expanded));
+    side.className='cal-event-side';
+    if(active||soon){const state=document.createElement('small');state.className='cal-state';state.textContent=active?'In progress':'In '+Math.ceil((event.start-now)/60000)+' min';side.append(state);}
+    chevron.innerHTML='<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>';side.append(chevron);main.append(info,side);row.append(main);
+    details.className='cal-event-details';details.hidden=!expanded;
+    if(expanded){
+      const fields=document.createElement('dl'),add=(name,value)=>{const cell=document.createElement('div'),dt=document.createElement('dt'),dd=document.createElement('dd');dt.textContent=name;dd.textContent=value;dd.dir='auto';cell.append(dt,dd);fields.append(cell);};
+      add('Date',longDay.format(calDate(event.date)));
+      add('Starts',event.allDay?'All day':formatTime(event)?clock.format(new Date(event.start)):event.time||'Unknown');
+      if(!event.allDay){add('Ends',hasEnd(event)?(calDayKey(new Date(event.end))!==calDayKey(new Date(event.start))?dateLabel.format(new Date(event.end))+' ':'')+clock.format(new Date(event.end)):'Not available');add('Duration',hasEnd(event)?calDuration(event.end-event.start):'Not available');}
+      details.append(fields);const note=document.createElement('p');note.textContent=(fresh&&event.live!==false?'Synced from your PC.':'Saved calendar event; details may be out of date.')+' Times shown in your device’s timezone.';details.append(note);
+    }
+    row.append(details);
+    main.onclick=()=>{calendarExpanded=expanded?'':key;drawCalendar();};
     if(!nowMarker&&calendarSelected===today&&fresh&&event.live!==false&&formatTime(event)&&event.start>now){
       const marker=document.createElement('div');marker.className='cal-now-line';marker.textContent='Now · '+clock.format(new Date(now));body.append(marker);nowMarker=true;
     }
-    body.append(row);
+    body.append(row);if(focusedEvent===key)main.focus({preventScroll:true});
   }
 }
 function renderCalendar(m) {
@@ -2021,7 +2117,7 @@ function renderCalendar(m) {
   drawCalendar();
 }
 function clearCalendarView() {
-  calendarSelected='';calendarWeek='';calendarMode='week';calendarRemaining=false;
+  calendarSelected='';calendarWeek='';calendarMode='week';calendarRemaining=false;calendarExpanded='';calSearchClose();
   $('calendarDayMap').hidden=true;$('calendarMapBlocks').textContent='';$('calendarMapLabels').textContent='';$('calendarMapNote').textContent='';$('calendarMapTotal').textContent='';$('calendarMapNow').hidden=true;$('calendarAgendaFilter').hidden=true;
   $('calendarHero').hidden=true;$('calendarHeroTitle').textContent='';$('calendarHeroTime').textContent='';
   $('calendarHeroMeta').hidden=true;$('calendarHeroDetail').textContent='';$('calendarHeroTrack').hidden=true;$('calendarHeroTrack').removeAttribute('aria-valuenow');$('calendarHeroProgress').style.width='0%';
@@ -2073,9 +2169,15 @@ $('calendarBtn').onclick=()=>{
 };
 $('calendarRefresh').onclick=()=>{ if(calendarConnected){$('calendarStatus').textContent='Refreshing…';rawCmd('calendar_get');}else{drawCalendar();toast('Offline. Showing saved events.');} };
 $('calendarClose').onclick=()=> $('calendarDlg').close();
+$('calendarSearchToggle').onclick=()=>{
+  if(calendarSearchOpen){calSearchClose();return;}
+  calendarSearchOpen=true;$('calendarSearchPanel').hidden=false;$('calendarSearchToggle').setAttribute('aria-expanded','true');calDrawSearch(calItems());calScrollTop();$('calendarSearchInput').focus();
+};
+$('calendarSearchInput').oninput=()=>calDrawSearch(calItems());
+$('calendarSearchClear').onclick=()=>{$('calendarSearchInput').value='';calDrawSearch(calItems());$('calendarSearchInput').focus();};
 $('calendarDlg').addEventListener('close',()=>{if (!$('calendarDlg').open) clearCalendarView();});
 $('calendarToday').onclick=()=>calSelectDay(calToday());
-$('calendarAll').onclick=()=>{calendarRemaining=false;calendarSelected='';drawCalendar();calScrollTop();};
+$('calendarAll').onclick=()=>{calendarRemaining=false;calendarExpanded='';calendarSelected='';drawCalendar();calScrollTop();};
 $('calendarFilterAll').onclick=()=>{calendarRemaining=false;drawCalendar();};
 $('calendarFilterRemaining').onclick=()=>{calendarRemaining=true;drawCalendar();};
 $('calendarDayPrev').onclick=()=>calMoveDay(-1);
