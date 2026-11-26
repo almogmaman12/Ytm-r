@@ -212,7 +212,7 @@ const MAX_DEVICES_PER_ROOM = 8;
 const pairCodes = new Map();      // code -> { token, exp }
 const devices = new Map();        // id -> { id, name, hash, token, created, lastSeen }
 const rawQuery=process.env.DATABASE_URL?neonQuery(process.env.DATABASE_URL):null;
-const ops=createOps(rawQuery);
+const ops=createOps(rawQuery,{onAlert:(scope,event)=>{if(!accessCode())return;for(const [token,room] of rooms){if(scope!=='*'&&roomKey(token)!==scope)continue;for(const p of room.phones)if(p.joined&&!p.dev)send(p,{type:'ops_alert',event});}}});
 const system=createSystem(rawQuery);
 const cloudQuery=system.query?async(q,p)=>{const at=Date.now();let ok=false;try{const r=await system.query(q,p);ok=true;return r;}finally{ops.measure(q,Date.now()-at,ok);}}:null;
 const cloudDevices=cloudQuery?createDeviceStore(cloudQuery):null;
