@@ -3,14 +3,14 @@ const fs=require('node:fs');
 const path=require('node:path');
 const crypto=require('node:crypto');
 const TTL=14*86400000, MAX_ROOMS=100;
-function createCalendarCache(file,{now=Date.now,io=fs,warn=()=>console.warn('Calendar cache write failed; retaining memory copy.'),cloud=null}={}){
+function createCalendarCache(file,{now=Date.now,io=fs,warn=()=>console.warn('Calendar cache write failed; retaining memory copy.'),cloud=null,onStatus=()=>{}}={}){
   const data=new Map();
   const key=token=>crypto.createHash('sha256').update('ytmr-calendar-v1\0'+token).digest('hex');
   const valid=c=>c&&Number.isFinite(c.at)&&c.at>0&&now()-c.at<TTL&&c.at<=now()+60000&&Array.isArray(c.items);
   function prune(){let dirty=false;for(const [k,c] of data)if(!valid(c)){data.delete(k);dirty=true;}while(data.size>MAX_ROOMS){data.delete(data.keys().next().value);dirty=true;}return dirty;}
   if(!cloud)try{const rows=JSON.parse(io.readFileSync(file,'utf8'));for(const row of Array.isArray(rows)?rows:[]){if(!Array.isArray(row))continue;const [k,c]=row;if(/^[0-9a-f]{64}$/.test(k)&&valid(c))data.set(k,{...c,items:c.items.slice(0,80)});}prune();}catch{}
   let lastWriteOk=true;
-  const dirty=new Map(),saved=new Map();
+  const dirty=new Map(),saved=new Map(),failedKeys=new Set();
   let inflight=null;
   // Only write changed content or refresh the durable timestamp every hour.
   // Queue changes per room; retry on failure without falling back to a temporary disk.
@@ -30,7 +30,8 @@ function createCalendarCache(file,{now=Date.now,io=fs,warn=()=>console.warn('Cal
       while(dirty.size){
         const [k,c]=dirty.entries().next().value;
         try{await cloud.writeSnapshot(k,c);}
-        catch{if(lastWriteOk)warn();lastWriteOk=false;return false;}
+        catch{if(lastWriteOk)warn();lastWriteOk=false;if(!failedKeys.has(k)){failedKeys.add(k);onStatus(k,false);}return false;}
+        if(failedKeys.delete(k))onStatus(k,true);
         if(c)saved.set(k,c);else saved.delete(k);
         if(dirty.get(k)===c)dirty.delete(k);
         lastWriteOk=true;
@@ -69,7 +70,7 @@ function createCalendarCache(file,{now=Date.now,io=fs,warn=()=>console.warn('Cal
     const k=key(token),current=get(token),durable=saved.get(k);
     return {mode:cloud?'neon':'file',at:current?.at||null,count:current?.items.length||0,
       savedAt:cloud?(valid(durable)?durable.at:null):(lastWriteOk?current?.at||null:null),
-      pending:cloud&&dirty.has(k),writeFailed:!lastWriteOk};
+      pending:!!cloud&&dirty.has(k),writeFailed:cloud?failedKeys.has(k):!lastWriteOk};
   }
   return {get,put,remove,sweep,init,flush,diagnostics};
 }
