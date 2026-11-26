@@ -8,9 +8,18 @@ function makeKeys() {
   }
   return crypto.generateKeyPairSync('ec', { namedCurve: 'prime256v1' });
 }
-const keys = makeKeys();
-const pub = keys.publicKey.export({ format: 'jwk' });
-const publicKey = b64(Buffer.concat([Buffer.from([4]), Buffer.from(pub.x,'base64url'), Buffer.from(pub.y,'base64url')]));
+let keys=makeKeys();
+function publicKey(){
+  const pub=keys.publicKey.export({format:'jwk'});
+  return b64(Buffer.concat([Buffer.from([4]),Buffer.from(pub.x,'base64url'),Buffer.from(pub.y,'base64url')]));
+}
+async function initPersistent(cloud){
+  if(!cloud||process.env.VAPID_PRIVATE_JWK)return;
+  const jwk=await cloud.vapid(keys.privateKey.export({format:'jwk'}));
+  const privateKey=crypto.createPrivateKey({key:jwk,format:'jwk'});
+  if(privateKey.asymmetricKeyType!=='ec'||privateKey.asymmetricKeyDetails?.namedCurve!=='prime256v1')throw Error('Invalid persistent notification key');
+  keys={privateKey,publicKey:crypto.createPublicKey(privateKey)};
+}
 function endpoint(value) {
   if (typeof value !== 'string' || value.length > 500) return null;
   try {
@@ -30,8 +39,8 @@ async function sendPush(value) {
   const msg = head + '.' + body;
   const sig = crypto.sign('sha256', Buffer.from(msg), { key:keys.privateKey, dsaEncoding:'ieee-p1363' }).toString('base64url');
   const response = await fetch(u, { method:'POST', redirect:'error', signal:AbortSignal.timeout(10000),
-    headers:{ Authorization:'vapid t='+msg+'.'+sig+', k='+publicKey, TTL:'60', Urgency:'normal', 'Content-Length':'0' } });
+    headers:{ Authorization:'vapid t='+msg+'.'+sig+', k='+publicKey(), TTL:'60', Urgency:'normal', 'Content-Length':'0' } });
   return response.status;
 }
-module.exports = { publicKey, endpoint, sendPush };
+module.exports = { get publicKey(){return publicKey();}, endpoint, sendPush, initPersistent };
 if (require.main === module) console.log(JSON.stringify(crypto.generateKeyPairSync('ec',{namedCurve:'prime256v1'}).privateKey.export({format:'jwk'})));
