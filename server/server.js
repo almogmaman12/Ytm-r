@@ -11,6 +11,7 @@ const { WebSocketServer } = require('ws');
 const push = require('./calendar-push');
 const {createCalendarCache,TTL:CAL_CACHE_TTL}=require('./calendar-cache');
 const {neonQuery,createDeviceStore}=require('./neon-store');
+const {createCalendarCloud,roomKey,hashKey}=require('./calendar-neon');
 
 const PORT = process.env.PORT || 3000;
 const PUBLIC_DIR = path.resolve(__dirname, 'public');
@@ -205,7 +206,9 @@ const PAIR_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';   // no 0/O/1/I, so it
 const MAX_DEVICES_PER_ROOM = 8;
 const pairCodes = new Map();      // code -> { token, exp }
 const devices = new Map();        // id -> { id, name, hash, token, created, lastSeen }
-const cloudDevices=process.env.DATABASE_URL?createDeviceStore(neonQuery(process.env.DATABASE_URL)):null;
+const cloudQuery=process.env.DATABASE_URL?neonQuery(process.env.DATABASE_URL):null;
+const cloudDevices=cloudQuery?createDeviceStore(cloudQuery):null;
+const cloudCalendar=cloudQuery?createCalendarCloud(cloudQuery):null;
 const pendingPairs=new Map();
 const deviceAccessPending=new Set();
 try {
@@ -264,7 +267,47 @@ setInterval(() => { const n = Date.now(); for (const [c, v] of pairCodes) if (v.
 const rooms = new Map();
 // Durable server cache independent of browser tabs and websocket rooms.
 const CALENDAR_CACHE_FILE=process.env.CALENDAR_CACHE_FILE||path.join(path.dirname(DEVICES_FILE),'calendar-cache.json');
-const calendarCache=createCalendarCache(CALENDAR_CACHE_FILE);
+const calendarCache=createCalendarCache(CALENDAR_CACHE_FILE,{cloud:cloudCalendar});
+// Subscriptions live independently of sockets and rooms. The database never
+// needs the raw room token for calendar or reminder data.
+const calendarSubscriptions=new Map();
+let subscriptionTail=Promise.resolve(),pushKeyId='';
+function serializeSubscription(fn){
+  const result=subscriptionTail.then(fn);
+  subscriptionTail=result.catch(()=>{});
+  return result;
+}
+function subscriptionsFor(token){
+  const key=roomKey(token);
+  return [...calendarSubscriptions].filter(([,sub])=>sub.roomKey===key);
+}
+async function changeSubscription(token,url,enabled){
+  return serializeSubscription(async()=>{
+    const key=roomKey(token),old=calendarSubscriptions.get(url);
+    if(enabled){
+      if(old?.roomKey===key)return true;
+      if(subscriptionsFor(token).length>=8)return false;
+      if(cloudCalendar)await cloudCalendar.subscribe(url,key,pushKeyId);
+      calendarSubscriptions.set(url,{roomKey:key,sent:new Map(),pending:new Set()});
+    }else if(old?.roomKey===key){
+      if(cloudCalendar)await cloudCalendar.unsubscribe(url,key,pushKeyId);
+      if(calendarSubscriptions.get(url)===old)calendarSubscriptions.delete(url);
+    }
+    return true;
+  });
+}
+function saveReminderResult(url,sub,eventKey,status){
+  return serializeSubscription(async()=>{
+    if(calendarSubscriptions.get(url)!==sub)return;
+    if(status===404||status===410){
+      if(cloudCalendar)await cloudCalendar.unsubscribe(url,sub.roomKey,pushKeyId);
+      if(calendarSubscriptions.get(url)===sub)calendarSubscriptions.delete(url);
+    }else if(status>=200&&status<300){
+      sub.sent.set(eventKey,Date.now());
+      if(cloudCalendar)await cloudCalendar.saveSent(url,sub.roomKey,pushKeyId,Object.fromEntries(sub.sent));
+    }
+  }).catch(()=>console.warn('Could not persist reminder delivery status.')).finally(()=>sub.pending.delete(eventKey));
+}
 function calendarFor(room,token){
   if(room.calendar?.status==='ok'&&room.agent&&Date.now()-room.calendar.at<180000)return room.calendar;
   return calendarCache.get(token)||(room.calendar&&['unsupported','disabled'].includes(room.calendar.status)?room.calendar:{type:'calendar',status:'offline',items:[]});
@@ -604,17 +647,14 @@ wss.on('connection', async (ws, info) => {
         if (!calendarOwner()) return;
         const u = push.endpoint(msg.value);
         if (!u) return send(ws,{type:'calendar_push',ok:false,message:'Unsupported push subscription endpoint.'});
-        room.calendarSubs ||= new Map();
-        if (msg.cmd === 'calendar_push_unsub') { room.calendarSubs.delete(u.href); return send(ws,{type:'calendar_push',ok:true,message:'Notifications disabled.'}); }
-        if (msg.cmd === 'calendar_push_sub') {
-          if (room.calendarSubs.size >= 8 && !room.calendarSubs.has(u.href)) return send(ws,{type:'calendar_push',ok:false,message:'Too many notification devices.'});
-          // A browser subscription belongs to one owner room, never several.
-          for (const other of rooms.values()) if (other !== room) other.calendarSubs?.delete(u.href);
-          const old = room.calendarSubs.get(u.href);
-          room.calendarSubs.set(u.href,old || {sent:new Map()});
-          return send(ws,{type:'calendar_push',ok:true,message:'Notifications enabled.'});
+        if(msg.cmd==='calendar_push_sub'||msg.cmd==='calendar_push_unsub'){
+          try{
+            const enable=msg.cmd==='calendar_push_sub';
+            const ok=await changeSubscription(token,u.href,enable);
+            return send(ws,{type:'calendar_push',ok,message:!ok?'Too many notification devices.':enable?'Notifications enabled.':'Notifications disabled.'});
+          }catch{return send(ws,{type:'calendar_push',ok:false,message:'Could not save notification settings. Try again.'});}
         }
-        if (!room.calendarSubs.has(u.href) || Date.now()-(room.lastPushTest||0)<10000) return;
+        if(calendarSubscriptions.get(u.href)?.roomKey!==roomKey(token)||Date.now()-(room.lastPushTest||0)<10000)return;
         room.lastPushTest=Date.now();
         push.sendPush(u.href).then(status => send(ws,{type:'calendar_push',ok:status>=200&&status<300,message:status>=200&&status<300?'Test notification sent.':'Push delivery rejected.'})).catch(()=>send(ws,{type:'calendar_push',ok:false,message:'Push delivery failed.'}));
         return;
@@ -881,17 +921,17 @@ const calendarTimer = setInterval(() => {
   if (!calendarSecure()) return;
   const now = Date.now();
   calendarCache.sweep();
-  for (const room of rooms.values()) {
-    const cal = room.calendar;
-    if (!room.agent || !cal || cal.status !== 'ok' || now-cal.at > 180000 || !room.calendarSubs) continue;
-    for (const [url, sub] of room.calendarSubs) {
+  for (const [token,room] of rooms) {
+    const cal=room.calendar;
+    if(!room.agent||!cal||cal.status!=='ok'||now-cal.at>180000)continue;
+    for(const [url,sub] of subscriptionsFor(token)){
       for (const [key, at] of sub.sent) if (at < now-86400000) sub.sent.delete(key);
       for (const event of cal.items) {
         if (event.live===false || !Number.isFinite(event.start) || event.start <= now || event.start-now > 600000) continue;
         const key = crypto.createHash('sha256').update(event.title+'|'+event.start).digest('hex');
-        if (sub.sent.has(key)) continue;
-        sub.sent.set(key,now);
-        push.sendPush(url).then(status => { if (status===404||status===410) room.calendarSubs.delete(url); else if (status<200||status>=300) sub.sent.delete(key); }).catch(()=>sub.sent.delete(key));
+        if(sub.sent.has(key)||sub.pending.has(key))continue;
+        sub.pending.add(key);
+        push.sendPush(url).then(status=>saveReminderResult(url,sub,key,status)).catch(()=>sub.pending.delete(key));
         break;
       }
     }
@@ -921,8 +961,8 @@ if (require.main === module) {
   // Hosts send SIGTERM on every deploy: close cleanly so clients reconnect right away.
   const shutdown = () => {
     wss.clients.forEach((c) => { try { c.close(1001, 'server restarting'); } catch { /* ignore */ } });
-    server.close(() => process.exit(0));
-    setTimeout(() => process.exit(0), 3000).unref();
+    server.close(async()=>{await Promise.allSettled([calendarCache.flush(),subscriptionTail]);process.exit(0);});
+    setTimeout(()=>process.exit(0),8000).unref();
   };
   process.on('SIGTERM', shutdown);
   process.on('SIGINT', shutdown);
@@ -932,6 +972,16 @@ if (require.main === module) {
       const saved=await cloudDevices.init([...devices.values()]);
       devices.clear();for(const d of saved)devices.set(d.id,d);
       console.log('Neon paired-phone persistence ready ('+devices.size+' devices).');
+      await cloudCalendar.init();
+      await calendarCache.init();
+      await push.initPersistent(cloudCalendar);
+      pushKeyId=hashKey(push.publicKey);
+      for(const row of await cloudCalendar.loadSubscriptions(pushKeyId)){
+        if(!push.endpoint(row.url)||!/^[0-9a-f]{64}$/.test(row.roomKey))continue;
+        const sent=new Map(Object.entries(row.sent||{}).filter(([key,at])=>/^[0-9a-f]{64}$/.test(key)&&Number.isFinite(at)&&at>Date.now()-86400000));
+        calendarSubscriptions.set(row.url,{roomKey:row.roomKey,sent,pending:new Set()});
+      }
+      console.log('Neon calendar cache and notification persistence ready ('+calendarSubscriptions.size+' subscriptions).');
     }
     server.listen(PORT,()=>console.log(`YTM remote relay listening on :${PORT}`));
   }
