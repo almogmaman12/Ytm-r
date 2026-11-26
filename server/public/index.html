@@ -1612,7 +1612,7 @@ function render(s) {
   $('adBar').classList.toggle('on', s.ad === 'ad' || s.ad === 'skip');
   $('adSkip').hidden = s.ad !== 'skip';
   syncMedia();
-  tick();browsePlaying();
+  tick();
 }
 
 /* ---------- like, shuffle, repeat, speed, sleep ---------- */
@@ -2022,7 +2022,7 @@ function itemRow(r) {
     box.append(
       actionButton('i-queue', 'Play next', () => cmd('collection_next', r.playlistId)),
       actionButton('i-end', 'Add to end of queue', () => cmd('collection_end', r.playlistId)));
-    if (r.playlistId.length >= 4) {
+    if (r.playlistId) {
       box.append(actionButton('i-play','Play collection now',()=>{if(cmd('play_collection',r.playlistId)){toast('Starting '+r.title);setView('playing');}}));
     }
     return trackRow(r, box, () => {
@@ -2072,13 +2072,13 @@ function renderResults(m) {
   for (const r of currentResults) list.append(itemRow(r));
 }
 
-let phoneBrowse=null,browseStack=[],browseOrigin='search',browseTimer=null;
+let phoneBrowse=null,browseStack=[],browseOrigin='search',browseOriginScroll=0,browseTimer=null;
 const browseCache=new Map();
 function browseRemember(query,items){browseCache.delete(query);browseCache.set(query,{items,at:Date.now()});if(browseCache.size>20)browseCache.delete(browseCache.keys().next().value);}
 function browseReset(){clearTimeout(browseTimer);phoneBrowse=null;browseStack=[];$('v-search').dataset.browse='off';$('browsePage').hidden=true;$('browseResults').textContent='';$('browseTitle').textContent='';$('browseArt').style.backgroundImage='';$('browseBackdrop').style.backgroundImage='';}
 function browseBack(){
   if(browseStack.length){clearTimeout(browseTimer);const old=browseStack.pop();phoneBrowse=old;browseDraw();window.scrollTo(0,old.scroll||0);if(old.loading)browseFetch();return;}
-  const origin=browseOrigin;browseReset();if(origin!=='search')setView(origin);else window.scrollTo(0,phoneScroll.search||0);
+  const origin=browseOrigin,scroll=browseOriginScroll;browseReset();if(origin!=='search')setView(origin);window.scrollTo(0,scroll);if(origin==='search')phoneScroll.search=scroll;
 }
 function openArtist(r){
   const collection=['album','playlist'].includes(r.kind),id=collection?'VL'+r.playlistId:r.browseId;
@@ -2087,9 +2087,9 @@ function openArtist(r){
 }
 function openBrowsePage(r,query,command,value,supported=true){
   if(phoneBrowse&&view==='search'){
-    if(phoneBrowse.query===query)return;
+    if(phoneBrowse.query===query){if(command==='related')browseFetch();return;}
     phoneBrowse.scroll=window.scrollY;browseStack.push(phoneBrowse);if(browseStack.length>15)browseStack.shift();
-  }else{browseStack=[];browseOrigin=view==='library'?'library':view==='playing'?'playing':'search';if(view==='search')phoneScroll.search=window.scrollY;}
+  }else{browseStack=[];browseOrigin=view==='library'?'library':view==='playing'?'playing':'search';browseOriginScroll=window.scrollY;}
   clearTimeout(browseTimer);
   const cached=browseCache.get(query);
   phoneBrowse={r,query,command,value,supported,items:cached?.items||[],loaded:!!cached,loading:false,filter:'all',error:'',cached:!!cached,scroll:0};
@@ -2098,12 +2098,14 @@ function openBrowsePage(r,query,command,value,supported=true){
 function browseFetch(){
   const p=phoneBrowse;if(!p)return;clearTimeout(browseTimer);
   if(!p.supported){p.error='This collection can be played but its tracks cannot be opened by the current connection.';p.loading=false;browseDraw();return;}
+  if(p.command==='related'){p.r.subtitle=last?.title?'Inspired by '+last.title:'Discover more music';p.r.thumb=last?.art||'';p.sourceKey=phoneTrackKey();p.items=[];p.loaded=false;p.cached=false;}
   p.error='';p.loading=true;browseDraw();
   if(!cmd(p.command,p.value)){p.loading=false;p.error=p.loaded?'Showing saved results. PC offline.':'Connect to your PC to load this page.';browseDraw();return;}
   browseTimer=setTimeout(()=>{if(phoneBrowse===p){p.loading=false;p.error=p.loaded?'Showing saved results. Refresh timed out.':'No response from your PC. Try refresh.';browseDraw();}},14000);
 }
 function browseReceive(m){
   const p=phoneBrowse;if(!p||m.query!==p.query)return;clearTimeout(browseTimer);p.loading=false;
+  if(p.command==='related'&&p.sourceKey!==phoneTrackKey()){p.error='The playing song changed while loading. Refresh for similar songs.';browseDraw();return;}
   if(m.error){p.error=p.loaded?'Showing saved results. Refresh failed.':'Could not open this page: '+m.error;}
   else{p.items=m.results||[];p.error='';p.loaded=true;p.cached=false;if(p.command==='open')browseRemember(p.query,p.items);}
   browseDraw();
@@ -2134,12 +2136,8 @@ function browseDraw(){
     section.append(title,list);out.append(section);
   }
   if(p.loaded&&!p.items.length&&!p.loading){const empty=document.createElement('div');empty.className='browse-empty';empty.textContent='No items were returned for this page.';out.append(empty);}
-  browsePlaying();
 }
 function browseOnline(){if(!phoneBrowse)return;const online=$('app').dataset.pc==='on';$('browsePlay').disabled=!online||(phoneBrowse.r.kind==='related'&&!phoneBrowse.items.some(x=>x.kind==='song'));$('browseNext').disabled=$('browseEnd').disabled=!online;}
-function browsePlaying(){
-  if(!phoneBrowse)return;const video=last?.videoId||'';document.querySelectorAll('#browseResults [data-browse-video]').forEach(row=>{const on=!!video&&row.dataset.browseVideo===video;row.classList.toggle('now-track',on);const i=row.querySelector('.browse-index');if(i){if(!i.dataset.number)i.dataset.number=i.textContent;i.textContent=on?'♪':i.dataset.number;}});
-}
 $('browseBack').onclick=browseBack;$('browseSearch').onclick=()=>{browseReset();window.scrollTo(0,0);$('q').focus();};$('browseRetry').onclick=browseFetch;
 $('browsePlay').onclick=()=>{const p=phoneBrowse;if(!p)return;const r=p.r;let ok=false;if(r.kind==='artist')ok=cmd('artist_radio',r.browseId);else if(r.kind==='related'){const song=p.items.find(x=>x.kind==='song');if(song)ok=cmd('play_video',song.videoId);}else ok=cmd('play_collection',r.playlistId);if(ok){toast('Starting playback…');setView('playing');}};
 $('browseNext').onclick=()=>{if(phoneBrowse&&cmd('collection_next',phoneBrowse.r.playlistId))toast('Requested play next');};
