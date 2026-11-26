@@ -28,9 +28,9 @@ self.addEventListener('fetch', (e) => {
 });
 
 self.addEventListener('push', (e) => {
-  e.waitUntil(self.registration.showNotification('Calendar reminder', {
-    body: 'An upcoming calendar event is starting soon. Open YTM Remote to check.',
-    icon: '/icon.svg', tag: 'ytmr-calendar', data: { url: '/' }
+  e.waitUntil(self.registration.showNotification('YTM Remote', {
+    body: 'A calendar reminder or system alert is available. Open YTM Remote to check.',
+    icon: '/icon.svg', tag: 'ytmr-notification', data: { url: '/' }
   }));
 });
 self.addEventListener('notificationclick', (e) => {
