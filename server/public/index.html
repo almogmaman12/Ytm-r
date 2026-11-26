@@ -1309,7 +1309,10 @@ function cssUrl(u) {
   return 'url("' + String(u).replace(/["\\\n\r()]/g, (c) => '%' + c.charCodeAt(0).toString(16).padStart(2, '0')) + '")';
 }
 const getDevice = () => { try { const d = localStorage.getItem('device'); return d && /^[0-9a-f]{16}\.[A-Za-z0-9_-]{20,64}$/.test(d) ? d : ''; } catch { return ''; } };
-function setDevice(d) { try { d ? localStorage.setItem('device', d) : localStorage.removeItem('device'); } catch {} }
+function setDevice(d) { try { if(d!==getDevice())localStorage.removeItem('paused_device');d ? localStorage.setItem('device', d) : localStorage.removeItem('device'); } catch {} }
+function pausedDeviceId(){return !getToken()&&getDevice()?getDevice().split('.')[0]:'';}
+function rememberedPause(){try{const id=pausedDeviceId();return !!id&&localStorage.getItem('paused_device')===id;}catch{return false;}}
+function rememberPause(paused){try{const id=pausedDeviceId();if(paused&&id)localStorage.setItem('paused_device',id);else localStorage.removeItem('paused_device');}catch{}}
 function setToken(t) { try { t ? localStorage.setItem('token', t) : localStorage.removeItem('token'); } catch {} }
 function buzz() { try { if (localStorage.getItem('phone_haptics')!=='0' && navigator.vibrate) navigator.vibrate(8); } catch {} }
 function fmt(s) { s = Math.max(0, Math.floor(s || 0)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); }
@@ -1362,6 +1365,7 @@ function show() {
     setView('playing');
     const want = new URLSearchParams(location.search).get('view');
     if (['search', 'library', 'queue'].includes(want)) setView(want);
+    if(rememberedPause())phoneSetPaused(true);
     connect();
   }
 }
@@ -1490,6 +1494,8 @@ function connect() {
     if (ws !== sock) return;
     lastRx = Date.now();
     let m; try { m = JSON.parse(ev.data); } catch { return; }
+    if(m.type==='device_paused'&&m.paused===true){phoneSetPaused(true);return;}
+    if(phonePaused&&m.type!=='authed'&&m.type!=='pc_status'&&m.type!=='state'&&m.type!=='ytqueue')return;
     if (m.type === 'pc_status') setPc(m.online, m.wake, m.version, m.ago, m.why, m.helper, m.yt);
     else if (m.type === 'state') render(m.state);
     else if (m.type === 'results') renderResults(m);
@@ -1512,9 +1518,9 @@ function connect() {
   sock.onclose = (ev) => {
     if (ws !== sock) return;
     ws = null;
-    calendarDisconnect(ev.code===4003||ev.code===4005||ev.code===4008);
     $('app').dataset.pc = 'off';
     if(ev.code===4008){phoneSetPaused(true);retryTimer=setTimeout(connect,20000);return;}
+    calendarDisconnect(ev.code===4003||ev.code===4005);
     if (ev.code === 4005) {
       // This phone was removed (or signed out): forget the key and go back to the start screen.
       phoneSetPaused(false);if($('settings').open)$('settings').close();
@@ -3264,14 +3270,16 @@ new MutationObserver(()=>{$('settingsCalendar').hidden=$('calendarBtn').hidden;}
 $('settingsCalendar').hidden=$('calendarBtn').hidden;
 function phoneSetPaused(paused){
   if(paused){
-    phonePaused=true;$('status').textContent='Device paused';$('waking').classList.remove('on');
-    calendarDisconnect(true);document.querySelectorAll('dialog[open]').forEach(d=>{if(d.id!=='devicePausedDlg')d.close();});
+    phonePaused=true;rememberPause(true);$('status').textContent='Device paused';$('waking').classList.remove('on');
     $('app').hidden=true;$('glow').hidden=true;
+    document.querySelectorAll('dialog[open]').forEach(d=>{if(d.id!=='devicePausedDlg')d.close();});
+    if(!$('devicePausedDlg').open)$('devicePausedDlg').showModal();
+    calendarDisconnect(true);
     if(silent&&!silent.paused)silent.pause();
     try{if(navigator.mediaSession){navigator.mediaSession.metadata=null;navigator.mediaSession.playbackState='none';mediaKey='';}}catch{}
-    if(!$('devicePausedDlg').open)$('devicePausedDlg').showModal();
-  }else if(phonePaused){
-    phonePaused=false;if($('devicePausedDlg').open)$('devicePausedDlg').close();$('app').hidden=!token;$('glow').hidden=!token;syncMedia();
+  }else{
+    rememberPause(false);
+    if(phonePaused){phonePaused=false;if($('devicePausedDlg').open)$('devicePausedDlg').close();$('app').hidden=!token;$('glow').hidden=!token;syncMedia();}
   }
 }
 $('devicePausedDlg').addEventListener('cancel',e=>e.preventDefault());
