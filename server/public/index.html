@@ -692,6 +692,70 @@
   #settings .sheetFoot { background:var(--phone-panel); }
   .view:not([hidden]) { animation:phone-enter .15s ease-out; }
   @keyframes phone-enter { from { opacity:.65; } to { opacity:1; } }
+  /* Native-style submenus and action sheets, phone only. */
+  #settings,#picker,#saveDlg,#blockDlg,#codeDlg,#phoneConfirm { border:1px solid var(--phone-edge);background:var(--phone-panel);color:var(--ink);box-shadow:0 24px 80px #0008; }
+  #settings::backdrop,#picker::backdrop,#saveDlg::backdrop,#blockDlg::backdrop,#codeDlg::backdrop,#phoneConfirm::backdrop { background:#08070bb5;backdrop-filter:blur(6px); }
+  #settings { height:min(780px,92dvh);max-height:94dvh;width:min(94vw,480px); }
+  .settings-top { flex:none;display:flex;align-items:center;gap:12px;padding:18px;border-bottom:1px solid var(--line);background:linear-gradient(145deg,var(--phone-soft),transparent); }
+  .settings-top .icon-btn { flex:none;background:var(--surface);color:var(--ink);border:1px solid var(--line); }
+  .settings-title { flex:1;min-width:0; }
+  #settings .settings-top h2 { margin:3px 0 0;font-size:27px; }
+  #settings .sheetBody { flex:1;min-height:0;padding:16px 18px; }
+  .settings-profile { padding:16px;border:1px solid var(--phone-edge);background:var(--surface);border-radius:20px;margin-bottom:16px; }
+  #settings .settings-profile p.small { margin:8px 0 0; }
+  .settings-connection { display:flex;align-items:center;gap:10px;margin:0 0 15px;border-radius:18px;padding:13px;background:var(--phone-soft); }
+  .settings-connection .i { color:var(--accent);flex:none; }
+  .settings-connection strong,.settings-connection small { display:block; }
+  .settings-connection strong { font-size:14px; }
+  .settings-connection small { font-size:11px;color:var(--muted);margin-top:3px; }
+  #settings details { padding:0 12px;margin:8px 0;border-radius:17px; }
+  #settings details summary { display:flex;align-items:center;gap:11px;list-style:none;min-height:64px;cursor:pointer; }
+  #settings details summary::-webkit-details-marker { display:none; }
+  .settings-section-icon { flex:none;display:grid;place-items:center;width:38px;height:38px;border-radius:13px;background:var(--phone-soft);color:var(--accent); }
+  .settings-section-icon .i { width:19px;height:19px; }
+  .settings-section-copy { flex:1;min-width:0; }
+  .settings-section-copy strong,.settings-section-copy small { display:block; }
+  .settings-section-copy strong { font-size:14px;font-weight:750; }
+  .settings-section-copy small { font-size:11px;font-weight:500;color:var(--muted);margin-top:4px;line-height:1.35; }
+  .settings-section-arrow { color:var(--muted);flex:none; }
+  .settings-section-arrow .i { width:18px;height:18px; }
+  #settings[data-page="sub"] details[open] { border:0;padding:0;background:none;margin:0; }
+  #settings[data-page="sub"] details[open] > summary { display:none; }
+  #settings[data-page="sub"] .optrow { padding:14px 0;border-bottom:1px solid var(--line); }
+  #settings[data-page="sub"] .appearance-row { margin:9px 0 22px; }
+  #settings .sheetFoot { padding:10px 18px calc(12px + var(--safe-b)); }
+  .phone-sheet-head { display:flex;align-items:center;gap:12px;margin-bottom:15px; }
+  .phone-sheet-icon { flex:none;display:grid;place-items:center;width:46px;height:46px;border-radius:16px;background:var(--phone-soft);color:var(--accent); }
+  .phone-sheet-copy { flex:1;min-width:0; }
+  .phone-sheet-copy h2 { font-size:24px;letter-spacing:-.04em;font-weight:800;margin:3px 0 0; }
+  .phone-sheet-context { color:var(--muted);font-size:13px;line-height:1.5;margin:0 0 13px; }
+  #picker,#saveDlg,#blockDlg,#codeDlg,#phoneConfirm { padding:21px;width:min(94vw,460px);border-radius:25px;max-height:90dvh; }
+  #picker[open] { display:flex;flex-direction:column; }
+  #pickList { flex:1;min-height:0;overflow:auto;max-height:55dvh;gap:7px; }
+  #pickList .pickOpt { min-height:58px;height:auto;display:flex;align-items:center;gap:10px;padding:12px 13px;border:1px solid var(--line);background:var(--surface);border-radius:15px; }
+  #pickList .pickOpt[aria-pressed="true"] { background:var(--phone-soft);border-color:var(--accent);color:var(--ink); }
+  #pickList .pickOpt:disabled { opacity:.48;cursor:not-allowed; }
+  .pick-copy { min-width:0;flex:1;overflow-wrap:anywhere; }
+  .pick-copy strong { font-size:15px; }
+  #pickList .pickOpt small { font-size:12px;line-height:1.4;color:var(--muted);opacity:1; }
+  .pick-mark { flex:none;width:24px;height:24px;display:grid;place-items:center;border:1px solid var(--line);border-radius:50%;color:var(--muted); }
+  .pickOpt[aria-pressed="true"] .pick-mark { background:var(--accent);color:var(--accent-ink);border-color:transparent; }
+  .pick-thumb { width:40px;height:40px;border-radius:10px;flex:none;background:var(--surface) center/cover; }
+  .phone-dialog-actions { display:flex;gap:8px;margin-top:15px; }
+  .phone-dialog-actions button { flex:1;min-height:48px;height:auto;padding:10px;border-radius:15px;font-weight:750; }
+  #saveGo,#phoneConfirmYes { background:var(--accent);color:var(--accent-ink); }
+  #phoneConfirmYes.danger { background:#792e39;color:#fff; }
+  #saveGo:disabled,#saveCancel:disabled { opacity:.45; }
+  #saveError { font-size:12px;color:#ff9b9b;margin:8px 0 0; }
+  #saveNameCount { font-size:11px;color:var(--muted);text-align:end;margin:0 0 8px; }
+  #blockSong,#blockArtist { color:#ff9c9c; }
+  #seek[data-scrubbing="true"] #fill { transition:none; }
+  @media(max-width:600px) {
+    #settings { width:100%;max-width:100%;height:100dvh;max-height:100dvh;margin:0;border-radius:0;border:0; }
+    .settings-top { padding-top:max(14px,env(safe-area-inset-top)); }
+    #picker,#saveDlg,#blockDlg,#codeDlg,#phoneConfirm { width:100%;max-width:100%;margin:auto 0 0;max-height:90dvh;border-radius:26px 26px 0 0;padding:22px 18px calc(18px + var(--safe-b)); }
+    #picker::before,#saveDlg::before,#blockDlg::before,#codeDlg::before,#phoneConfirm::before { content:'';display:block;width:36px;height:4px;border-radius:99px;background:var(--muted);opacity:.45;margin:0 auto 17px;flex:none; }
+  }
   @media (prefers-reduced-motion: reduce) { * { transition:none !important;animation:none !important; } }
 </style>
 </head>
@@ -978,13 +1042,13 @@
     <footer class="cal-footer">Read-only · Events cached on your relay server</footer>
   </div>
 </dialog>
-<dialog id="settings">
-  <div class="sheetBody">
-    <h2>Settings</h2>
+<dialog id="settings" aria-labelledby="settingsHeading">
+  <header class="settings-top"><button id="settingsBack" class="icon-btn" aria-label="Back to settings" hidden><svg class="i" viewBox="0 0 24 24"><path d="M19 12H5m7-7-7 7 7 7"/></svg></button><div class="settings-title"><span class="page-eyebrow">YTM Remote</span><h2 id="settingsHeading">Settings</h2></div><button id="settingsCloseTop" class="icon-btn" aria-label="Close settings"><svg class="i"><use href="#i-x"/></svg></button></header>
+  <div class="sheetBody"><div id="settingsHome"><div class="settings-connection"><svg class="i"><use href="#i-swap"/></svg><div><strong id="settingsPcStatus">Connecting…</strong><small id="settingsPcNote">Remote connection</small></div></div><div class="settings-profile">
     <label class="lbl" for="deviceName">This device's name</label>
     <input id="deviceName" type="text" maxlength="24" placeholder="For example: Almog's phone" autocomplete="off" spellcheck="false">
     <p class="small">Shown in the relay's log and next to songs you add to the queue.</p>
-    <p id="verLine" class="small"></p>
+    <p id="verLine" class="small"></p></div></div>
 
     <details open>
       <summary>Appearance &amp; feel</summary>
@@ -1056,25 +1120,23 @@
   <div class="sheetFoot"><button id="closeSettings" class="secondary">Close</button></div>
 </dialog>
 
-<dialog id="saveDlg">
-  <h2>Save as a playlist</h2>
+<dialog id="saveDlg" aria-labelledby="saveDlgHeading"><div class="phone-sheet-head"><div class="phone-sheet-icon"><svg class="i"><use href="#i-lib"/></svg></div><div class="phone-sheet-copy"><span class="page-eyebrow">Your library</span><h2 id="saveDlgHeading">Save as a playlist</h2></div></div>
   <p id="saveInfo"></p>
   <label class="lbl" for="saveName">Playlist name</label>
   <input id="saveName" type="text" maxlength="60" autocomplete="off">
-  <div class="row two" style="margin-top:6px">
+  <div id="saveNameCount">0 / 60</div><p id="saveError" role="status" hidden></p>
+  <div class="phone-dialog-actions">
     <button id="saveCancel" class="secondary" type="button">Cancel</button>
     <button id="saveGo" type="button">Save</button>
   </div>
 </dialog>
 
-<dialog id="picker">
-  <h2 id="pickTitle"></h2>
+<dialog id="picker" aria-labelledby="pickTitle"><div class="phone-sheet-head"><div class="phone-sheet-icon"><svg class="i"><use id="pickIcon" href="#i-sliders"/></svg></div><div class="phone-sheet-copy"><span class="page-eyebrow">Playback options</span><h2 id="pickTitle"></h2></div></div><p id="pickContext" class="phone-sheet-context" hidden></p>
   <div id="pickList" class="row"></div>
   <div class="row" style="margin-top:12px"><button id="pickClose" class="secondary" type="button">Cancel</button></div>
 </dialog>
 
-<dialog id="blockDlg">
-  <h2>Never play…</h2>
+<dialog id="blockDlg" aria-labelledby="blockDlgHeading"><div class="phone-sheet-head"><div class="phone-sheet-icon"><svg class="i"><use href="#i-block"/></svg></div><div class="phone-sheet-copy"><span class="page-eyebrow">Playback preferences</span><h2 id="blockDlgHeading">Never play…</h2></div></div>
   <p id="blockText"></p>
   <div class="row">
     <button id="blockSong" class="secondary">This song</button>
@@ -1083,8 +1145,7 @@
   </div>
 </dialog>
 
-<dialog id="codeDlg">
-  <h2>Access code</h2>
+<dialog id="codeDlg" aria-labelledby="codeDlgHeading"><div class="phone-sheet-head"><div class="phone-sheet-icon"><svg class="i"><use href="#i-swap"/></svg></div><div class="phone-sheet-copy"><span class="page-eyebrow">Secure connection</span><h2 id="codeDlgHeading">Access code</h2></div></div>
   <p id="codeMsg">This relay asks for an access code before it lets a phone in.</p>
   <input id="codeInput" type="password" placeholder="Access code" autocomplete="current-password" autocapitalize="off" spellcheck="false" aria-label="Access code">
   <div class="row">
@@ -1092,6 +1153,8 @@
     <button id="codeCancel" class="secondary">Cancel</button>
   </div>
 </dialog>
+
+<dialog id="phoneConfirm" aria-labelledby="phoneConfirmTitle"><div class="phone-sheet-head"><div class="phone-sheet-icon"><svg class="i"><use href="#i-queue"/></svg></div><div class="phone-sheet-copy"><span class="page-eyebrow">Confirm action</span><h2 id="phoneConfirmTitle"></h2></div></div><p id="phoneConfirmText"></p><div class="phone-dialog-actions"><button id="phoneConfirmNo" class="secondary">Cancel</button><button id="phoneConfirmYes" class="danger">Continue</button></div></dialog>
 
 <script>
 const $ = (id) => document.getElementById(id);
@@ -1410,6 +1473,7 @@ function applyColour(url) {
 
 /* ---------- now playing ---------- */
 function render(s) {
+  if(phoneScrub!==null&&phoneTrackKey(s)!==phoneScrubTrack)phoneEndScrub(false);
   last = s; lastAt = Date.now();
   $('app').dataset.site = s.site === 'yt' ? 'yt' : 'ytm';
   const isYt = s.site === 'yt';
@@ -1465,27 +1529,41 @@ function sleepLeft() {
 }
 function renderSleep() {
   const left = sleepLeft();
+  if($('picker').open&&phonePickType==='Sleep timer')phonePickContext();
   setPressed('sleepBtn', left !== null);
   if (left === null) $('sleepLbl').textContent = 'Sleep';
   else if (left < 0) $('sleepLbl').textContent = 'End of song';
   else { const m = Math.floor(left / 60), sec = Math.floor(left % 60); $('sleepLbl').textContent = m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m}:${String(sec).padStart(2, '0')}`; }
 }
 setInterval(renderSleep, 1000);
-function pick(title, opts, cur, done) {
-  $('pickTitle').textContent = title;
-  const list = $('pickList'); list.textContent = '';
-  for (const o of opts) {
-    const b = document.createElement('button');
-    b.type = 'button'; b.className = 'secondary pickOpt'; b.textContent = o.label;
-    if (o.sub) { const sm = document.createElement('small'); sm.textContent = o.sub; b.append(sm); }
-    if (o.disabled) b.setAttribute('aria-disabled', 'true');
-    b.setAttribute('aria-pressed', String(o.value === cur));
-    b.onclick = () => { $('picker').close(); buzz(); done(o.value); };
-    list.append(b);
+let phonePickType='';
+function pick(title,opts,cur,done){
+  if($('picker').open)$('picker').close();
+  phonePickType=title;$('pickTitle').textContent=title;
+  const icon=title==='Sleep timer'?'i-moon':title==='Playback speed'?'i-speed':title==='Volume boost'?'i-boost':title==='Start a radio'?'i-radio':title==='Add this song to…'?'i-lib':'i-swap';
+  $('pickIcon').setAttribute('href','#'+icon);phonePickContext();
+  const list=$('pickList');list.textContent='';
+  for(const o of opts){
+    const b=document.createElement('button'),copy=document.createElement('span'),label=document.createElement('strong'),mark=document.createElement('span');
+    b.type='button';b.className='secondary pickOpt';b.disabled=!!o.disabled;b.setAttribute('aria-pressed',String(o.value===cur));
+    if(o.thumb){const art=document.createElement('span');art.className='pick-thumb';art.style.backgroundImage=cssUrl(o.thumb);b.append(art);}
+    copy.className='pick-copy';label.textContent=o.label;label.dir='auto';copy.append(label);
+    if(o.sub||o.disabled){const sm=document.createElement('small');sm.textContent=(o.sub||'')+(o.disabled?(o.sub?' · ':'')+'Unavailable':'');copy.append(sm);}
+    mark.className='pick-mark';mark.setAttribute('aria-hidden','true');mark.textContent=o.value===cur?'✓':'›';b.append(copy,mark);
+    b.onclick=()=>{if(o.disabled)return;$('picker').close();buzz();done(o.value);};list.append(b);
   }
   $('picker').showModal();
 }
-$('pickClose').onclick = () => $('picker').close();
+function phonePickContext(){
+  const el=$('pickContext');let msg='';
+  if(phonePickType==='Sleep timer'){const left=sleepLeft();msg=left===null?'Timer is off. Choose when to stop playback.':left<0?'Stops after the current song.':'Stops in '+fmt(left)+' (PC-reported timer).';}
+  else if(phonePickType==='Playback speed')msg='Current speed: '+((last&&last.speed)||1)+'×';
+  else if(phonePickType==='Volume boost')msg='Current boost: '+((last&&last.boost)||100)+'%. High boost can distort audio.';
+  else if(phonePickType==='Add this song to…')msg=last&&last.title?'Adding: '+last.title:'Choose a playlist.';
+  el.hidden=!msg;if(el.textContent!==msg)el.textContent=msg;
+}
+$('pickClose').onclick=()=>$('picker').close();
+$('picker').addEventListener('close',()=>{if(!$('picker').open){phonePickType='';$('pickList').textContent='';$('pickContext').textContent='';}});
 /* ---------- open or switch YouTube and YouTube Music on the PC ---------- */
 function openSiteSheet() {
   if (!helperOn) {
@@ -1527,7 +1605,9 @@ function openPlaylistPick() {
   }
   const items = (lib.items || []).filter((r) => r.kind === 'playlist' && r.playlistId && !['LM', 'SE'].includes(r.playlistId));
   if (!items.length) { toast('No playlists found in your library.'); return; }
-  pick('Add this song to…', items.map((r) => ({ value: r.playlistId, label: r.title })), null, (id) => {
+  const track=phoneTrackKey();
+  pick('Add this song to…',items.map(r=>({value:r.playlistId,label:r.title,sub:r.subtitle,thumb:r.thumb})),null,id=>{
+    if(track!==phoneTrackKey())return toast('The song changed. Open the playlist menu again.');
     const it = items.find((r) => r.playlistId === id);
     if (cmd('add_to_playlist', id + '|current')) toast(`Adding to “${it ? it.title : 'playlist'}”…`);
   });
@@ -1556,9 +1636,8 @@ $('sleepBtn').onclick = () => {
   });
 };
 function skipBy(n) {
-  if (!last || !last.duration) return;
-  last.position = Math.min(last.duration, Math.max(0, (last.position || 0) + (last.playing ? (Date.now() - lastAt) / 1000 : 0) + n)); lastAt = Date.now();
-  tick(); buzz(); cmd('skip', n);
+  if(!last||!last.duration||!cmd('skip',n))return;
+  last.position=Math.min(last.duration,Math.max(0,(last.position||0)+(last.playing?(Date.now()-lastAt)/1000*(Number(last.speed)||1):0)+n));lastAt=Date.now();tick();buzz();
 }
 $('back10').onclick = () => skipBy(-10);
 $('fwd10').onclick = () => skipBy(10);
@@ -1568,6 +1647,7 @@ function tick() {
   let pos = last.position || 0;
   // Glide between updates, but not while the PC is offline.
   if (last.playing && $('app').dataset.pc === 'on') pos += (Date.now() - lastAt) / 1000*(Number(last.speed)||1);
+  if(phoneScrub!==null)pos=phoneScrub;
   pos = Math.max(0,Math.min(pos, last.duration));
   const pct=(pos/last.duration*100)+'%';$('fill').style.width=pct;$('miniProgressFill').style.width=pct;
   const eta=$('queueEta');eta.hidden=!(last.playing&&$('app').dataset.pc==='on'&&siteItems.length&&!last.ad);if(!eta.hidden)eta.textContent='Track ends in '+fmt((last.duration-pos)/(Number(last.speed)||1));
@@ -1578,22 +1658,22 @@ function tick() {
 setInterval(()=>{if(!document.hidden)tick();},500);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)tick();});
 
-function seekTo(clientX) {
-  if (!last || !last.duration) return;
-  const r = $('seek').getBoundingClientRect();
-  const f = Math.min(1, Math.max(0, (clientX - r.left) / r.width));
-  const secs = Math.round(f * last.duration);
-  last.position = secs; lastAt = Date.now();
-  tick(); buzz();
-  cmd('seek', secs);
+let phoneScrub=null,phoneScrubId=null,phoneScrubTrack='';
+function phoneSeekPosition(clientX){const r=$('seek').getBoundingClientRect();return Math.round(Math.min(1,Math.max(0,(clientX-r.left)/Math.max(1,r.width)))*last.duration);}
+function phoneEndScrub(commit){
+  const value=phoneScrub,key=phoneScrubTrack;phoneScrub=null;phoneScrubId=null;$('seek').dataset.scrubbing='false';
+  if(commit&&value!==null&&last&&key===phoneTrackKey()&&cmd('seek',value)){last.position=value;lastAt=Date.now();buzz();}tick();
 }
-$('seek').addEventListener('pointerdown', (e) => seekTo(e.clientX));
-
+$('seek').addEventListener('pointerdown',e=>{if(!e.isPrimary||e.button!==0||!last||!last.duration||$('app').dataset.pc!=='on')return;phoneScrubId=e.pointerId;phoneScrubTrack=phoneTrackKey();phoneScrub=phoneSeekPosition(e.clientX);$('seek').dataset.scrubbing='true';try{$('seek').setPointerCapture(e.pointerId);}catch{}tick();});
+$('seek').addEventListener('pointermove',e=>{if(phoneScrubId===e.pointerId&&last&&phoneTrackKey()===phoneScrubTrack){phoneScrub=phoneSeekPosition(e.clientX);tick();}});
+$('seek').addEventListener('pointerup',e=>{if(phoneScrubId===e.pointerId){if(last&&phoneTrackKey()===phoneScrubTrack)phoneScrub=phoneSeekPosition(e.clientX);phoneEndScrub(true);}});
+$('seek').addEventListener('pointercancel',e=>{if(phoneScrubId===e.pointerId)phoneEndScrub(false);});
+$('seek').addEventListener('lostpointercapture',e=>{if(phoneScrubId===e.pointerId)phoneEndScrub(false);});
 function togglePlay() {
   buzz();
   if (!cmd('toggle')) return;
   // Show the change at once; the PC's real state arrives a moment later and wins.
-  if (last && last.title) { last.position = (last.position || 0) + (last.playing ? (Date.now() - lastAt) / 1000 : 0); lastAt = Date.now(); last.playing = !last.playing; render(last); }
+  if (last && last.title) { last.position = (last.position || 0) + (last.playing ? (Date.now() - lastAt) / 1000*(Number(last.speed)||1) : 0); lastAt = Date.now(); last.playing = !last.playing; render(last); }
 }
 $('toggle').onclick = togglePlay;
 $('miniToggle').onclick = togglePlay;
@@ -1757,17 +1837,16 @@ function drawQueue() {
     list.append(trackRow(r, actionButton('i-x', 'Remove from Up next', () => cmd('queue_remove', r.videoId))));
   }
 }
-$('clearBtn').onclick = () => {
+$('clearBtn').onclick=()=>phoneConfirm('Clear the queue?','Remove '+(siteItems.length+waitingItems.length)+' queued songs. Autoplay may still add more.','Clear queue',clearQueueConfirmed);
+function clearQueueConfirmed(){
   const ids = siteItems.map((x) => x.videoId).slice(0, 60);
   const n = siteItems.length;
-  if (!n && !confirm('Remove everything coming up?')) return;
   buzz();
-  editing = false; selecting = false; selected.clear();
-  if (cmd('queue_clear')) {
+  if(cmd('queue_clear')){editing=false;selecting=false;selected.clear();
     siteItems = []; waitingItems = []; drawQueue();
     if (ids.length) toast(`Cleared ${n} song${n === 1 ? '' : 's'}${n > ids.length ? ` (Undo brings back the first ${ids.length})` : ''}`, { label: 'Undo', fn: () => cmd('queue_restore', `0;${ids.join(',')}`) });
   }
-};
+}
 $('editBtn').onclick = () => { buzz(); editing = !editing; if (editing) { selecting = false; selected.clear(); } drawQueue(); };
 
 // Drag a row by its handle. Other rows slide out of the way; on release the new place is sent.
@@ -2389,7 +2468,7 @@ $('saveToken').onclick = () => {
   setToken(t); show();
 };
 $('tokenInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('saveToken').click(); });
-$('settingsBtn').onclick = () => { const paired = !getToken() && !!getDevice(); $('ownerPhones').hidden = paired; $('pairedInfo').hidden = !paired; $('forget').hidden = paired; $('changeCode').hidden = paired; if (!paired) rawCmd('device_list'); $('deviceName').value = getName(); cmd('block_list'); $('settings').showModal(); $('deviceName').blur(); };
+$('settingsBtn').onclick = () => { phoneSettingsPage(-1); const paired = !getToken() && !!getDevice(); $('ownerPhones').hidden = paired; $('pairedInfo').hidden = !paired; $('forget').hidden = paired; $('changeCode').hidden = paired; if (!paired) rawCmd('device_list'); $('deviceName').value = getName(); cmd('block_list'); $('settings').showModal(); $('deviceName').blur(); };
 $('deviceName').onchange = () => {
   const n = $('deviceName').value.replace(/[^\p{L}\p{N} ._'’-]/gu, '').trim().slice(0, 24);
   $('deviceName').value = n;
@@ -2493,12 +2572,12 @@ $('blockBtn').onclick = () => {
   $('blockSong').textContent = 'This song';
   $('blockArtist').textContent = last.artist ? `All of ${last.artist.slice(0, 30)}` : 'This artist';
   $('blockArtist').hidden = !last.artist;
-  $('blockDlg').showModal();
+  phoneBlockTrack=phoneTrackKey();$('blockDlg').showModal();
 };
-let lastBlocked = [], blockBase = null;
+let lastBlocked = [], blockBase = null, phoneBlockTrack='';
 const blockKey = (b) => b.kind + ':' + b.id;
 function askBlock(what) {
-  $('blockDlg').close();
+  $('blockDlg').close();if(phoneBlockTrack!==phoneTrackKey())return toast('The song changed. Open the menu again.');
   blockBase = new Set(lastBlocked.map(blockKey));
   if (cmd('block_current', what)) toast(what === 'artist' ? 'Artist blocked. Skipping.' : 'Blocked. Skipping it.');
   else blockBase = null;
@@ -2758,19 +2837,25 @@ function defaultPlaylistName() {
   return 'Queue ' + d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) + ' ' + d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
 }
 $('saveQueue').onclick = () => {
+  if(saving)return toast('A playlist is already being saved.');
   const n = new Set(siteItems.map((r) => r.videoId)).size + (last && last.title ? 1 : 0);
   $('saveInfo').textContent = `About ${n} song${n === 1 ? '' : 's'}: the one playing and everything coming up (a song queued twice is saved once). It is saved to your YouTube Music library as a private playlist.`;
   $('saveName').value = defaultPlaylistName();
-  $('saveGo').disabled = false; $('saveGo').textContent = 'Save';
+  $('saveError').hidden=true;$('saveCancel').disabled=false;phoneSaveName();$('saveGo').textContent='Save';
   $('saveDlg').showModal();
   $('saveName').select();
 };
-$('saveCancel').onclick = () => $('saveDlg').close();
+$('saveCancel').onclick=()=>{if(!saving)$('saveDlg').close();};
+$('saveDlg').addEventListener('cancel',e=>{if(saving)e.preventDefault();});
+function phoneSaveName(){$('saveNameCount').textContent=$('saveName').value.length+' / 60';$('saveGo').disabled=saving||!$('saveName').value.trim();}
+$('saveName').oninput=phoneSaveName;
+$('saveName').addEventListener('keydown',e=>{if(e.key==='Enter'&&!$('saveGo').disabled){e.preventDefault();$('saveGo').click();}});
 $('saveGo').onclick = () => {
+  if(saving)return;
   const name = $('saveName').value.trim().slice(0, 60);
   if (!name) { $('saveName').focus(); return; }
   if (!cmd('save_playlist', name)) return;
-  saving = true; $('saveGo').disabled = true; $('saveGo').textContent = 'Saving…';
+  saving=true;$('saveCancel').disabled=true;$('saveGo').disabled=true;$('saveGo').textContent='Saving…';$('saveError').hidden=true;
   clearTimeout(saveTimer);
   saveTimer = setTimeout(() => { if (saving) { saving = false; $('saveDlg').close(); toast('No answer from YouTube Music. The playlist may still have been created.'); } }, 25000);
 };
@@ -2778,9 +2863,9 @@ let saveTimer = null;
 function savedResult(m) {
   if (!saving) return;
   saving = false; clearTimeout(saveTimer);
-  $('saveDlg').close();
-  if (m.ok) { buzz(); toast(`Saved "${m.title}" with ${m.count} song${m.count === 1 ? '' : 's'}. Find it in Library → Playlists.`); }
-  else toast(m.error || 'Could not save the playlist.');
+  $('saveCancel').disabled=false;$('saveGo').textContent='Save';phoneSaveName();
+  if (m.ok) { $('saveDlg').close();delete libCache.playlists;try{localStorage.removeItem(LIB_KEY+'playlists');}catch{} buzz(); toast(`Saved "${m.title}" with ${m.count} song${m.count === 1 ? '' : 's'}. Find it in Library → Playlists.`); }
+  else {$('saveError').hidden=false;$('saveError').textContent=m.error||'Could not save the playlist.';}
 }
 
 /* ---------- options on this phone ---------- */
@@ -2915,6 +3000,26 @@ function phoneLibraryRow(r){const li=itemRow(r);if(!r.playlistId||!['playlist','
 function phoneClearPins(){phonePins.clear();phoneWrite('pins','[]');phoneLibSnapshot=null;for(const k of Object.keys(phoneScroll))delete phoneScroll[k];}
 $('forget').addEventListener('click',phoneClearPins);
 $('devLeave').addEventListener('click',phoneClearPins);
+/* Phone-only submenu navigation and confirmations. */
+function phoneTrackKey(s=last){return JSON.stringify([s?.videoId||'',s?.title||'',s?.artist||'',s?.art||'',s?.site||'']);}
+const phoneSettingsMeta=[['Appearance & feel','Theme, colors, density and gestures','i-sliders'],['Do-not-play list','Manage blocked songs and artists','i-block'],['On this phone','Lock screen, display and volume limit','i-vol-hi'],['Connection & diagnostics','Refresh, repair and check your PC','i-swap'],['Paired phones','Manage remote devices','i-user'],['Security','Access code and connection token','i-block']];
+const phoneSettingsSections=Array.from($('settings').querySelectorAll('.sheetBody > details'));
+function phoneSettingsStatus(){$('settingsPcStatus').textContent=$('status').textContent||'Connecting…';$('settingsPcNote').textContent=$('app').dataset.pc==='on'?'PC is available for remote playback':'Phone settings remain available offline';}
+function phoneSettingsPage(index){
+  const detail=phoneSettingsSections[index];$('settings').dataset.page=detail?'sub':'home';
+  $('settingsHome').hidden=!!detail;$('settingsBack').hidden=!detail;$('settingsHeading').textContent=detail?phoneSettingsMeta[index][0]:'Settings';$('closeSettings').textContent=detail?'Back to settings':'Close';
+  phoneSettingsSections.forEach((d,i)=>{d.hidden=!!detail&&i!==index;d.open=i===index;});$('settings').querySelector('.sheetBody').scrollTop=0;phoneSettingsStatus();
+}
+phoneSettingsSections.forEach((d,i)=>{const summary=d.querySelector('summary'),[title,sub,icon]=phoneSettingsMeta[i];summary.textContent='';const badge=document.createElement('span'),copy=document.createElement('span'),name=document.createElement('strong'),desc=document.createElement('small'),arrow=document.createElement('span');badge.className='settings-section-icon';badge.innerHTML='<svg class="i"><use href="#'+icon+'"/></svg>';copy.className='settings-section-copy';name.textContent=title;desc.textContent=sub;copy.append(name,desc);arrow.className='settings-section-arrow';arrow.textContent='›';summary.append(badge,copy,arrow);summary.onclick=e=>{e.preventDefault();phoneSettingsPage(i);buzz();};});
+$('settingsBack').onclick=()=>phoneSettingsPage(-1);$('settingsCloseTop').onclick=()=>$('settings').close();
+$('closeSettings').onclick=()=>{if($('settings').dataset.page==='sub')phoneSettingsPage(-1);else $('settings').close();};
+$('settings').addEventListener('cancel',e=>{if($('settings').dataset.page==='sub'){e.preventDefault();phoneSettingsPage(-1);}});
+new MutationObserver(phoneSettingsStatus).observe($('status'),{childList:true,subtree:true,characterData:true});phoneSettingsPage(-1);
+let phoneConfirmAction=null;
+function phoneConfirm(title,description,label,action){$('phoneConfirmTitle').textContent=title;$('phoneConfirmText').textContent=description;$('phoneConfirmYes').textContent=label;phoneConfirmAction=action;$('phoneConfirm').showModal();}
+$('phoneConfirmNo').onclick=()=>$('phoneConfirm').close();
+$('phoneConfirmYes').onclick=()=>{const action=phoneConfirmAction;phoneConfirmAction=null;$('phoneConfirm').close();if(action)action();};
+$('phoneConfirm').addEventListener('close',()=>{if(!$('phoneConfirm').open)phoneConfirmAction=null;});
 resetColour();
 show();
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
