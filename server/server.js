@@ -13,9 +13,12 @@ const {createCalendarCache,TTL:CAL_CACHE_TTL}=require('./calendar-cache');
 const {neonQuery,createDeviceStore}=require('./neon-store');
 const {createCalendarCloud,roomKey,hashKey}=require('./calendar-neon');
 const {createActivity}=require('./device-activity');
+const {createSystem}=require('./system-center');
 
 const PORT = process.env.PORT || 3000;
 const PUBLIC_DIR = path.resolve(__dirname, 'public');
+const APP_VERSION=crypto.createHash('sha256').update(fs.readFileSync(path.join(PUBLIC_DIR,'index.html'))).update(fs.readFileSync(path.join(PUBLIC_DIR,'sw.js'))).digest('hex').slice(0,16);
+const APP_RELEASE={version:APP_VERSION,notes:['System Center: app updates, connection history and database usage.']};
 const MIN_TOKEN_LEN = 20;
 const ALLOWED_CMDS = new Set([
   'play', 'pause', 'toggle', 'next', 'previous', 'volume', 'seek', 'get_state',
@@ -207,7 +210,8 @@ const PAIR_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';   // no 0/O/1/I, so it
 const MAX_DEVICES_PER_ROOM = 8;
 const pairCodes = new Map();      // code -> { token, exp }
 const devices = new Map();        // id -> { id, name, hash, token, created, lastSeen }
-const cloudQuery=process.env.DATABASE_URL?neonQuery(process.env.DATABASE_URL):null;
+const system=createSystem(process.env.DATABASE_URL?neonQuery(process.env.DATABASE_URL):null);
+const cloudQuery=system.query;
 const cloudDevices=cloudQuery?createDeviceStore(cloudQuery):null;
 const cloudCalendar=cloudQuery?createCalendarCloud(cloudQuery):null;
 const activity=createActivity(cloudQuery);
@@ -405,6 +409,7 @@ function handleHttp(req, res) {
 
   const pathname = String(req.url || '/').split('?')[0];
   if (pathname === '/healthz') return plain(res, 200, 'ok');
+  if(pathname==='/app-version.json'){res.writeHead(200,{...SECURITY_HEADERS,'Content-Type':'application/json','Cache-Control':'no-store'});return res.end(req.method==='HEAD'?undefined:JSON.stringify(APP_RELEASE));}
   if (pathname === '/ota/manifest.json') return serveOtaManifest(req, res);
 
   let urlPath;
@@ -423,7 +428,7 @@ function handleHttp(req, res) {
       ...SECURITY_HEADERS,
       ...(filePath.startsWith(OTA_DIR + path.sep) ? OTA_CORS : {}),
     });
-    res.end(req.method === 'HEAD' ? undefined : data);
+    res.end(req.method === 'HEAD' ? undefined : urlPath==='/index.html'?data.toString('utf8').replace('__YTM_APP_VERSION__',APP_VERSION):data);
   });
 }
 
@@ -542,7 +547,7 @@ wss.on('connection', async (ws, info) => {
   };
 
   let authed = false;
-  let lastDiag=0,lastActivityRead=0;
+  let lastDiag=0,lastActivityRead=0,lastSystemRead=0;
   const actionLogged=new Map();
   const calendarOwner = () => role === 'phone' && !viaDevice && calendarSecure();
   const calendarReader = () => role === 'phone' && mayReadCalendar(viaDevice);
@@ -555,12 +560,14 @@ wss.on('connection', async (ws, info) => {
     if (role === 'agent') {
       if (room.agent && room.agent !== ws) room.agent.close(4000, 'replaced');
       room.agent = ws;
+      system.transition(token,'helper',true);
       ws.who = who;
       log(rid, `PC helper connected: ${who}`);
       tellPhones(room);
     } else if (role === 'pc') {
       if (room.pc && room.pc !== ws) { log(rid, `PC replaced: ${room.pc.who} is out, ${who} is in`); room.pc.close(4000, 'replaced'); }
       room.pc = ws;
+      system.transition(token,'pc',true);
       ws.who = who;
       log(rid, `PC connected: ${who}`);
       if (room.boost != null) send(ws, { type: 'cmd', cmd: 'boost', value: room.boost });
@@ -648,6 +655,13 @@ wss.on('connection', async (ws, info) => {
     if (role === 'phone') {
       if (raw.length > MAX_PHONE_MSG_BYTES || msg.type !== 'cmd') return;
       if (overLimit(MAX_CMDS_PER_SEC)) return;
+      if(msg.cmd==='system_history'||msg.cmd==='system_usage'){
+        if(viaDevice||!accessCode())return;
+        const request=String(msg.value?.request||'');if(!/^[a-zA-Z0-9_-]{1,32}$/.test(request))return;
+        if(Date.now()-lastSystemRead<2000)return send(ws,{type:msg.cmd,request,error:'Please wait a moment before checking again.'});
+        lastSystemRead=Date.now();
+        try{const data=msg.cmd==='system_history'?await system.history(token):await system.usage();return send(ws,{type:msg.cmd,request,data});}catch{return send(ws,{type:msg.cmd,request,error:'Could not load saved system data. Try again.'});}
+      }
       if(msg.cmd==='relay_health'||msg.cmd==='device_activity'){
         if(viaDevice)return;
         const request=String(msg.value?.request||'').slice(0,32);
@@ -928,10 +942,11 @@ wss.on('connection', async (ws, info) => {
     clearTimeout(authTimer);
     if (ws.joined) log(rid, `${role === 'pc' ? 'PC' : role === 'agent' ? 'PC helper' : 'phone'} disconnected: ${who}${code === 4000 ? ' (replaced by another PC)' : ''}`);
     if (role === 'agent') {
-      if (room.agent === ws) { room.calendar=calendarCache.get(token);room.agent=null;room.agentYt=false;room.lastAgent=Date.now();tellPhones(room);sendCalendar(room,token); }
+      if (room.agent === ws) { room.calendar=calendarCache.get(token);room.agent=null;room.agentYt=false;room.lastAgent=Date.now();if(!shuttingDown)system.transition(token,'helper',false);tellPhones(room);sendCalendar(room,token); }
     } else if (role === 'pc') {
       if (room.pc === ws) {
         room.pc = null;
+        if(!shuttingDown)system.transition(token,'pc',false);
         room.lastSeen = Date.now();
         tellPhones(room);
       }
@@ -965,6 +980,8 @@ const calendarTimer = setInterval(() => {
   }
 }, 30000); calendarTimer.unref();
 wss.on('close', () => clearInterval(calendarTimer));
+let shuttingDown=false;
+const systemTimer=setInterval(()=>{if(shuttingDown)return;system.observe([...rooms.values()].some(r=>r.pc||r.agent||r.phones.size));void system.flush();},60000);systemTimer.unref();wss.on('close',()=>clearInterval(systemTimer));
 const activityTimer=setInterval(()=>{void activity.flush();},15000);activityTimer.unref();wss.on('close',()=>clearInterval(activityTimer));
 
 // Heartbeat: drop dead connections, keep proxies from idling us out.
@@ -988,8 +1005,9 @@ if (require.main === module) {
 
   // Hosts send SIGTERM on every deploy: close cleanly so clients reconnect right away.
   const shutdown = () => {
+    if(shuttingDown)return;shuttingDown=true;clearInterval(systemTimer);
     wss.clients.forEach((c) => { try { c.close(1001, 'server restarting'); } catch { /* ignore */ } });
-    server.close(async()=>{await Promise.allSettled([calendarCache.flush(),subscriptionTail,activity.flush()]);process.exit(0);});
+    server.close(async()=>{await Promise.allSettled([calendarCache.flush(),subscriptionTail,activity.flush(),system.stop()]);process.exit(0);});
     setTimeout(()=>process.exit(0),8000).unref();
   };
   process.on('SIGTERM', shutdown);
@@ -1012,6 +1030,8 @@ if (require.main === module) {
       console.log('Neon calendar cache and notification persistence ready ('+calendarSubscriptions.size+' subscriptions).');
     }
     await activity.init();
+    await system.init();
+    console.log('System Center ready ('+(cloudQuery?'Neon':'memory')+').');
     console.log('Device activity history ready ('+activity.mode+').');
     server.listen(PORT,()=>console.log(`YTM remote relay listening on :${PORT}`));
   }
