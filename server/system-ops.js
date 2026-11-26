@@ -21,7 +21,8 @@ function createOps(raw,{now=Date.now,id=()=>crypto.randomBytes(16).toString('hex
  let pending=[],local=[],samples=[],metrics=new Map(),flight=null,ready=false,lastPrune=0,dbState=null,failed=false;
  const prefs=new Map(),states=new Map(),lastEvent=new Map(),lastSample=new Map(),boot=id();
  const scope=t=>t?roomKey(t):'*';
- function emit(token,kind){if(!EVENTS[kind])return;const key=scope(token),at=now(),k=key+':'+kind;
+ function emit(token,kind){return emitScope(scope(token),kind);}
+ function emitScope(key,kind){if(!EVENTS[kind]||!(key==='*'||/^[0-9a-f]{64}$/.test(key)))return;const at=now(),k=key+':'+kind;
   // Reduce attack/reconnect storms without storing addresses, names, secrets or input.
   const interval=['auth_failed','pair_failed','device_key_failed','blocked_request','blocked'].includes(kind)?60000:0;
   if(interval&&lastEvent.has(k)&&at-lastEvent.get(k)<interval)return;
@@ -73,16 +74,17 @@ function createOps(raw,{now=Date.now,id=()=>crypto.randomBytes(16).toString('hex
  function preference(token){return prefs.get(scope(token))||{readAt:0,push:false};}
  let prefTail=Promise.resolve();
  function setPreference(token,patch){const run=prefTail.then(async()=>{const key=scope(token),p={...preference(token),...patch};if(raw)await raw('INSERT INTO ytmr_ops_prefs_v1 VALUES ($1,$2::jsonb) ON CONFLICT(scope) DO UPDATE SET data=EXCLUDED.data',[key,JSON.stringify(p)]);prefs.set(key,p);return p;});prefTail=run.catch(()=>{});return run;}
- async function analytics(token){const key=scope(token),cut=now()-DAY;let points=[];
+ async function analytics(token){const key=scope(token),cut=now()-DAY,before=samples.slice();let points=[];
   if(raw){const r=await raw('SELECT id,role,at_ms,ms FROM ytmr_ops_latency_v1 WHERE scope=$1 AND at_ms>$2::bigint ORDER BY at_ms DESC LIMIT 900',[key,String(cut)]);points=r.map(x=>({id:x.id,role:x.role,at:Number(x.at_ms),ms:Number(x.ms)}));}
-  for(const r of samples)if(r.scope===key&&r.at>cut)points.push(r);
+  for(const r of [...before,...samples])if(r.scope===key&&r.at>cut)points.push(r);
   return [...new Map(points.map(r=>[r.id,r])).values()].sort((a,b)=>a.at-b.at).slice(-900).map(({role,at,ms})=>({role,at,ms}));
  }
  async function breakdown(){const day=new Date(now()).toISOString().slice(0,10),totals=new Map();if(raw){const rows=await raw('SELECT name,sum(calls)::text calls,sum(errors)::text errors,sum(ms)::text ms FROM ytmr_ops_metrics_v1 WHERE day=$1 AND boot<>$2 GROUP BY name',[day,boot]);for(const r of rows)totals.set(r.name,{name:r.name,calls:Number(r.calls),errors:Number(r.errors),ms:Number(r.ms)});}
   for(const d of metrics.values())if(d.day===day){const t=totals.get(d.name)||{name:d.name,calls:0,errors:0,ms:0};t.calls+=d.calls;t.errors+=d.errors;t.ms+=d.ms;totals.set(d.name,t);}
   return [...totals.values()].sort((a,b)=>b.calls-a.calls);
  }
- function recentAlerts(token,after){const key=scope(token);return local.filter(r=>r.at>after&&(r.scope===key||r.scope==='*')&&ALERTS.has(r.kind));}
- return {init,flush,emit,conn,tick,sample,measure,list,preference,setPreference,analytics,breakdown,recentAlerts,mode:raw?'neon':'memory'};
+ function recentAlerts(key,after){return local.filter(r=>r.at>after&&(r.scope===key||r.scope==='*')&&ALERTS.has(r.kind));}
+ function pushEnabled(key){return prefs.get(key)?.push===true;}
+ return {init,flush,emit,emitScope,conn,tick,sample,measure,list,preference,setPreference,analytics,breakdown,recentAlerts,pushEnabled,mode:raw?'neon':'memory'};
 }
 module.exports={createOps,feature};
