@@ -1568,6 +1568,7 @@ function connect() {
     else if (m.type === 'devices') renderDevices(m.list);
     else if(m.type==='relay_health')relayHealthReceive(m);
     else if(m.type==='system_history'||m.type==='system_usage')systemReceive(m);
+    else if(m.type==='ops_alert'){if(getToken()&&getCode()&&m.event?.alert===true){toast('System alert: '+m.event.message);if(systemTab==='overview'&&opsData&&$('systemSec').open&&$('settings').open&&!systemId){opsData.events=[m.event,...(opsData.events||[]).filter(e=>e.id!==m.event.id)].slice(0,400);opsDraw();}}}
     else if(typeof m.type==='string'&&m.type.startsWith('ops_'))opsReceive(m);
     else if(m.type==='device_activity')activityReceive(m);
     else if (m.type === 'challenge') answerChallenge(sock, m.nonce);
@@ -3497,7 +3498,7 @@ function systemReceive(m){
   if(m.error){$('systemStatus').textContent=m.error;return;}
   const d=m.data||{},root=$('systemResults');root.textContent='';
   if(systemTab==='history'){
-    $('systemStatus').textContent='Last 30 days · '+(d.mode==='neon'?'Saved in Neon':'Session only')+'. Relay gaps are not external uptime measurements.';
+    $('systemStatus').textContent='Last 30 days · '+(d.mode==='neon'?'Saved in Neon':d.mode==='partial'?'Database unavailable · recent memory only':'Session only')+'. Relay gaps are not external uptime measurements.';
     sysTitle(root,'Relay sessions');
     const sessions=d.sessions||[];
     sessions.slice(0,15).forEach((s,i)=>{
@@ -3555,8 +3556,8 @@ function opsDraw(){
     if(!events.length)root.append(sysEl('p','relay-health-caption','No alerts yet.'));
   }else if(systemTab==='logs'||systemTab==='security'){
     const events=d.events||[];
-    status.textContent=systemTab==='logs'?'Sanitized structured events · auto-refresh from relay memory while viewing':'Security events are grouped to limit repeated attempts. Relay-wide failures have no IP addresses or attempted secrets.';
-    if(systemTab==='security'){opsMetric(root,[['Rejected attempts',events.filter(e=>['auth_failed','pair_failed','device_key_failed'].includes(e.kind)).length],['Block events',events.filter(e=>e.kind==='blocked').length],['Blocked requests',events.filter(e=>e.kind==='blocked_request').length],['Device events',events.filter(e=>e.category==='device').length]]);}
+    status.textContent=(d.mode==='partial'?'Database unavailable · recent memory only. ':'')+(systemTab==='logs'?'Sanitized structured events · auto-refresh from relay memory while viewing':'Security events are grouped to limit repeated attempts. Relay-wide failures have no IP addresses or attempted secrets.');
+    if(systemTab==='security'){opsMetric(root,[['Rejection groups',events.filter(e=>['auth_failed','pair_failed','device_key_failed'].includes(e.kind)).length],['Block events',events.filter(e=>e.kind==='blocked').length],['Blocked request groups',events.filter(e=>e.kind==='blocked_request').length],['Device events',events.filter(e=>e.category==='device').length]]);}
     const filters=sysEl('div','ops-filters'),input=sysEl('input'),select=sysEl('select');input.placeholder='Search events';input.value=opsSearch;input.setAttribute('aria-label','Search events');for(const k of ['all','info','success','warning','error']){const o=sysEl('option','',k==='all'?'All levels':k);o.value=k;select.append(o);}select.value=opsSeverity;select.setAttribute('aria-label','Severity');filters.append(input,select);root.append(filters);
     const list=sysEl('div');root.append(list);
     const draw=()=>{list.textContent='';opsEvents(list,events.filter(e=>(opsSeverity==='all'||e.severity===opsSeverity)&&[e.message,e.category,e.severity].join(' ').toLowerCase().includes(opsSearch.toLowerCase())));};
@@ -3589,7 +3590,7 @@ function opsDraw(){
     for(const role of ['pc','helper','phone']){const pp=points.filter(p=>p.role===role);const line=document.createElementNS(svg.namespaceURI,'polyline');line.setAttribute('points',pp.map(p=>(8+304*(p.at-cutoff)/86400000).toFixed(1)+','+(130-120*p.ms/max).toFixed(1)).join(' '));line.setAttribute('fill','none');line.setAttribute('stroke',colors[role]);line.setAttribute('stroke-width','2');svg.append(line);for(const p of pp){const dot=document.createElementNS(svg.namespaceURI,'circle');dot.setAttribute('cx',8+304*(p.at-cutoff)/86400000);dot.setAttribute('cy',130-120*p.ms/max);dot.setAttribute('r','2');dot.setAttribute('fill',colors[role]);svg.append(dot);}const v=pp.map(p=>p.ms);sysEvent(root,role==='pc'?'PC playback':role==='helper'?'PC helper':'Phone',v.length?Math.round(v.reduce((a,b)=>a+b,0)/v.length)+' ms average · '+v.length+' samples':'No samples',v.length?'good':'');}
     root.append(svg,sysEl('p','relay-health-caption','Left: 24 hours ago · right: now · vertical scale: 0–'+max+' ms. Purple PC, green helper, orange phone. Connection counts are observed, not proof of outages.'));
   }else if(systemTab==='report'){
-    status.textContent='Sanitized report generated '+dateTime(d.generatedAt)+'. Review before sharing.';
+    status.textContent='Sanitized report generated '+dateTime(d.generatedAt)+'. '+(d.partial?'Partial: some database information was unavailable. ':'')+'Review before sharing.';
     const report=JSON.stringify(d,null,2);opsReport=report;
     opsMetric(root,[['App build',d.appBuild||'Unknown'],['PC',d.pc?'Connected':'Offline'],['Helper',d.helper?'Connected':'Offline'],['Calendar backup',d.calendar?.savedAt?'Saved':'Not saved']]);
     const a=sysEl('div','ops-actions');opsButton(a,'Download JSON',()=>{const url=URL.createObjectURL(new Blob([report],{type:'application/json'})),link=document.createElement('a');link.href=url;link.download='ytmr-diagnostics.json';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);});opsButton(a,'Copy report',async()=>{try{await navigator.clipboard.writeText(report);toast('Diagnostic report copied');}catch{toast('Copy unavailable. Download the report instead.');}});root.append(a,sysEl('pre','ops-report',report));
