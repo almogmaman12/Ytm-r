@@ -132,8 +132,8 @@ internal sealed class ExtensionUpdater
         var folder = ValidateFolder(settings.ExtensionFolder);
         if (ChromeOpen()) return Waiting; // no network activity while waiting
         using var key = ECDsa.Create();
-        key.ImportFromPem(settings.PublicKey);
-        if (key.KeySize != 256) throw new InvalidDataException("Invalid publisher key.");
+        key.ImportFromPem(settings.EffectivePublicKey);
+        if (key.ExportParameters(false).Curve.Oid.Value != "1.2.840.10045.3.1.7") throw new InvalidDataException("Invalid publisher key.");
         var manifestBytes = await Download("extension-release.json", 8192);
         var signature = await Download("extension-release.sig", 128);
         if (!key.VerifyData(manifestBytes, signature, HashAlgorithmName.SHA256, DSASignatureFormat.IeeeP1363FixedFieldConcatenation))
