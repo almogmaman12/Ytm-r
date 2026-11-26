@@ -3,7 +3,7 @@ const crypto=require('node:crypto');
 const {roomKey}=require('./calendar-neon');
 const DAY=86400000,TTL=30*DAY;
 const dayKey=t=>new Date(t).toISOString().slice(0,10);
-const TABLES=[['Paired devices','ytmr_devices_v1'],['Calendar cache','ytmr_calendar_v1'],['Notifications','ytmr_push_v1'],['Private configuration','ytmr_private_config_v1'],['Device activity','ytmr_device_activity_v1'],['Connection history','ytmr_connections_v1'],['Relay sessions','ytmr_relay_sessions_v1'],['Usage metrics','ytmr_usage_v1'],['Migration records','ytmr_migrations_v1']];
+const TABLES=[['Paired devices','ytmr_devices_v1'],['Calendar cache','ytmr_calendar_v1'],['Notifications','ytmr_push_v1'],['Private configuration','ytmr_private_config_v1'],['Device activity','ytmr_device_activity_v1'],['Connection history','ytmr_connections_v1'],['Relay sessions','ytmr_relay_sessions_v1'],['Usage metrics','ytmr_usage_v1'],['Migration records','ytmr_migrations_v1'],['System logs','ytmr_ops_events_v1'],['Latency samples','ytmr_ops_latency_v1'],['Feature metrics','ytmr_ops_metrics_v1'],['Alert preferences','ytmr_ops_prefs_v1']];
 function createSystem(raw,{now=Date.now,id=()=>crypto.randomBytes(16).toString('hex'),warn=()=>console.warn('System metrics could not be saved; retrying.')}={}){
   const boot=id(),started=now(),days=new Map(),events=[],memory=[],connections=new Map();
   let ready=false,flight=null,lastBeat=started,lastPrune=started,dbState=null,failed=false,lastObserved=started,ended=null,dirtySession=false,storageCache=null;
