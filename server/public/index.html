@@ -1581,7 +1581,7 @@ function renderExtras(s) {
   const bo = s.boost || 100;
   $('boostLbl').textContent = bo > 100 ? bo + '%' + (s.boostPending ? '…' : '') : 'Boost';
   setPressed('boostBtn', bo > 100 && !s.boostPending);
-  renderSleep();if($('studioDlg').open)studioSync();
+  renderSleep();if($('studioDlg').open||studioPending)studioSync();
 }
 function sleepLeft() {
   if (!last || last.sleep == null) return null;
@@ -1590,7 +1590,7 @@ function sleepLeft() {
 }
 function renderSleep() {
   const left = sleepLeft();
-  if($('studioDlg').open&&studioMode==='sleep')studioSync();
+  if($('studioDlg').open&&(studioMode==='sleep'||studioPending?.mode==='sleep'))studioSync();
   if($('picker').open&&phonePickType==='Sleep timer')phonePickContext();
   setPressed('sleepBtn', left !== null);
   if (left === null) $('sleepLbl').textContent = 'Sleep';
@@ -1662,12 +1662,12 @@ function openPlaylistPick(target=null) {
   if(target)phonePlaylistTarget=target;
   const lib = libCache.playlists || storedLib('playlists');
   if (!lib) {
-    if (!cmd('library', 'playlists')) return;
+    if (!cmd('library', 'playlists')) {phonePlaylistTarget=null;return;}
     wantPlaylist = true; toast('Loading your playlists…');
     return;
   }
   const items = (lib.items || []).filter((r) => r.kind === 'playlist' && r.playlistId && !['LM', 'SE'].includes(r.playlistId));
-  if (!items.length) { toast('No playlists found in your library.'); return; }
+  if (!items.length) { phonePlaylistTarget=null;toast('No playlists found in your library.');return; }
   const selectedTarget=phonePlaylistTarget;phonePlaylistTarget=null;
   const track=phoneTrackKey();
   pick('Add this song to…',items.map(r=>({value:r.playlistId,label:r.title,sub:r.subtitle,thumb:r.thumb})),null,id=>{
@@ -3095,15 +3095,15 @@ function studioDraw(){
   studioSync();
 }
 function studioSync(){
-  if(!$('studioDlg').open)return;
+  if(!$('studioDlg').open&&!studioPending)return;
   $('studioTitle').textContent=last?.title||'Nothing playing';$('studioArtist').textContent=last?.artist||'';$('studioArt').style.backgroundImage=last?.art?cssUrl(last.art):'';
-  const actual=studioActual(studioMode),online=$('app').dataset.pc==='on',pending=studioPending?.mode===studioMode;
-  if(pending){
-    const target=studioPending.value;
-    const ok=studioMode==='sleep'?(target==='off'?actual===null:target==='end'?actual===-1:actual!==null&&actual>=Number(target)*60-15&&actual<=Number(target)*60+5):Math.abs(actual-Number(target))<.011&&!last?.boostPending;
+  const actual=studioActual(studioMode),online=$('app').dataset.pc==='on';
+  if(studioPending){
+    const {mode,value:target}=studioPending,reported=studioActual(mode);
+    const ok=mode==='sleep'?(target==='off'?reported===null:target==='end'?reported===-1:reported!==null&&reported>=Number(target)*60-15&&reported<=Number(target)*60+5):Math.abs(reported-Number(target))<.011&&(mode!=='boost'||!last?.boostPending);
     if(ok){studioPending=null;clearTimeout(studioTimeout);}
   }
-  const busy=studioPending?.mode===studioMode;
+  const busy=!!studioPending;
   $('studioApply').disabled=!online||!!studioPending;$('studioApply').textContent=busy?'Waiting for PC…':studioMode==='sleep'?'Start timer':'Apply '+studioSpecs[studioMode].label(studioDraft);
   $('studioSleepEnd').disabled=!online||!!studioPending;$('studioSleepOff').disabled=!online||actual===null||!!studioPending;
   const status=studioMode==='sleep'?(actual===null?'Timer off':actual<0?'Stops at end of song':'Time left: '+fmt(actual)): 'PC reports '+studioSpecs[studioMode].label(actual);
