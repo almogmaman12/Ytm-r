@@ -12,12 +12,12 @@ function createCalendarCache(file,{now=Date.now,io=fs,warn=()=>console.warn('Cal
   let lastWriteOk=true;
   const dirty=new Map(),saved=new Map();
   let inflight=null;
-  // Only write changed content or refresh the durable timestamp every ten minutes.
+  // Only write changed content or refresh the durable timestamp every hour.
   // Queue changes per room; retry on failure without falling back to a temporary disk.
   function cloudDirty(){
     for(const [k,c] of data){
       const old=saved.get(k);
-      if(!old||JSON.stringify([old.items,old.emptyConfirmed])!==JSON.stringify([c.items,c.emptyConfirmed])||c.at-old.at>=600000)dirty.set(k,c);
+      if(!old||JSON.stringify([old.items,old.emptyConfirmed])!==JSON.stringify([c.items,c.emptyConfirmed])||c.at-old.at>=3600000)dirty.set(k,c);
       else if(dirty.has(k))dirty.set(k,c);
     }
     for(const k of new Set([...saved.keys(),...dirty.keys()]))if(!data.has(k))dirty.set(k,null);
