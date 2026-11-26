@@ -66,8 +66,8 @@ function createOps(raw,{now=Date.now,id=()=>crypto.randomBytes(16).toString('hex
    failed=false;return true;
   }catch{if(!failed)warn();failed=true;return false;}})().finally(()=>{flight=null;});return flight;
  }
- async function list(token){const key=scope(token),cut=now()-TTL,before=local.slice();let rows=[];
-  if(raw){const r=await raw("SELECT id,kind,at_ms FROM ytmr_ops_events_v1 WHERE scope IN ($1,'*') AND at_ms>$2::bigint ORDER BY at_ms DESC LIMIT 400",[key,String(cut)]);rows=r.map(x=>({id:x.id,kind:x.kind,at:Number(x.at_ms)}));}
+ async function list(token,liveOnly=false){const key=scope(token),cut=now()-TTL,before=local.slice();let rows=[];
+  if(raw&&!liveOnly){const r=await raw("SELECT id,kind,at_ms FROM ytmr_ops_events_v1 WHERE scope IN ($1,'*') AND at_ms>$2::bigint ORDER BY at_ms DESC LIMIT 400",[key,String(cut)]);rows=r.map(x=>({id:x.id,kind:x.kind,at:Number(x.at_ms)}));}
   for(const r of [...before,...local])if((r.scope===key||r.scope==='*')&&r.at>cut)rows.push(r);
   return [...new Map(rows.map(r=>[r.id,r])).values()].filter(r=>EVENTS[r.kind]).sort((a,b)=>b.at-a.at).slice(0,400).map(r=>{const [severity,category,message]=EVENTS[r.kind];return {id:r.id,kind:r.kind,at:r.at,severity,category,message,alert:ALERTS.has(r.kind)};});
  }
