@@ -434,24 +434,9 @@
     .cal-agenda-filter { margin-bottom: 13px; }
     .cal-map-labels { font-size: 9px; }
   }
-  /* Interactive planner polish: quick find and expandable event cards. */
+  /* Interactive planner polish: expandable event cards. */
   .cal-top { gap: 7px; }
   .cal-top .icon-btn { width: 42px; height: 42px; }
-  #calendarSearchToggle[aria-expanded="true"] { color: var(--accent); background: var(--cal-soft); border-color: var(--cal-edge); }
-  .cal-search { margin: 0 0 20px; border: 1px solid var(--cal-edge); border-radius: 21px; padding: 13px; background: var(--cal-panel); }
-  .cal-search-field { display: flex; align-items: center; gap: 9px; padding: 0 11px; border-radius: 13px; background: var(--bg); border: 1px solid var(--line); }
-  .cal-search-field .i { width: 19px; height: 19px; flex: none; color: var(--muted); }
-  #calendarSearchInput { min-width: 0; width: 100%; flex: 1; height: 44px; padding: 0; margin: 0; background: transparent; color: var(--ink); border: 0; font-size: 16px; outline-offset: -2px; }
-  #calendarSearchClear { flex: none; width: 40px; height: 40px; display: grid; place-items: center; }
-  #calendarSearchSummary { font-size: 11px; color: var(--muted); margin: 11px 4px 4px; }
-  #calendarSearchResults { display: flex; flex-direction: column; max-height: 270px; overflow: auto; gap: 4px; }
-  .cal-result { display: flex; align-items: center; width: 100%; gap: 11px; border-radius: 12px; padding: 9px 7px; text-align: start; background: var(--surface); }
-  .cal-result-date { flex: 0 0 40px; min-width: 0; display: flex; flex-direction: column; align-items: center; color: var(--accent); font-size: 10px; font-weight: 700; }
-  .cal-result-date strong { font-size: 20px; line-height: 1.05; font-weight: 800; }
-  .cal-result-copy { flex: 1; min-width: 0; }
-  .cal-result-copy strong { display: block; overflow-wrap: anywhere; font-size: 14px; font-weight: 700; }
-  .cal-result-copy small { display: block; font-size: 11px; color: var(--muted); margin-top: 3px; }
-  .cal-result > .i { width: 16px; height: 16px; color: var(--muted); flex: none; }
   .cal-event { display: block; padding: 0 !important; }
   .cal-event-main { display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: center; gap: 9px; width: 100%; padding: 15px 13px 15px 18px; text-align: start; border-radius: inherit; }
   .cal-event-main:focus-visible { outline-offset: -3px; }
@@ -465,10 +450,9 @@
   .cal-event-details dt { font-size: 10px; color: var(--muted); font-weight: 650; }
   .cal-event-details dd { font-size: 13px; font-weight: 650; margin: 3px 0 0; overflow-wrap: anywhere; }
   .cal-event-details p { font-size: 11px; margin: 10px 0 0; color: var(--muted); }
-  @media (hover:hover) { .cal-event-main:hover,.cal-result:hover { background: var(--surface); } }
+  @media (hover:hover) { .cal-event-main:hover { background: var(--surface); } }
   @media(max-width:740px) {
     .cal-group.single-day .cal-event-main { padding: 15px 13px 15px 17px; }
-    .cal-search { margin-bottom: 14px; }
   }
   @media(max-width:360px) {
     .cal-top { gap: 4px; }
@@ -761,7 +745,6 @@
     <div class="cal-top">
       <button id="calendarClose" class="icon-btn" aria-label="Close calendar"><svg class="i" viewBox="0 0 24 24"><path d="M19 12H5m7-7-7 7 7 7"/></svg></button>
       <div class="cal-brand"><div class="cal-eyebrow">YTM Remote</div><h2 id="calendarHeading">Calendar</h2></div>
-      <button id="calendarSearchToggle" class="icon-btn" aria-label="Search saved events" aria-expanded="false" aria-controls="calendarSearchPanel"><svg class="i" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m16 16 4 4"/></svg></button>
       <button id="calendarRefresh" class="icon-btn" aria-label="Refresh calendar"><svg class="i"><use href="#i-refresh"/></svg></button>
     </div>
     <div class="cal-monthbar">
@@ -784,14 +767,6 @@
   </header>
   <div class="cal-scroll">
     <p id="calendarStatus" role="status" aria-live="polite"></p>
-    <section id="calendarSearchPanel" class="cal-search" aria-label="Search saved calendar events" hidden>
-      <div class="cal-search-field"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m16 16 4 4"/></svg>
-        <input id="calendarSearchInput" type="search" placeholder="Find an event…" aria-label="Find an event by title" autocomplete="off" maxlength="160">
-        <button id="calendarSearchClear" aria-label="Clear search"><svg class="i" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
-      </div>
-      <p id="calendarSearchSummary" role="status" aria-live="polite">Search all saved dates.</p>
-      <div id="calendarSearchResults"></div>
-    </section>
     <div id="calendarOverview" class="cal-overview" aria-label="Selected view summary" hidden>
       <div class="cal-stat"><strong id="calendarStatEvents">0</strong><span>Saved events</span></div>
       <div class="cal-stat"><strong id="calendarStatDays">0</strong><span id="calendarStatDaysLabel">Days with events</span></div>
@@ -1870,7 +1845,7 @@ $('searchForm').onsubmit = (e) => {
 /* ---------- Google Calendar grabber and Web Push ---------- */
 let calendarKey = '', calendarSub = null, calendarAllowed = false, calendarEpoch = 0;
 let calendarData = null, calendarSelected = '', calendarWeek = '', calendarFreshTimer = null;
-let calendarConnected=false, calendarOwnerToken='', calendarMode='week', calendarRemaining=false, calendarExpanded='', calendarSearchOpen=false;
+let calendarConnected=false, calendarOwnerToken='', calendarMode='week', calendarRemaining=false, calendarExpanded='';
 const CAL_DISPLAY_TTL=14*86400000;
 try{localStorage.removeItem('ytmrCalendarSaved');}catch{}
 // The relay owns the cache; only keep the current in-memory view during a transient disconnect.
@@ -1936,37 +1911,9 @@ function calDrawDayMap(date,events,now,today,saved) {
   $('calendarMapNote').textContent='Saved timed events'+(data.points.length?' · Gold marks: unknown end time':'')+(date===today?' · White line: current time':'')+'. Gaps may contain unsynced events.';
 }
 function calEventKey(e){return JSON.stringify([e.date,e.title,e.start??null,e.end??null,!!e.allDay,e.time||'']);}
-function calSearchClose(){
-  calendarSearchOpen=false;$('calendarSearchPanel').hidden=true;
-  $('calendarSearchToggle').setAttribute('aria-expanded','false');
-  $('calendarSearchInput').value='';$('calendarSearchResults').textContent='';$('calendarSearchSummary').textContent='Search all saved dates.';
-}
-function calDrawSearch(items){
-  if(!calendarSearchOpen)return;
-  const q=$('calendarSearchInput').value.trim().toLocaleLowerCase(),results=$('calendarSearchResults'),summary=$('calendarSearchSummary');
-  const matches=q?items.filter(e=>e.title.toLocaleLowerCase().includes(q)):[];
-  const text=q?matches.length+' saved '+(matches.length===1?'match':'matches'):'Search all saved dates.';
-  if(summary.textContent!==text)summary.textContent=text;
-  const fmt=new Intl.DateTimeFormat(undefined,{month:'short',year:'numeric'});
-  const clock=new Intl.DateTimeFormat(undefined,{hour:'numeric',minute:'2-digit'});
-  const oldFocus=results.contains(document.activeElement)?document.activeElement.dataset.eventKey:'';
-  results.textContent='';
-  for(const event of matches){
-    const button=document.createElement('button'),date=document.createElement('span'),day=document.createElement('strong'),month=document.createElement('span'),copy=document.createElement('span'),title=document.createElement('strong'),time=document.createElement('small'),arrow=document.createElement('span');
-    button.type='button';button.className='cal-result';button.dataset.eventKey=calEventKey(event);
-    date.className='cal-result-date';day.textContent=calDate(event.date).getDate();month.textContent=fmt.format(calDate(event.date));date.append(day,month);
-    copy.className='cal-result-copy';title.textContent=event.title;title.dir='auto';
-    time.textContent=event.allDay?'All day':Number.isFinite(event.start)?clock.format(new Date(event.start)):event.time||'Time unknown';copy.append(title,time);
-    arrow.innerHTML='<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>';
-    arrow.className='cal-result-arrow';arrow.style.color='var(--muted)';button.append(date,copy,arrow);
-    button.onclick=()=>{calSearchClose();calSelectDay(event.date);calendarExpanded=calEventKey(event);drawCalendar();const target=Array.from($('calendarItems').querySelectorAll('.cal-event-main')).find(b=>b.dataset.eventKey===calendarExpanded);if(target){target.focus({preventScroll:true});target.scrollIntoView({block:'nearest'});}};
-    results.append(button);if(oldFocus===button.dataset.eventKey)button.focus({preventScroll:true});
-  }
-}
 function drawCalendar() {
   if (!calendarAllowed || !$('calendarDlg').open) return;
   const now=Date.now(), today=calToday(), items=calItems(), week=calendarWeek||calPeriod(today), end=calPeriodEnd(week);
-  calDrawSearch(items);
   const monthMode=calendarMode==='month', current=calPeriod(today);
   const periods=[current,...items.map(x=>calPeriod(x.date))].sort();
   const shortDay=new Intl.DateTimeFormat(undefined,{weekday:'short'});
@@ -2117,7 +2064,7 @@ function renderCalendar(m) {
   drawCalendar();
 }
 function clearCalendarView() {
-  calendarSelected='';calendarWeek='';calendarMode='week';calendarRemaining=false;calendarExpanded='';calSearchClose();
+  calendarSelected='';calendarWeek='';calendarMode='week';calendarRemaining=false;calendarExpanded='';
   $('calendarDayMap').hidden=true;$('calendarMapBlocks').textContent='';$('calendarMapLabels').textContent='';$('calendarMapNote').textContent='';$('calendarMapTotal').textContent='';$('calendarMapNow').hidden=true;$('calendarAgendaFilter').hidden=true;
   $('calendarHero').hidden=true;$('calendarHeroTitle').textContent='';$('calendarHeroTime').textContent='';
   $('calendarHeroMeta').hidden=true;$('calendarHeroDetail').textContent='';$('calendarHeroTrack').hidden=true;$('calendarHeroTrack').removeAttribute('aria-valuenow');$('calendarHeroProgress').style.width='0%';
@@ -2169,12 +2116,6 @@ $('calendarBtn').onclick=()=>{
 };
 $('calendarRefresh').onclick=()=>{ if(calendarConnected){$('calendarStatus').textContent='Refreshing…';rawCmd('calendar_get');}else{drawCalendar();toast('Offline. Showing saved events.');} };
 $('calendarClose').onclick=()=> $('calendarDlg').close();
-$('calendarSearchToggle').onclick=()=>{
-  if(calendarSearchOpen){calSearchClose();return;}
-  calendarSearchOpen=true;$('calendarSearchPanel').hidden=false;$('calendarSearchToggle').setAttribute('aria-expanded','true');calDrawSearch(calItems());calScrollTop();$('calendarSearchInput').focus();
-};
-$('calendarSearchInput').oninput=()=>calDrawSearch(calItems());
-$('calendarSearchClear').onclick=()=>{$('calendarSearchInput').value='';calDrawSearch(calItems());$('calendarSearchInput').focus();};
 $('calendarDlg').addEventListener('close',()=>{if (!$('calendarDlg').open) clearCalendarView();});
 $('calendarToday').onclick=()=>calSelectDay(calToday());
 $('calendarAll').onclick=()=>{calendarRemaining=false;calendarExpanded='';calendarSelected='';drawCalendar();calScrollTop();};
