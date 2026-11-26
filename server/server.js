@@ -673,11 +673,14 @@ wss.on('connection', async (ws, info) => {
           }else if(msg.cmd==='ops_optimization')data={usage:await system.usage(),features:await ops.breakdown()};
           else if(msg.cmd==='ops_analytics')data={history:await system.history(token),points:await ops.analytics(token)};
           else if(msg.cmd==='ops_report'){
-            const cal=calendarCache.diagnostics(token);
-            data={generatedAt:Date.now(),appBuild:APP_VERSION,uptime:Date.now()-relayStarted,pc:!!room.pc,helper:!!room.agent,pcVersion:room.pc?room.version||'':'',calendar:cal,subscriptions:subscriptionsFor(token).length,usage:await system.usage(),features:await ops.breakdown(),events:(await ops.list(token)).slice(0,40)};
+            const cal=calendarCache.diagnostics(token),results=await Promise.allSettled([system.usage(),ops.breakdown(),ops.list(token)]);
+            const [usage,features,events]=results.map(r=>r.status==='fulfilled'?r.value:null);
+            const version=String(room.version||'');
+            data={generatedAt:Date.now(),appBuild:APP_VERSION,uptime:Date.now()-relayStarted,pc:!!room.pc,helper:!!room.agent,pcVersion:room.pc&&/^(?:\d{1,4}(?:\.\d{1,4}){1,3}|[a-f0-9]{8,16})$/.test(version)?version:'',calendar:cal,subscriptions:subscriptionsFor(token).length,usage,features,events:(events||await ops.list(token,true)).slice(0,40),partial:results.some(r=>r.status==='rejected')};
           }else{
-            const events=await ops.list(token,msg.cmd==='ops_logs'&&msg.value.live===true),prefs=ops.preference(token);
-            data={events:msg.cmd==='ops_security'?events.filter(e=>e.category==='security'||e.category==='device'):msg.cmd==='ops_overview'?events.filter(e=>e.alert):events,prefs,mode:ops.mode,subscriptions:subscriptionsFor(token).length};
+            let events,partial=false;try{events=await ops.list(token,msg.cmd==='ops_logs'&&msg.value.live===true);}catch{events=await ops.list(token,true);partial=true;}
+            const prefs=ops.preference(token);
+            data={events:msg.cmd==='ops_security'?events.filter(e=>e.category==='security'||e.category==='device'):msg.cmd==='ops_overview'?events.filter(e=>e.alert):events,prefs,mode:partial?'partial':ops.mode,subscriptions:subscriptionsFor(token).length};
           }
           return send(ws,{type:msg.cmd,request,data});
         }catch{return send(ws,{type:msg.cmd,request,error:'Could not load or save system data. Try again.'});}
