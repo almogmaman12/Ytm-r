@@ -17,7 +17,23 @@ jobs:
         with:
           dotnet-version: '8.0.x'
       - name: Build Windows x64
-        run: dotnet publish companion/YtmCompanion.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o companion/out
+        shell: pwsh
+        env:
+          YTM_EXTENSION_PUBLIC_KEY_PEM: ${{ vars.YTM_EXTENSION_PUBLIC_KEY_PEM }}
+        run: |
+          $buildArgs = @()
+          if ($env:YTM_EXTENSION_PUBLIC_KEY_PEM) {
+            $pem = $env:YTM_EXTENSION_PUBLIC_KEY_PEM.Trim()
+            if ($pem -notmatch '(?s)\A-----BEGIN PUBLIC KEY-----\s+[A-Za-z0-9+/=\r\n]+-----END PUBLIC KEY-----\z') { throw 'Expected a public PEM key only' }
+            $key = Join-Path $env:RUNNER_TEMP 'ytmr-release-public.pem'
+            [IO.File]::WriteAllText($key, $pem)
+            node -e "const k=require('node:crypto').createPublicKey(require('node:fs').readFileSync(process.argv[1])); if(k.asymmetricKeyType!=='ec'||k.asymmetricKeyDetails.namedCurve!=='prime256v1')process.exit(1)" "$key"
+            if ($LASTEXITCODE -ne 0) { throw 'Invalid P-256 publisher key' }
+            $buildArgs += "-p:ExtensionPublicKeyPath=$key"
+            $buildArgs += '-p:RequirePublisherKey=true'
+          }
+          dotnet publish companion/YtmCompanion.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o companion/out @buildArgs
+          if ($LASTEXITCODE -ne 0) { throw 'Build failed' }
       - uses: actions/upload-artifact@v4
         with:
           name: YtmCompanion-windows-x64-test-build
