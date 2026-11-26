@@ -866,6 +866,36 @@
   #devicePausedDlg .paused-icon .i { width:34px;height:34px; }
   #devicePausedDlg p { font-size:14px;line-height:1.5;color:var(--muted); }
   #devicePausedDlg button { width:100%;min-height:48px;margin-top:14px;border-radius:16px; }
+  /* Relay health and device activity */
+  .relay-health-card { border:1px solid var(--phone-edge);background:var(--surface);border-radius:20px;padding:15px;margin-bottom:15px; }
+  .relay-health-head { display:flex;align-items:center;gap:10px; }
+  .relay-health-head h3 { flex:1;font-size:19px;margin:0;letter-spacing:-.03em; }
+  .relay-health-head button { min-height:40px;padding:8px 12px;border-radius:12px;background:var(--phone-soft);color:var(--accent);font-size:12px;font-weight:750; }
+  .relay-health-caption { font-size:12px;color:var(--muted);line-height:1.5;margin:9px 0; }
+  .relay-health-row { display:flex;align-items:center;gap:11px;border-top:1px solid var(--line);padding:12px 0; }
+  .relay-health-dot { width:10px;height:10px;border-radius:50%;background:var(--muted);flex:none; }
+  .relay-health-dot.good { background:#67d4a1; }
+  .relay-health-dot.warn { background:#edb17b; }
+  .relay-health-dot.bad { background:#ef8c98; }
+  .relay-health-row .health-copy { flex:1;min-width:0;font-size:13px;font-weight:750; }
+  .relay-health-row small { display:block;font-size:11px;font-weight:400;color:var(--muted);margin-top:4px;overflow-wrap:anywhere; }
+  .relay-health-row .health-value { font-size:12px;font-weight:700;text-align:end; }
+  .activity-open { width:100%;min-height:48px;border-radius:15px;margin:8px 0;color:var(--accent);background:var(--phone-soft);font-weight:750; }
+  .device-actions .device-history { grid-column:1/-1;background:var(--bg);color:var(--muted);border:1px solid var(--line);min-height:37px; }
+  #activityDlg { width:min(94vw,480px);max-height:90dvh;padding:20px;border-radius:25px;background:var(--phone-panel);color:var(--ink);border:1px solid var(--phone-edge); }
+  #activityDlg[open] { display:flex;flex-direction:column; }
+  #activityDlg::backdrop { background:#08070bb5;backdrop-filter:blur(6px); }
+  .activity-filters { display:flex;gap:7px;margin:7px 0 12px; }
+  .activity-filters button { flex:1;min-height:42px;border:1px solid var(--line);border-radius:13px;font-weight:750;font-size:12px; }
+  .activity-filters button[aria-pressed="true"] { color:var(--accent);border-color:var(--accent);background:var(--phone-soft); }
+  #activityItems { flex:1;min-height:0;overflow:auto;overscroll-behavior:contain; }
+  .activity-day { font-size:12px;font-weight:750;color:var(--muted);padding:14px 0 6px; }
+  .activity-entry { display:flex;gap:10px;align-items:center;padding:11px 0;border-bottom:1px solid var(--line); }
+  .activity-mark { flex:none;width:36px;height:36px;display:grid;place-items:center;border-radius:12px;background:var(--phone-soft);color:var(--accent);font-weight:800; }
+  .activity-entry .activity-copy { flex:1;min-width:0;font-size:13px;font-weight:700;overflow-wrap:anywhere; }
+  .activity-entry small { display:block;color:var(--muted);font-size:11px;font-weight:400;margin-top:4px; }
+  .activity-time { color:var(--muted);font-size:11px;flex:none; }
+  @media(max-width:600px){#activityDlg{width:100%;max-width:100%;margin:auto 0 0;max-height:93dvh;border-radius:26px 26px 0 0;padding:20px 18px calc(18px + var(--safe-b));}}
   @media (prefers-reduced-motion: reduce) { * { transition:none !important;animation:none !important; } }
 </style>
 </head>
@@ -1197,7 +1227,7 @@
     </details>
 
     <details id="maint">
-      <summary>Fix and check</summary>
+      <summary>Fix and check</summary><section id="relayHealthCard" class="relay-health-card"><div class="relay-health-head"><h3>Connection health</h3><button id="relayHealthRefresh">Check now</button></div><p id="relayHealthStatus" class="relay-health-caption" role="status">Check your relay, database and calendar storage without interrupting music.</p><div id="relayHealthRows"></div></section>
       <div class="row">
         <button id="reloadPage" class="secondary">Reload this page</button>
         <button id="reloadPc" class="secondary">Reload YouTube Music on the PC</button>
@@ -1219,7 +1249,7 @@
           <div id="pairCode" aria-live="polite"></div>
           <p id="pairHelp" class="small"></p>
         </div>
-        <ul id="devList"></ul>
+        <button id="activityAll" class="activity-open">View device activity</button><ul id="devList"></ul>
         <p class="small" style="margin-top:10px">Paired phones use their own key. Pause a device to temporarily stop its access, or grant it read-only calendar access. Calendar sharing is off by default. Remove permanently revokes its key.</p>
       </div>
       <div id="pairedInfo" hidden>
@@ -1287,6 +1317,7 @@
 </dialog>
 <dialog id="trackActions" aria-labelledby="trackActionHeading"><div class="studio-top"><div><span class="page-eyebrow">Track actions</span><h2 id="trackActionHeading">Make it yours</h2></div><button id="trackActionClose" class="icon-btn" aria-label="Close track actions"><svg class="i"><use href="#i-x"/></svg></button></div><div class="studio-track"><div id="trackActionArt" class="studio-art"></div><div class="studio-track-copy"><strong id="trackActionTitle"></strong><small id="trackActionArtist"></small></div></div><div id="trackActionGrid" class="track-action-grid"></div></dialog>
 <dialog id="devicePausedDlg" aria-labelledby="devicePausedHeading"><div class="paused-icon"><svg class="i"><use href="#i-pause"/></svg></div><span class="page-eyebrow">DEVICE ACCESS</span><h2 id="devicePausedHeading">Access paused</h2><p>The owner has temporarily paused this device. Your pairing is still saved. The app will reconnect automatically when access is restored.</p><button id="devicePausedRetry" class="secondary">Check again</button></dialog>
+<dialog id="activityDlg" aria-labelledby="activityHeading"><div class="studio-top"><div><span class="page-eyebrow">Paired devices</span><h2 id="activityHeading">Activity history</h2></div><button id="activityClose" class="icon-btn" aria-label="Close activity"><svg class="i"><use href="#i-x"/></svg></button></div><p id="activityScope" class="relay-health-caption"></p><div class="activity-filters"><button data-activity="all" aria-pressed="true">All activity</button><button data-activity="access" aria-pressed="false">Access changes</button><button data-activity="remote" aria-pressed="false">Music requests</button></div><p id="activityStatus" class="relay-health-caption" role="status"></p><div id="activityItems"></div><button id="activityRefresh" class="activity-open">Refresh history</button></dialog>
 
 <script>
 const $ = (id) => document.getElementById(id);
@@ -1509,6 +1540,8 @@ function connect() {
     else if (m.type === 'blocklist') renderBlocklist(m.items);
     else if (m.type === 'pair_code') showPairCode(m);
     else if (m.type === 'devices') renderDevices(m.list);
+    else if(m.type==='relay_health')relayHealthReceive(m);
+    else if(m.type==='device_activity')activityReceive(m);
     else if (m.type === 'challenge') answerChallenge(sock, m.nonce);
     else if (m.type === 'calendar') renderCalendar(m);
     else if(m.type==='calendar_access'){calendarAuth(m);}
@@ -1517,7 +1550,7 @@ function connect() {
   };
   sock.onclose = (ev) => {
     if (ws !== sock) return;
-    ws = null;
+    ws = null;relayHealthDisconnected();
     $('app').dataset.pc = 'off';
     if(ev.code===4008){phoneSetPaused(true);retryTimer=setTimeout(connect,20000);return;}
     calendarDisconnect(ev.code===4003||ev.code===4005);
@@ -2620,7 +2653,7 @@ function renderDevices(list){
   for(const d of list||[]){
     const li=document.createElement('li');li.className='device-card';
     const head=document.createElement('div'),icon=document.createElement('span'),name=document.createElement('div'),seen=document.createElement('small'),status=document.createElement('span');
-    head.className='device-head';icon.className='device-icon';icon.innerHTML='<svg class="i" viewBox="0 0 24 24"><rect x="6" y="2" width="12" height="20" rx="3"/><path d="M10 18h4"/></svg>';name.className='n';name.textContent=d.name;seen.textContent='Last seen '+ago(d.ago);name.append(seen);status.className='device-status'+(d.paused?' is-paused':'');status.textContent=d.paused?'Paused':'Enabled';head.append(icon,name,status);li.append(head);
+    head.className='device-head';icon.className='device-icon';icon.innerHTML='<svg class="i" viewBox="0 0 24 24"><rect x="6" y="2" width="12" height="20" rx="3"/><path d="M10 18h4"/></svg>';name.className='n';name.textContent=d.name;seen.textContent=d.online?'Connected now':'Last seen '+ago(d.ago);name.append(seen);status.className='device-status'+(d.paused?' is-paused':'');status.textContent=d.paused?'Paused':d.online?'Connected':'Offline';head.append(icon,name,status);li.append(head);
     const access=document.createElement('div'),copy=document.createElement('div'),note=document.createElement('small'),toggle=document.createElement('button');
     access.className='device-access-row';copy.className='device-access-copy';copy.textContent='Calendar access';note.textContent=d.paused?'Saved permission applies when resumed':'Read-only events and schedule';copy.append(note);toggle.type='button';toggle.textContent=d.calendar?'Allowed':'Off';toggle.setAttribute('aria-pressed',String(!!d.calendar));toggle.onclick=()=>{
       const change=()=>{if(rawCmd('device_access',d.id+':calendar:'+(d.calendar?'0':'1')))toast('Updating calendar access…');};
@@ -2628,7 +2661,7 @@ function renderDevices(list){
     };access.append(copy,toggle);li.append(access);
     const actions=document.createElement('div'),pause=document.createElement('button'),remove=document.createElement('button');actions.className='device-actions';pause.type=remove.type='button';pause.className='device-pause';pause.textContent=d.paused?'Resume access':'Pause access';pause.onclick=()=>{if(rawCmd('device_access',d.id+':paused:'+(d.paused?'0':'1')))toast(d.paused?'Resuming device…':'Pausing device…');};
     remove.className='secondary danger';remove.textContent='Remove';remove.onclick=()=>phoneConfirm('Remove device?','Remove '+d.name+' permanently. It will need a new pairing code.','Remove',()=>rawCmd('device_revoke',d.id));
-    actions.append(pause,remove);li.append(actions);ul.append(li);
+    const history=document.createElement('button');history.type='button';history.className='device-history';history.textContent='Activity history';history.onclick=()=>activityOpen(d.id,d.name);actions.append(pause,remove,history);li.append(actions);ul.append(li);
   }
   if(!list||!list.length){const li=document.createElement('li');li.className='small';li.textContent='No paired phones yet.';ul.append(li);}
 }
@@ -3185,13 +3218,14 @@ $('forget').addEventListener('click',phoneClearPins);
 
 /* Phone-only submenu navigation and confirmations. */
 function phoneTrackKey(s=last){return JSON.stringify([s?.videoId||'',s?.title||'',s?.artist||'',s?.art||'',s?.site||'']);}
-const phoneSettingsMeta=[['Appearance & feel','Theme, colors, density and gestures','i-sliders'],['Do-not-play list','Manage blocked songs and artists','i-block'],['On this phone','Lock screen, display and volume limit','i-vol-hi'],['Connection & diagnostics','Refresh, repair and check your PC','i-swap'],['Paired phones','Manage remote devices','i-user'],['Security','Access code and connection token','i-block']];
+const phoneSettingsMeta=[['Appearance & feel','Theme, colors, density and gestures','i-sliders'],['Do-not-play list','Manage blocked songs and artists','i-block'],['On this phone','Lock screen, display and volume limit','i-vol-hi'],['Connection & diagnostics','Relay, database, calendar and PC health','i-swap'],['Paired phones','Manage remote devices','i-user'],['Security','Access code and connection token','i-block']];
 const phoneSettingsSections=Array.from($('settings').querySelectorAll('.sheetBody > details'));
 function phoneSettingsStatus(){$('settingsPcStatus').textContent=$('status').textContent||'Connecting…';$('settingsPcNote').textContent=$('app').dataset.pc==='on'?'PC is available for remote playback':'Phone settings remain available offline';}
 function phoneSettingsPage(index){
   const detail=phoneSettingsSections[index];$('settings').dataset.page=detail?'sub':'home';
   $('settingsHome').hidden=!!detail;$('settingsBack').hidden=!detail;$('settingsHeading').textContent=detail?phoneSettingsMeta[index][0]:'Settings';$('closeSettings').textContent=detail?'Back to settings':'Close';
   phoneSettingsSections.forEach((d,i)=>{d.hidden=!!detail&&i!==index;d.open=i===index;});$('settings').querySelector('.sheetBody').scrollTop=0;phoneSettingsStatus();
+  if(index===3){$('relayHealthCard').hidden=!getToken();if(getToken())relayHealthRequest();}
 }
 phoneSettingsSections.forEach((d,i)=>{const summary=d.querySelector('summary'),[title,sub,icon]=phoneSettingsMeta[i];summary.textContent='';const badge=document.createElement('span'),copy=document.createElement('span'),name=document.createElement('strong'),desc=document.createElement('small'),arrow=document.createElement('span');badge.className='settings-section-icon';badge.innerHTML='<svg class="i"><use href="#'+icon+'"/></svg>';copy.className='settings-section-copy';name.textContent=title;desc.textContent=sub;copy.append(name,desc);arrow.className='settings-section-arrow';arrow.textContent='›';summary.append(badge,copy,arrow);summary.onclick=e=>{e.preventDefault();phoneSettingsPage(i);buzz();};});
 $('settingsBack').onclick=()=>phoneSettingsPage(-1);$('settingsCloseTop').onclick=()=>$('settings').close();
@@ -3289,6 +3323,79 @@ function phoneSetPaused(paused){
 }
 $('devicePausedDlg').addEventListener('cancel',e=>e.preventDefault());
 $('devicePausedRetry').onclick=()=>{if(phonePaused)reconnectNow();};
+/* Owner-only relay diagnostics and private activity history. */
+let relayHealthId='',relayHealthTimer=null,activityId='',activityTimer=null,activityDevice='',activityFilter='all',activityRows=[];
+const reqId=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,8);
+const dateTime=v=>Number.isFinite(v)?new Date(v).toLocaleString(undefined,{dateStyle:'medium',timeStyle:'short'}):'Not saved yet';
+function relayHealthDisconnected(){
+  clearTimeout(relayHealthTimer);relayHealthId='';$('relayHealthRefresh').disabled=false;$('relayHealthRows').textContent='';$('relayHealthStatus').textContent='Not connected to the relay. Reconnect and check again.';
+  clearTimeout(activityTimer);activityId='';activityRows=[];$('activityItems').textContent='';$('activityRefresh').disabled=false;$('activityStatus').textContent='Disconnected. Reconnect and refresh history.';
+}
+function relayHealthRequest(){
+  if(!getToken())return;
+  clearTimeout(relayHealthTimer);relayHealthId=reqId();$('relayHealthRows').textContent='';$('relayHealthRefresh').disabled=true;$('relayHealthStatus').textContent='Checking live relay and database…';
+  if(!rawCmd('relay_health',{request:relayHealthId})){relayHealthDisconnected();return;}
+  relayHealthTimer=setTimeout(()=>{relayHealthId='';$('relayHealthRefresh').disabled=false;$('relayHealthStatus').textContent='No response. Try again once the relay is connected.';},20000);
+}
+function relayHealthReceive(m){
+  if(!getToken()||m.request!==relayHealthId)return;
+  clearTimeout(relayHealthTimer);relayHealthId='';$('relayHealthRefresh').disabled=false;
+  if(m.error){$('relayHealthStatus').textContent=m.error;return;}
+  const rows=$('relayHealthRows');rows.textContent='';
+  const add=(title,value,tone,detail)=>{
+    const row=document.createElement('div'),dot=document.createElement('span'),copy=document.createElement('div'),sm=document.createElement('small'),v=document.createElement('span');
+    row.className='relay-health-row';dot.className='relay-health-dot '+tone;copy.className='health-copy';copy.textContent=title;sm.textContent=detail;copy.append(sm);v.className='health-value';v.textContent=value;row.append(dot,copy,v);rows.append(row);
+  };
+  const uptime=Math.floor((m.uptime||0)/60000);
+  add('Relay server','Connected','good','Uptime '+Math.floor(uptime/60)+'h '+uptime%60+'m');
+  add('Neon database',m.db==='connected'?'Connected':m.db==='not_configured'?'Not configured':'Unavailable',m.db==='connected'?'good':'warn',m.db==='connected'?'Live SQL check · '+m.latency+' ms':'Music controls do not require a database query.');
+  add('PC playback',m.pc?'Connected':'Offline',m.pc?'good':'warn',m.version?'PC code version '+m.version:'YouTube Music / YouTube tab');
+  add('PC helper',m.helper?'Connected':'Offline',m.helper?'good':'warn','Handles wake and calendar synchronization');
+  const c=m.calendar||{};
+  add('Calendar cache',c.status==='locked'?'Locked':c.at?'Saved':'Empty',c.status==='locked'?'warn':c.at?'good':'warn',c.at?c.count+' events · '+dateTime(c.at):'No readable calendar snapshot');
+  add('Calendar backup',c.writeFailed?'Write failed':c.pending?'Saving':c.savedAt?'Saved':'Not saved',c.writeFailed?'bad':c.savedAt&&!c.pending?'good':'warn',(c.mode==='neon'?'Neon':'Local file')+' · '+dateTime(c.savedAt));
+  add('Notification subscriptions',String(m.subscriptions||0)+' registered',m.subscriptions?'good':'warn',m.pushStable?'Stable server key · delivery not tested':'Temporary server key');
+  add('Device history',m.activityStorage==='neon'?'Persistent':'Session only',m.activityStorage==='neon'?'good':'warn',String(m.devices||0)+' paired devices');
+  $('relayHealthStatus').textContent='Checked '+dateTime(m.checkedAt)+'. A live database check does not guarantee notification delivery.';
+}
+$('relayHealthRefresh').onclick=relayHealthRequest;
+const activityLabels={paired:['+','Paired'],connected:['↗','Connected'],disconnected:['↙','Disconnected'],renamed:['✎','Renamed'],paused:['Ⅱ','Access paused'],resumed:['▶','Access resumed'],calendar_allowed:['✓','Calendar allowed'],calendar_denied:['×','Calendar disabled'],removed:['×','Removed'],signed_out:['↩','Signed out'],playback:['♪','Playback request'],queue:['≡','Queue change requested'],volume:['◉','Volume change requested'],playlist:['+','Playlist change requested']};
+const musicActivity=new Set(['playback','queue','volume','playlist']);
+function activityOpen(id='',name=''){
+  if(!getToken())return;
+  activityDevice=id;activityFilter='all';activityRows=[];$('activityItems').textContent='';$('activityScope').textContent=id?'History for '+name:'All paired devices, including removed devices';
+  document.querySelectorAll('[data-activity]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.activity==='all')));
+  if(!$('activityDlg').open)$('activityDlg').showModal();activityRequest();
+}
+function activityRequest(){
+  if(!getToken())return;
+  clearTimeout(activityTimer);activityId=reqId();$('activityRefresh').disabled=true;$('activityStatus').textContent='Loading activity…';
+  if(!rawCmd('device_activity',{request:activityId,deviceId:activityDevice})){relayHealthDisconnected();return;}
+  activityTimer=setTimeout(()=>{activityId='';$('activityRefresh').disabled=false;$('activityStatus').textContent='No response. Refresh to try again.';},20000);
+}
+function activityReceive(m){
+  if(!getToken()||m.request!==activityId||!$('activityDlg').open)return;
+  clearTimeout(activityTimer);activityId='';$('activityRefresh').disabled=false;
+  if(m.error){$('activityStatus').textContent=m.error;return;}
+  activityRows=Array.isArray(m.entries)?m.entries:[];
+  $('activityStatus').textContent=(m.storage==='neon'?'Last 30 days · up to 200 entries':'Session only')+' · Repeated music requests grouped over 30 seconds.';
+  activityDraw();
+}
+function activityDraw(){
+  const root=$('activityItems');root.textContent='';let prev='';
+  const rows=activityRows.filter(r=>activityFilter==='all'||(activityFilter==='remote'?musicActivity.has(r.type):!musicActivity.has(r.type)));
+  for(const e of rows){
+    const label=activityLabels[e.type];if(!label||!Number.isFinite(e.at))continue;
+    const d=new Date(e.at),day=d.toLocaleDateString(undefined,{weekday:'long',month:'short',day:'numeric',year:'numeric'});
+    if(day!==prev){const head=document.createElement('div');head.className='activity-day';head.textContent=day;root.append(head);prev=day;}
+    const row=document.createElement('div'),mark=document.createElement('span'),copy=document.createElement('div'),sm=document.createElement('small'),time=document.createElement('span');
+    row.className='activity-entry';mark.className='activity-mark';mark.textContent=label[0];copy.className='activity-copy';copy.textContent=label[1];sm.textContent=e.name||'Phone';copy.append(sm);time.className='activity-time';time.textContent=d.toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'});row.append(mark,copy,time);root.append(row);
+  }
+  if(!root.children.length){const empty=document.createElement('p');empty.className='relay-health-caption';empty.textContent='No matching activity yet.';root.append(empty);}
+}
+$('activityAll').onclick=()=>activityOpen();$('activityClose').onclick=()=>$('activityDlg').close();$('activityRefresh').onclick=activityRequest;
+$('activityDlg').addEventListener('close',()=>{clearTimeout(activityTimer);activityId='';activityRows=[];$('activityItems').textContent='';});
+document.querySelectorAll('[data-activity]').forEach(b=>b.onclick=()=>{activityFilter=b.dataset.activity;document.querySelectorAll('[data-activity]').forEach(x=>x.setAttribute('aria-pressed',String(x===b)));activityDraw();});
 resetColour();
 show();
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
