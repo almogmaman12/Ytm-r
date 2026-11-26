@@ -21,6 +21,7 @@ function createSystem(raw,{now=Date.now,id=()=>crypto.randomBytes(16).toString('
     const scope=roomKey(token),k=scope+':'+kind,prev=connections.get(k);
     if(prev===online)return;
     connections.set(k,online);
+    if(connections.size>2000)connections.delete(connections.keys().next().value);
     add(scope,kind+(online?'_connected':'_disconnected'));
   }
   async function init(){
@@ -40,7 +41,7 @@ function createSystem(raw,{now=Date.now,id=()=>crypto.randomBytes(16).toString('
   async function flush(){
     if(!ready||!raw)return true;
     if(flight)return flight;
-    const usage=[...days].filter(([,d])=>d.dirty!==false||d.saved!==d.calls||d.savedMs!==d.ms).map(([day,d])=>({day,calls:d.calls,errors:d.errors,ms:d.ms}));
+    const usage=[...days].filter(([,d])=>d.dirty!==false||d.saved!==d.calls||d.savedMs!==d.ms||d.savedErrors!==d.errors).map(([day,d])=>({day,calls:d.calls,errors:d.errors,ms:d.ms}));
     if(!events.length&&!usage.length&&!dirtySession&&now()-lastPrune<DAY)return true;
     flight=(async()=>{
       try{
@@ -51,7 +52,7 @@ function createSystem(raw,{now=Date.now,id=()=>crypto.randomBytes(16).toString('
         if(usage.length){await raw(`INSERT INTO ytmr_usage_v1 (boot,day,calls,errors,ms)
           SELECT $1,x->>'day',(x->>'calls')::bigint,(x->>'errors')::bigint,(x->>'ms')::bigint FROM jsonb_array_elements($2::jsonb) t(x)
           ON CONFLICT (boot,day) DO UPDATE SET calls=EXCLUDED.calls,errors=EXCLUDED.errors,ms=EXCLUDED.ms`,[boot,JSON.stringify(usage)]);
-          for(const u of usage){const d=days.get(u.day);if(d){d.saved=u.calls;d.savedMs=u.ms;d.dirty=false;}}}
+          for(const u of usage){const d=days.get(u.day);if(d){d.saved=u.calls;d.savedMs=u.ms;d.savedErrors=u.errors;d.dirty=false;}}}
         if(dirtySession){await raw('UPDATE ytmr_relay_sessions_v1 SET observed_ms=GREATEST(observed_ms,$2::bigint),ended_ms=$3::bigint WHERE id=$1',[boot,String(stamp),stop===null?null:String(stop)]);if(stamp===lastObserved&&stop===ended)dirtySession=false;}
         if(now()-lastPrune>=DAY){const cutoff=String(now()-TTL);
           await raw('DELETE FROM ytmr_connections_v1 WHERE at_ms<=$1::bigint',[cutoff]);
