@@ -17,7 +17,7 @@ const EVENTS={
 };
 const ALERTS=new Set(['pc_long_offline','pc_recovered','database_error','database_recovered','backup_failed','backup_recovered','blocked','paired']);
 function feature(sql){const q=String(sql);if(/ytmr_device_activity_v1/.test(q))return 'Device activity';if(/ytmr_calendar_v1/.test(q))return 'Calendar';if(/ytmr_push_v1|ytmr_private_config_v1/.test(q))return 'Notifications';if(/ytmr_devices_v1|ytmr_migrations_v1/.test(q))return 'Paired devices';return 'Diagnostics / setup';}
-function createOps(raw,{now=Date.now,id=()=>crypto.randomBytes(16).toString('hex'),warn=()=>console.warn('System Center telemetry write failed.')}={}){
+function createOps(raw,{now=Date.now,id=()=>crypto.randomBytes(16).toString('hex'),warn=()=>console.warn('System Center telemetry write failed.'),onAlert=()=>{}}={}){
  let pending=[],local=[],samples=[],metrics=new Map(),flight=null,ready=false,lastPrune=0,dbState=null,failed=false;
  const prefs=new Map(),states=new Map(),lastEvent=new Map(),lastSample=new Map(),boot=id();
  const scope=t=>t?roomKey(t):'*';
@@ -29,6 +29,7 @@ function createOps(raw,{now=Date.now,id=()=>crypto.randomBytes(16).toString('hex
   lastEvent.set(k,at);if(lastEvent.size>2000)lastEvent.delete(lastEvent.keys().next().value);
   const row={id:id(),scope:key,at,kind};local.push(row);if(local.length>1000)local.shift();
   if(raw){pending.push(row);if(pending.length>1000)pending.shift();}
+  if(ALERTS.has(kind)){const [severity,category,message]=EVENTS[kind];try{onAlert(key,{id:row.id,kind,at,severity,category,message,alert:true});}catch{}}
  }
  function conn(token,role,online){if(!['pc','helper'].includes(role))return;const key=scope(token)+':'+role,prev=states.get(key);
   if(prev?.online===online)return;
