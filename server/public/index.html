@@ -548,7 +548,135 @@
   .secondary { height: 52px; border-radius: 16px; background: var(--surface-2); font-weight: 600; }
   .danger { color: #ff8a8a; }
 
-  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+  /* Phone UI 2: shared visual language, independent of the extension. */
+  :root { --nav-h:72px; --mini-h:68px; --phone-panel:#1b1924; --phone-edge:rgba(255,255,255,.10); --phone-soft:color-mix(in srgb,var(--accent) 13%,var(--bg)); }
+  :root[data-phone-theme="black"] { --bg:#000; --phone-panel:#111; }
+  :root[data-phone-theme="black"] #glow { opacity:.12; }
+  :root[data-phone-accent="purple"] { --accent:#b8a5ff !important; --accent-ink:#231542 !important; --tint:#43316c !important; }
+  :root[data-phone-accent="blue"] { --accent:#91c8ff !important; --accent-ink:#102943 !important; --tint:#244866 !important; }
+  :root[data-phone-accent="green"] { --accent:#92e7b1 !important; --accent-ink:#113722 !important; --tint:#225039 !important; }
+  #app { max-width:540px; }
+  #glow { opacity:.45; filter:blur(76px); }
+  .app-top { position:sticky;top:0;z-index:7;display:flex;align-items:center;justify-content:space-between;gap:6px;padding:max(9px,env(safe-area-inset-top)) 15px 8px;background:color-mix(in srgb,var(--bg) 86%,transparent);backdrop-filter:blur(16px); }
+  .app-identity { min-width:0;flex:1;display:flex;flex-direction:column;gap:3px; }
+  .app-brand,.page-eyebrow { font-size:10px;text-transform:uppercase;font-weight:800;letter-spacing:.12em;color:var(--muted); }
+  .app-top .pill { align-self:flex-start;max-width:100%;font-size:11px;padding:4px 8px;border:1px solid var(--phone-edge);gap:6px;white-space:nowrap; }
+  #status { overflow:hidden;text-overflow:ellipsis; }
+  .app-actions { display:flex;gap:3px;flex:none; }
+  .app-actions .icon-btn { width:42px;height:44px;background:var(--surface);border:1px solid var(--phone-edge);color:var(--ink); }
+  .app-actions .i { width:20px;height:20px; }
+  .view { min-height:calc(100dvh - 62px);padding:12px 18px calc(var(--nav-h) + var(--safe-b) + 28px); }
+  #v-search,#v-library,#v-queue { padding-bottom:calc(var(--nav-h) + var(--mini-h) + var(--safe-b) + 30px); }
+  #art { width:min(100%,40dvh,390px);border-radius:30px;margin:3px auto 0;border:1px solid var(--phone-edge);box-shadow:0 16px 52px #0006;touch-action:pan-y; }
+  #art:not([style*="url("])::before { content:'♪';position:absolute;inset:0;display:grid;place-items:center;color:var(--muted);font-size:80px;pointer-events:none; }
+  .np-kicker { display:flex;justify-content:space-between;gap:10px;font-size:11px;color:var(--muted);text-transform:uppercase;font-weight:750;letter-spacing:.1em;margin:0 0 12px; }
+  .np-kicker span:last-child { letter-spacing:0;text-transform:none;color:var(--accent); }
+  .meta { margin-top:18px; }
+  #title { font-size:clamp(27px,7.5vw,38px);font-weight:800;letter-spacing:-.045em; }
+  #artist { font-size:15px; }
+  #seek { height:35px;margin-top:13px; }
+  #seek .track { top:14px;height:7px;overflow:visible; }
+  #fill { position:relative;transition:width .35s linear; }
+  #fill::after { content:'';position:absolute;right:-5px;top:-3px;width:13px;height:13px;border-radius:50%;background:var(--accent); }
+  .controls { margin:12px 0 0;gap:4px; }
+  .ctl { border-radius:24px;width:54px;height:58px;background:var(--surface); }
+  .ctl.sm { background:none;width:44px; }
+  #toggle { width:94px;height:74px;border-radius:26px;box-shadow:0 7px 26px var(--phone-soft); }
+  .vol { margin:16px 0 0;border-radius:18px;background:var(--surface);padding:7px 12px;gap:9px; }
+  #volumeValue { min-width:38px;text-align:end;font-size:12px;color:var(--ink);font-weight:750;font-variant-numeric:tabular-nums; }
+  #vol { min-width:0; }
+  #vol::-webkit-slider-runnable-track { background:linear-gradient(to right,var(--accent) 0 var(--vol-pct,50%),var(--surface-2) var(--vol-pct,50%) 100%); }
+  #vol::-moz-range-progress { height:6px;background:var(--accent);border-radius:3px; }
+  #quickRow { display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:14px; }
+  #quickRow button { min-height:52px;flex-direction:row;justify-content:center;gap:7px;font-size:12px;padding:8px 4px;border:1px solid var(--phone-edge);border-radius:15px; }
+  #quickRow button .i { width:19px;height:19px; }
+  .phone-more { margin-top:10px;background:var(--surface);border:1px solid var(--phone-edge);border-radius:18px;padding:0 12px; }
+  .phone-more summary { display:flex;align-items:center;gap:9px;list-style:none;cursor:pointer;min-height:48px;font-size:13px;font-weight:700; }
+  .phone-more summary::-webkit-details-marker { display:none; }
+  .phone-more summary .i { width:18px;height:18px;color:var(--accent); }
+  .phone-more .more-chevron { margin-left:auto;transition:transform .2s; }
+  .phone-more[open] .more-chevron { transform:rotate(180deg); }
+  .phone-more .pbtns { flex-wrap:wrap;margin:0 0 12px; }
+  .phone-more .pbtns button { flex:1 1 26%;min-height:48px; }
+  #tapPcBtn { font-size:12px;min-height:44px;width:100%; }
+  #tabs { max-width:540px;height:calc(var(--nav-h) + var(--safe-b));padding:7px 10px calc(7px + var(--safe-b));gap:3px;background:color-mix(in srgb,var(--bg) 93%,transparent); }
+  #tabs button { border-radius:19px;gap:4px;font-size:11px;font-weight:700; }
+  #tabs button[aria-selected="true"] { background:var(--phone-soft);color:var(--accent); }
+  #mini { max-width:540px;padding:0 12px 7px;touch-action:pan-y; }
+  #mini .card { position:relative;overflow:hidden;border:1px solid var(--phone-edge);background:color-mix(in srgb,var(--phone-panel) 92%,var(--accent));border-radius:22px;gap:10px; }
+  #miniArt { width:48px;height:48px;border-radius:13px; }
+  #mini .icon-btn { width:42px; }
+  #miniProgress { position:absolute;bottom:0;height:3px;left:0;right:0;background:var(--surface);pointer-events:none; }
+  #miniProgressFill { width:0;height:100%;background:var(--accent);transition:width .35s linear; }
+  .phone-page-head { display:flex;align-items:center;justify-content:space-between;gap:8px;margin:3px 0 15px; }
+  .phone-page-head h2.section { font-size:34px;margin:0;font-weight:800;letter-spacing:-.055em;white-space:normal; }
+  .phone-page-head .pills { flex-wrap:wrap;justify-content:flex-end; }
+  .phone-page-head .pill { padding:8px 10px;font-size:12px;min-height:40px;border:1px solid var(--phone-edge); }
+  .searchbar { top:calc(62px + env(safe-area-inset-top,0px));margin:0 -4px 8px;padding:5px 4px 8px;background:color-mix(in srgb,var(--bg) 92%,transparent);backdrop-filter:blur(12px); }
+  .field { border:1px solid var(--phone-edge);border-radius:19px;background:var(--phone-panel); }
+  #musicSearchClear { width:40px;height:44px;flex:none;display:grid;place-items:center; }
+  #musicSearchClear .i { width:19px;height:19px; }
+  .chips { margin:7px 0 14px;gap:7px; }
+  .chip { font-size:12px;min-height:40px;padding:7px 13px;border:1px solid var(--phone-edge); }
+  .view .hint { font-size:13px;line-height:1.5;margin:12px 1px; }
+  .view .empty { margin:20px 0;padding:30px 18px;border-radius:24px;border:1px dashed var(--phone-edge);background:linear-gradient(145deg,var(--surface),transparent);font-size:14px; }
+  .view .empty strong { font-size:20px;font-weight:750; }
+  ul.tracks li:not(.shelf) { margin:0 0 6px;padding:8px;gap:9px;min-height:64px;background:var(--surface);border:1px solid var(--phone-edge);border-radius:17px; }
+  ul.tracks .th { width:52px;height:52px;border-radius:12px; }
+  ul.tracks .t { font-size:14px;font-weight:750; }
+  ul.tracks .s { font-size:12px;margin-top:4px; }
+  ul.tracks .acts3 .act { width:36px;height:44px; }
+  ul.tracks .act .i { width:20px;height:20px; }
+  ul.tracks .act { width:42px;height:44px;color:var(--muted); }
+  ul.tracks .grip { width:40px; }
+  ul.tracks li.sel { border-color:var(--accent);background:var(--phone-soft); }
+  ul.tracks li.dragging { background:var(--phone-panel);border-color:var(--accent); }
+  .view ul.tracks li.shelf { display:block;padding:12px 0 5px;margin:9px 0 0;font-size:17px; }
+  .library-tools { display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 0 10px; }
+  .library-tools .pill { padding:7px 10px;font-size:12px;min-height:40px; }
+  #libList.grid-library { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px; }
+  #libList.grid-library li.shelf { grid-column:1/-1; }
+  #libList.grid-library li:not(.shelf) { min-width:0;flex-direction:column;align-items:stretch;margin:0;padding:10px;gap:8px; }
+  #libList.grid-library .th { width:100%;height:auto;aspect-ratio:1;border-radius:14px; }
+  #libList.grid-library .txt { flex:none;width:100%; }
+  #libList.grid-library .acts3 { justify-content:space-between; }
+  #libList.grid-library .t { white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;min-height:2.7em; }
+  #libList .pin-btn[aria-pressed="true"] { color:var(--accent); }
+  .queue-now { display:flex;align-items:center;gap:12px;padding:13px;border:1px solid var(--phone-edge);background:linear-gradient(120deg,var(--phone-soft),var(--phone-panel));border-radius:20px;margin:0 0 14px; }
+  #queueNowArt { flex:none;width:56px;height:56px;border-radius:12px;background:var(--surface) center/cover; }
+  .queue-now-copy { flex:1;min-width:0; }
+  #queueNowTitle,#queueNowArtist { display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
+  #queueNowTitle { font-size:16px;font-weight:750;margin-top:4px; }
+  #queueNowArtist { color:var(--muted);font-size:12px; }
+  #queueSummary { display:flex;gap:7px;flex-wrap:wrap;margin:0 0 14px; }
+  #queueSummary span { padding:7px 10px;border-radius:11px;color:var(--muted);background:var(--surface);font-size:11px;font-weight:700; }
+  #queueSummary strong { color:var(--ink); }
+  .queue-index { color:var(--muted);font-size:11px;min-width:15px;text-align:center;flex:none; }
+  .queue-swipe { touch-action:pan-y; }
+  .loading-list { display:grid;gap:8px;margin:8px 0; }
+  .loading-list i { height:63px;border-radius:17px;background:linear-gradient(100deg,var(--surface) 20%,var(--surface-2) 45%,var(--surface) 70%);background-size:250% 100%;animation:phone-shimmer 1.4s linear infinite; }
+  @keyframes phone-shimmer { to { background-position:-160% 0; } }
+  #settings { width:min(94vw,480px);border:1px solid var(--phone-edge);border-radius:27px;background:var(--phone-panel); }
+  #settings .sheetBody { padding:20px 18px 8px; }
+  #settings h2 { font-size:30px;font-weight:800;letter-spacing:-.04em; }
+  #settings details { border:1px solid var(--phone-edge);border-radius:17px;padding:0 12px;margin:9px 0;background:var(--surface); }
+  #settings details summary { padding:13px 0;font-size:15px;font-weight:700; }
+  #settings .optrow { align-items:center; }
+  #settings .optrow input[type=checkbox] { appearance:none;width:39px;height:23px;border-radius:20px;background:var(--surface-2);position:relative;margin:0;border:1px solid var(--phone-edge); }
+  #settings .optrow input[type=checkbox]::after { content:'';position:absolute;width:17px;height:17px;left:2px;top:2px;border-radius:50%;background:var(--muted); }
+  #settings .optrow input[type=checkbox]:checked { background:var(--accent); }
+  #settings .optrow input[type=checkbox]:checked::after { left:18px;background:var(--accent-ink); }
+  .appearance-row { display:flex;flex-wrap:wrap;gap:6px;margin:5px 0 13px; }
+  .appearance-row button { padding:9px 11px;min-height:42px;border-radius:12px;background:var(--surface);font-size:12px;font-weight:700;border:1px solid var(--phone-edge); }
+  .appearance-row button[aria-pressed="true"] { background:var(--accent);color:var(--accent-ink); }
+  :root[data-phone-density="compact"] ul.tracks li:not(.shelf) { min-height:54px;padding:5px;margin-bottom:4px; }
+  :root[data-phone-density="compact"] ul.tracks .th { width:42px;height:42px; }
+  :root[data-phone-density="compact"] #libList.grid-library .th { width:100%;height:auto; }
+  #waking .box { background:var(--phone-panel);border:1px solid var(--phone-edge);padding:24px;border-radius:28px; }
+  #waking .secondary { width:100%;margin-top:8px; }
+  @media(max-width:360px) { .app-top { padding-left:10px;padding-right:10px; } .app-actions .icon-btn { width:37px; } .view { padding-left:12px;padding-right:12px; } ul.tracks .acts3 .act { width:32px; } .phone-page-head h2.section { font-size:29px; } #quickRow { gap:5px; } }
+  @media(max-height:740px) { #art { width:min(100%,33dvh,390px); } #toggle { height:66px; } .controls { margin-top:8px; } .meta { margin-top:13px; } }
+  @media (prefers-reduced-motion: reduce) { * { transition:none !important;animation:none !important; } }
 </style>
 </head>
 <body data-view="playing">
@@ -607,13 +735,15 @@
 
 <div id="glow"></div>
 <div id="app" data-pc="off" hidden>
+    <header class="app-top">
+      <div class="app-identity"><span class="app-brand">YTM Remote</span><span class="pill"><span class="dot"></span><span id="status">Connecting…</span></span></div>
+      <div class="app-actions"><button id="siteBtn" class="icon-btn" aria-label="Open or switch YouTube and YouTube Music on the PC" title="Open or switch site"><svg class="i"><use href="#i-swap"/></svg></button><button id="refreshBtn" class="icon-btn" aria-label="Force refresh" title="Force refresh"><svg class="i"><use href="#i-refresh"/></svg></button>
+      <button id="calendarBtn" class="icon-btn" aria-label="Calendar" title="Calendar" hidden><svg class="i" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 3v4m10-4v4M3 10h18m-13 5h2m4 0h2"/></svg></button><button id="settingsBtn" class="icon-btn" aria-label="Settings"><svg class="i"><use href="#i-sliders"/></svg></button></div>
+    </header>
+
 
   <section id="v-playing" class="view" aria-label="Now playing">
-    <div class="top">
-      <span class="pill"><span class="dot"></span><span id="status">Connecting…</span></span>
-      <div style="display:flex;gap:2px"><button id="siteBtn" class="icon-btn" aria-label="Open or switch YouTube and YouTube Music on the PC" title="Open or switch site"><svg class="i"><use href="#i-swap"/></svg></button><button id="refreshBtn" class="icon-btn" aria-label="Force refresh" title="Force refresh"><svg class="i"><use href="#i-refresh"/></svg></button>
-      <button id="calendarBtn" class="icon-btn" aria-label="Calendar" title="Calendar" hidden><svg class="i" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 3v4m10-4v4M3 10h18m-13 5h2m4 0h2"/></svg></button><button id="settingsBtn" class="icon-btn" aria-label="Settings"><svg class="i"><use href="#i-sliders"/></svg></button></div>
-    </div>
+    <div class="np-kicker"><span>Now playing</span><span id="playingIndicator">Ready</span></div>
     <div id="art" role="img" aria-label="Album art"><button id="srcChip" type="button" aria-label="Open or switch site"><svg class="i"><use id="srcIcon" href="#i-srcytm"/></svg><span id="srcName">YouTube Music</span></button></div>
     <div class="meta">
       <h1 id="title">Nothing playing</h1>
@@ -634,7 +764,7 @@
     <div class="vol">
       <svg class="i"><use href="#i-vol-lo"/></svg>
       <input type="range" id="vol" min="0" max="100" value="50" aria-label="Volume">
-      <svg class="i"><use href="#i-vol-hi"/></svg>
+      <svg class="i"><use href="#i-vol-hi"/></svg><output id="volumeValue" for="vol">50%</output>
     </div>
     <p id="lastSeen" class="hint" aria-live="polite"></p>
     <button id="wakeBtn" type="button">Wake YouTube Music on the PC</button>
@@ -647,6 +777,7 @@
       <button id="speedBtn" type="button" aria-pressed="false"><svg class="i"><use href="#i-speed"/></svg><span id="speedLbl">1x</span></button>
       <button id="sleepBtn" type="button" aria-pressed="false"><svg class="i"><use href="#i-moon"/></svg><span id="sleepLbl">Sleep</span></button>
     </div>
+    <details class="phone-more"><summary><svg class="i"><use href="#i-sliders"/></svg> More playback actions <svg class="i more-chevron" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></summary>
     <div class="pbtns">
       <button id="radioBtn" type="button"><svg class="i"><use href="#i-radio"/></svg>Radio</button>
       <button id="relatedBtn" type="button"><svg class="i"><use href="#i-queue"/></svg>Similar</button>
@@ -654,15 +785,18 @@
       <button id="plBtn" type="button"><svg class="i"><use href="#i-plus"/></svg>Playlist</button>
       <button id="blockBtn" aria-label="Never play this artist" title="Never play this artist" type="button"><svg class="i"><use href="#i-block"/></svg>Block</button>
     </div>
+    </details>
     <div id="siteNote">Regular YouTube. Videos queue on this phone; the library, artist pages and albums need YouTube Music.</div>
     <div id="repair" role="status"></div>
   </section>
 
   <section id="v-search" class="view" aria-label="Search" hidden>
+    <div class="phone-page-head"><div><span class="page-eyebrow">Discover</span><h2 class="section">Search</h2></div></div>
     <form id="searchForm" class="searchbar" role="search">
       <label class="field">
         <svg class="i"><use href="#i-search"/></svg>
         <input id="q" type="search" placeholder="Search YouTube Music" enterkeyhint="search" autocomplete="off" autocapitalize="off" maxlength="100">
+        <button id="musicSearchClear" type="button" aria-label="Clear music search" hidden><svg class="i"><use href="#i-x"/></svg></button>
       </label>
     </form>
     <ul id="suggest" hidden></ul>
@@ -676,23 +810,27 @@
     <button id="artistRadioBtn" class="secondary" hidden style="width:100%;margin:6px 0"><svg class="i"><use href="#i-radio"/></svg> Start artist radio</button>
     <div id="searchMsg" class="hint"></div>
     <div id="searchEmpty" class="empty"><strong>Find something to play</strong>Search for songs, albums, artists or playlists. Tap a result to play it now, or use the buttons to play it next or add it to the end of the queue.</div>
+    <div id="searchLoading" class="loading-list" aria-hidden="true" hidden><i></i><i></i><i></i></div>
     <ul id="results" class="tracks"></ul>
   </section>
 
   <section id="v-library" class="view" aria-label="Library" hidden>
-    <div class="head"><h2 class="section">Library</h2><button id="libRefresh" class="pill">Refresh</button></div>
+    <div class="head phone-page-head"><div><span class="page-eyebrow">Your collection</span><h2 class="section">Library</h2></div><button id="libRefresh" class="pill">Refresh</button></div>
     <div id="libTabs" class="chips" role="group" aria-label="Library section">
       <button class="chip" data-section="home" aria-pressed="true">Home</button>
       <button class="chip" data-section="playlists" aria-pressed="false">Playlists</button>
       <button class="chip" data-section="albums" aria-pressed="false">Albums</button>
       <button class="chip" data-section="history" aria-pressed="false">Recently played</button>
     </div>
-    <div id="libMsg" class="hint"></div>
+    <div class="library-tools"><span id="libCount" class="hint"></span><button id="libLayout" class="pill" aria-pressed="false">Grid view</button></div>
+    <div id="libMsg" class="hint"></div><div id="libLoading" class="loading-list" aria-hidden="true" hidden><i></i><i></i><i></i></div>
     <ul id="libList" class="tracks"></ul>
   </section>
 
   <section id="v-queue" class="view" aria-label="Up next" hidden>
-    <div class="head"><h2 class="section">Up next</h2><div class="pills"><button id="clearBtn" class="pill" hidden>Clear</button><button id="selectBtn" class="pill" hidden>Select</button><button id="editBtn" class="pill" hidden>Edit</button></div></div>
+    <div class="head phone-page-head"><div><span class="page-eyebrow">Playback</span><h2 class="section">Up next</h2></div><div class="pills"><button id="clearBtn" class="pill" hidden>Clear</button><button id="selectBtn" class="pill" hidden>Select</button><button id="editBtn" class="pill" hidden>Edit</button></div></div>
+    <div id="queueNow" class="queue-now" hidden><div id="queueNowArt"></div><div class="queue-now-copy"><span class="page-eyebrow">Now playing</span><strong id="queueNowTitle"></strong><span id="queueNowArtist"></span></div><button id="queueNowOpen" class="icon-btn" aria-label="Open now playing"><svg class="i"><use href="#i-bars"/></svg></button></div>
+    <div id="queueSummary" hidden><span><strong id="queueCount">0</strong> queued</span><span><strong id="autoCount">0</strong> autoplay</span><span id="queueEta" hidden></span></div>
     <div id="queueEmpty" class="empty"><strong>Nothing queued</strong>The songs coming up in YouTube Music show here. Add more with the queue button on a search result.</div>
     <ul id="ytqueue" class="tracks"></ul>
     <h3 id="autoHead" class="sub" hidden>Autoplay</h3>
@@ -708,7 +846,7 @@
       <div id="miniArt"></div>
       <div class="txt"><div id="miniTitle">Nothing playing</div><div id="miniArtist"></div></div>
       <button id="miniToggle" class="icon-btn" aria-label="Play or pause"><svg class="i"><use id="miniToggleIcon" href="#i-play"/></svg></button>
-      <button id="miniNext" class="icon-btn" aria-label="Next"><svg class="i"><use href="#i-next"/></svg></button>
+      <button id="miniNext" class="icon-btn" aria-label="Next"><svg class="i"><use href="#i-next"/></svg></button><div id="miniProgress"><div id="miniProgressFill"></div></div>
     </div>
   </div>
 
@@ -831,6 +969,17 @@
     <p id="verLine" class="small"></p>
 
     <details open>
+      <summary>Appearance &amp; feel</summary>
+      <label class="lbl">Theme</label>
+      <div class="appearance-row" id="phoneThemes" role="group" aria-label="Theme"><button data-theme="dark">Dark</button><button data-theme="black">AMOLED</button></div>
+      <label class="lbl">Accent</label>
+      <div class="appearance-row" id="phoneAccents" role="group" aria-label="Accent"><button data-accent="auto">Album art</button><button data-accent="purple">Purple</button><button data-accent="blue">Blue</button><button data-accent="green">Green</button></div>
+      <label class="lbl">List density</label>
+      <div class="appearance-row" id="phoneDensities" role="group" aria-label="List density"><button data-density="normal">Comfortable</button><button data-density="compact">Compact</button></div>
+      <label class="optrow"><input type="checkbox" id="phoneHaptics"><span>Haptic feedback<small>When supported by this phone.</small></span></label>
+      <label class="optrow"><input type="checkbox" id="phoneGestures"><span>Player swipe gestures<small>Swipe left or right on artwork or mini player to skip; swipe up on the mini player to expand.</small></span></label>
+    </details>
+    <details>
       <summary>Do-not-play list</summary>
       <ul id="blockList"></ul>
       <p id="blockNote" class="small"></p>
@@ -948,7 +1097,7 @@ function cssUrl(u) {
 const getDevice = () => { try { const d = localStorage.getItem('device'); return d && /^[0-9a-f]{16}\.[A-Za-z0-9_-]{20,64}$/.test(d) ? d : ''; } catch { return ''; } };
 function setDevice(d) { try { d ? localStorage.setItem('device', d) : localStorage.removeItem('device'); } catch {} }
 function setToken(t) { try { t ? localStorage.setItem('token', t) : localStorage.removeItem('token'); } catch {} }
-function buzz() { try { navigator.vibrate && navigator.vibrate(8); } catch {} }
+function buzz() { try { if (localStorage.getItem('phone_haptics')!=='0' && navigator.vibrate) navigator.vibrate(8); } catch {} }
 function fmt(s) { s = Math.max(0, Math.floor(s || 0)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); }
 function toast(msg, action) {
   const t = $('toast');
@@ -972,14 +1121,16 @@ function cmd(c, value) {
 }
 
 /* ---------- views ---------- */
+const phoneScroll={};
 function setView(name) {
+  if (!['playing','search','library','queue'].includes(name)) return;
+  if(view!==name)phoneScroll[view]=window.scrollY;
   view = name;
   document.body.dataset.view = name;
   for (const v of ['playing', 'search', 'library', 'queue']) $('v-' + v).hidden = v !== name;
   document.querySelectorAll('#tabs button').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.view === name)));
   $('mini').hidden = name === 'playing';
-  window.scrollTo(0, 0);
-  if (name === 'search' && !$('results').children.length) setTimeout(() => $('q').focus(), 50);
+  window.scrollTo(0,phoneScroll[name]||0);
   if (name === 'library') loadLibrary(false);
 }
 document.querySelectorAll('#tabs button').forEach((b) => { b.onclick = () => { buzz(); setView(b.dataset.view); }; });
@@ -1064,7 +1215,7 @@ function setPc(online, wake, version, agoMs, why, helper, yt) {
   wasOnline = online;
   $('app').dataset.pc = online ? 'on' : 'off';
   $('app').dataset.wake = !online && wake ? 'on' : 'off';
-  if (cameOnline) { scheduleAutoCheck(); cmd('block_list'); }
+  if (cameOnline) { scheduleAutoCheck(); cmd('block_list'); if(view==='library')loadLibrary(false); }
   if (online) finishRefresh();
   $('status').textContent = online ? 'PC connected' : 'PC offline';
   renderSeen();
@@ -1249,6 +1400,8 @@ function render(s) {
   const title = s.title || 'Nothing playing';
   $('title').textContent = title;
   $('artist').textContent = s.artist || '';
+  $('playingIndicator').textContent=s.title?(s.playing?'Playing':'Paused'):'Ready';
+  $('queueNow').hidden=!s.title;$('queueNowTitle').textContent=title;$('queueNowArtist').textContent=s.artist||'';
   $('miniTitle').textContent = title;
   $('miniArtist').textContent = (s.site === 'yt' ? 'YouTube' : 'YT Music') + (s.artist ? ' · ' + s.artist : '');
   const icon = s.playing ? '#i-pause' : '#i-play';
@@ -1258,8 +1411,10 @@ function render(s) {
   const bg = s.art ? cssUrl(s.art) : '';
   $('art').style.backgroundImage = bg;
   $('miniArt').style.backgroundImage = bg;
+  $('queueNowArt').style.backgroundImage = bg;
   applyColour(s.art || '');
   if (s.volume != null && !volDragging) $('vol').value = Math.min(s.volume, Number($('vol').max) || 100);
+  phoneVolume();
   renderExtras(s);
   $('adBar').classList.toggle('on', s.ad === 'ad' || s.ad === 'skip');
   $('adSkip').hidden = s.ad !== 'skip';
@@ -1389,17 +1544,19 @@ $('back10').onclick = () => skipBy(-10);
 $('fwd10').onclick = () => skipBy(10);
 
 function tick() {
-  if (!last || !last.duration) { $('fill').style.width = '0'; $('cur').textContent = '0:00'; $('dur').textContent = '0:00'; return; }
+  if (!last || !last.duration) { $('fill').style.width='0%';$('miniProgressFill').style.width='0%';$('cur').textContent='0:00';$('dur').textContent='0:00';$('queueEta').hidden=true;return; }
   let pos = last.position || 0;
   // Glide between updates, but not while the PC is offline.
-  if (last.playing && $('app').dataset.pc === 'on') pos += (Date.now() - lastAt) / 1000;
+  if (last.playing && $('app').dataset.pc === 'on') pos += (Date.now() - lastAt) / 1000*(Number(last.speed)||1);
   pos = Math.min(pos, last.duration);
-  $('fill').style.width = (pos / last.duration * 100) + '%';
+  const pct=(pos/last.duration*100)+'%';$('fill').style.width=pct;$('miniProgressFill').style.width=pct;
+  const eta=$('queueEta');eta.hidden=!(last.playing&&$('app').dataset.pc==='on'&&siteItems.length&&!last.ad);if(!eta.hidden)eta.textContent='Track ends in '+fmt((last.duration-pos)/(Number(last.speed)||1));
   $('cur').textContent = fmt(pos);
   $('dur').textContent = fmt(last.duration);
   $('seek').setAttribute('aria-valuenow', Math.round(pos / last.duration * 100));
 }
-setInterval(tick, 500);
+setInterval(()=>{if(!document.hidden)tick();},500);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)tick();});
 
 function seekTo(clientX) {
   if (!last || !last.duration) return;
@@ -1427,6 +1584,7 @@ $('vol').oninput = (e) => {
   volDragging = true;
   clearTimeout(volTimer);
   const value = Math.min(Number(e.target.value), getVolMax());
+  phoneVolume();
   const send = () => { volSentAt = Date.now(); cmd('volume', value); };
   // At most about 8 updates a second while dragging, plus a final one when you stop.
   if (Date.now() - volSentAt >= 120) send(); else volTimer = setTimeout(send, 120);
@@ -1515,6 +1673,7 @@ function drawQueue() {
   list.textContent = '';
   site.classList.toggle('editing', editing);
   const total = siteItems.length + waitingItems.length;
+  $('queueSummary').hidden=!total&&!autoItems.length;$('queueCount').textContent=total;$('autoCount').textContent=autoItems.length;
   $('queueEmpty').hidden = total > 0 || autoItems.length > 0;
   $('autoHead').hidden = $('autoNote').hidden = autoItems.length === 0;
   const autoList = $('autoqueue');
@@ -1567,10 +1726,11 @@ function drawQueue() {
       attachDrag(li, grip, k);
       site.append(li);
     } else {
-      site.append(trackRow(r, actionButton('i-x', 'Remove from YouTube Music queue', () => removeSong(r, k)), () => {
+      const row=trackRow(r, actionButton('i-x', 'Remove from YouTube Music queue', () => removeSong(r, k)), () => {
         buzz();
         if (cmd('yt_jump', ref)) { toast('Jumping to ' + r.title); setView('playing'); }
-      }));
+      });
+      const n=document.createElement('span');n.className='queue-index';n.textContent=String(k+1);row.prepend(n);attachPhoneSwipe(row,dir=>{if(dir==='left'&&siteItems[k]?.videoId===r.videoId)removeSong(r,k);},true);site.append(row);
     }
   });
   for (const r of waitingItems) {
@@ -1766,10 +1926,10 @@ function loadLibrary(force) {
     drawLibrary(stale);
     const fresh = libCache[section] && Date.now() - (libCache[section].at || 0) < 10 * 60000 && section !== 'history' && section !== 'home';
     if (fresh) return;
-    cmd('library', section);          // quiet refresh: the old list stays until the new one arrives
+    if(cmd('library',section))$('libMsg').textContent='Showing saved library · refreshing…';else $('libMsg').textContent='Showing saved library · PC offline';
     return;
   }
-  $('libList').textContent = '';
+  $('libList').textContent = '';$('libCount').textContent='';phoneLibSnapshot=null;
   $('libMsg').textContent = 'Loading…';
   if (!cmd('library', section)) { $('libMsg').textContent = 'Not connected to your PC yet.'; return; }
   clearTimeout(libTimer);
@@ -1789,11 +1949,12 @@ function renderLibrary(m) {
   if (wantPlaylist && m.section === 'playlists') { wantPlaylist = false; if (!m.error) openPlaylistPick(); else toast("Couldn't load your playlists: " + m.error); }
   if (m.section !== libSection) return;
   clearTimeout(libTimer);
-  if (m.error && libCache[m.section]) return;   // keep showing the old list if a quiet refresh fails
+  if (m.error && libCache[m.section]) { $('libMsg').textContent='Showing saved library · refresh failed';return; }   // keep showing the old list if a quiet refresh fails
   drawLibrary(m);
 }
 function drawLibrary(m) {
-  const list = $('libList');
+  phoneLibSnapshot=m;
+  const list = $('libList');$('libCount').textContent=!m.error&&m.items?.length?m.items.length+' items':'';list.classList.toggle('grid-library',phoneLibraryGrid);
   list.textContent = '';
   if (m.error) { $('libMsg').textContent = "Couldn't load your library: " + m.error; return; }
   if (!m.items.length) { $('libMsg').textContent = 'Nothing here yet.'; return; }
@@ -1805,11 +1966,11 @@ function drawLibrary(m) {
       li.setAttribute('role', 'presentation');
       li.textContent = sh.title;
       list.append(li);
-      for (const r of sh.items) list.append(itemRow(r));
+      for (const r of phonePinnedOrder(sh.items)) list.append(phoneLibraryRow(r));
     }
     return;
   }
-  for (const r of m.items) list.append(itemRow(r));
+  for (const r of phonePinnedOrder(m.items)) list.append(phoneLibraryRow(r));
 }
 document.querySelectorAll('#libTabs .chip').forEach((b) => {
   b.onclick = () => {
@@ -2556,7 +2717,7 @@ document.addEventListener('pointerdown', (e) => {
     if (pressEl !== el) return;
     heldEl = holder;
     showTip(el, text);
-    if (navigator.vibrate) { try { navigator.vibrate(12); } catch {} }
+    buzz();
   }, 480);
 }, { passive: true });
 document.addEventListener('pointermove', (e) => {
@@ -2613,6 +2774,7 @@ function applyVolMax() {
   $('vol').max = m; $('volMax').value = m;
   $('volMaxLbl').textContent = m >= 100 ? 'No limit' : m + '%';
   if (last && last.volume != null && !volDragging) $('vol').value = Math.min(last.volume, m);
+  phoneVolume();
 }
 $('volMax').oninput = (e) => { try { localStorage.setItem('volMax', e.target.value); } catch {} applyVolMax(); };
 
@@ -2685,6 +2847,47 @@ $('forget').onclick = () => {
   show();
 };
 
+/* ---------- phone-only presentation and interactions ---------- */
+function phoneRead(k,d){try{return localStorage.getItem('phone_'+k)??d;}catch{return d;}}
+function phoneWrite(k,v){try{localStorage.setItem('phone_'+k,String(v));}catch{}}
+function phoneVolume(){const el=$('vol'),n=Number(el.value)||0;$('volumeValue').textContent=n+'%';el.style.setProperty('--vol-pct',100*n/(Number(el.max)||100)+'%');}
+function phoneAppearance(key,selector,allowed,fallback){
+  const buttons=Array.from(document.querySelectorAll(selector+' button'));
+  const apply=v=>{if(!allowed.includes(v))v=fallback;root.dataset['phone'+key[0].toUpperCase()+key.slice(1)]=v;buttons.forEach(b=>b.setAttribute('aria-pressed',String(b.dataset[key]===v)));};
+  apply(phoneRead(key,fallback));buttons.forEach(b=>b.onclick=()=>{phoneWrite(key,b.dataset[key]);apply(b.dataset[key]);buzz();});
+}
+phoneAppearance('theme','#phoneThemes',['dark','black'],'dark');
+phoneAppearance('accent','#phoneAccents',['auto','purple','blue','green'],'auto');
+phoneAppearance('density','#phoneDensities',['normal','compact'],'normal');
+for(const [id,key] of [['phoneHaptics','haptics'],['phoneGestures','gestures']]){$(id).checked=phoneRead(key,'1')!=='0';$(id).onchange=()=>phoneWrite(key,$(id).checked?'1':'0');}
+function attachPhoneSwipe(el,action,queue=false){
+  let start=null,suppress=0;
+  el.classList.add('queue-swipe');
+  el.addEventListener('pointerdown',e=>{if(e.pointerType==='mouse'||!e.isPrimary||e.target.closest('button')||phoneRead('gestures','1')==='0')return;start={id:e.pointerId,x:e.clientX,y:e.clientY};},{passive:true});
+  el.addEventListener('pointercancel',()=>{start=null;},{passive:true});
+  el.addEventListener('pointerup',e=>{if(!start||start.id!==e.pointerId)return;const dx=e.clientX-start.x,dy=e.clientY-start.y;start=null;let dir='';if(Math.abs(dx)>65&&Math.abs(dx)>Math.abs(dy)*1.5)dir=dx<0?'left':'right';else if(!queue&&dy<-65&&Math.abs(dy)>Math.abs(dx)*1.5)dir='up';if(!dir||(queue&&dir!=='left'))return;suppress=Date.now()+400;action(dir);},{passive:true});
+  el.addEventListener('click',e=>{if(Date.now()<suppress){e.preventDefault();e.stopImmediatePropagation();}},true);
+}
+attachPhoneSwipe($('art'),dir=>{if(dir!=='up'){buzz();cmd(dir==='left'?'next':'previous');}});
+attachPhoneSwipe($('miniCard'),dir=>{if(dir==='up')setView('playing');else{buzz();cmd(dir==='left'?'next':'previous');}});
+$('queueNowOpen').onclick=()=>setView('playing');
+$('seek').addEventListener('keydown',e=>{if(['ArrowLeft','ArrowRight'].includes(e.key)){e.preventDefault();skipBy(e.key==='ArrowLeft'?-5:5);}});
+$('musicSearchClear').onclick=()=>{$('q').value='';$('q').dispatchEvent(new Event('input',{bubbles:true}));$('q').focus();};
+$('q').addEventListener('input',()=>{$('musicSearchClear').hidden=!$('q').value;});
+function phoneLoading(msg,loader,pattern){const apply=()=>{$(loader).hidden=!pattern.test($(msg).textContent);};new MutationObserver(apply).observe($(msg),{childList:true,characterData:true,subtree:true});apply();}
+phoneLoading('searchMsg','searchLoading',/^(Searching|Opening|Finding).*…$/);
+phoneLoading('libMsg','libLoading',/^Loading…$/);
+let phoneLibraryGrid=phoneRead('grid','0')==='1',phoneLibSnapshot=null;
+function phoneLayout(){const el=$('libLayout');el.textContent=phoneLibraryGrid?'List view':'Grid view';el.setAttribute('aria-pressed',String(phoneLibraryGrid));$('libList').classList.toggle('grid-library',phoneLibraryGrid);}
+$('libLayout').onclick=()=>{phoneLibraryGrid=!phoneLibraryGrid;phoneWrite('grid',phoneLibraryGrid?'1':'0');phoneLayout();};
+phoneLayout();
+// Pins store only collection IDs on this phone, not titles or tokens. They are cleared on account changes.
+let phonePins=new Set();try{const a=JSON.parse(phoneRead('pins','[]'));if(Array.isArray(a))phonePins=new Set(a.filter(x=>typeof x==='string').slice(0,80));}catch{}
+function phonePinnedOrder(items){return [...items].sort((a,b)=>Number(phonePins.has(b.playlistId))-Number(phonePins.has(a.playlistId)));}
+function phoneLibraryRow(r){const li=itemRow(r);if(!r.playlistId||!['playlist','album'].includes(r.kind))return li;const pin=actionButton('i-plus','Pin collection on this phone',()=>{if(phonePins.has(r.playlistId))phonePins.delete(r.playlistId);else if(phonePins.size<80)phonePins.add(r.playlistId);phoneWrite('pins',JSON.stringify([...phonePins]));if(phoneLibSnapshot)drawLibrary(phoneLibSnapshot);});pin.classList.add('pin-btn');pin.setAttribute('aria-pressed',String(phonePins.has(r.playlistId)));pin.setAttribute('aria-label',phonePins.has(r.playlistId)?'Unpin collection':'Pin collection');const actions=li.querySelector('.acts3');(actions||li).append(pin);return li;}
+function phoneClearPins(){phonePins.clear();phoneWrite('pins','[]');phoneLibSnapshot=null;for(const k of Object.keys(phoneScroll))delete phoneScroll[k];}
+$('forget').addEventListener('click',phoneClearPins);
+$('devLeave').addEventListener('click',phoneClearPins);
 resetColour();
 show();
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
