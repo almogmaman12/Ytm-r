@@ -1007,7 +1007,7 @@ if (require.main === module) {
   const shutdown = () => {
     if(shuttingDown)return;shuttingDown=true;clearInterval(systemTimer);
     wss.clients.forEach((c) => { try { c.close(1001, 'server restarting'); } catch { /* ignore */ } });
-    server.close(async()=>{await Promise.allSettled([calendarCache.flush(),subscriptionTail,activity.flush(),system.stop()]);process.exit(0);});
+    server.close(async()=>{await Promise.allSettled([calendarCache.flush(),subscriptionTail,activity.flush()]);await system.stop();process.exit(0);});
     setTimeout(()=>process.exit(0),8000).unref();
   };
   process.on('SIGTERM', shutdown);
