@@ -1490,6 +1490,7 @@ function connect() {
     $('app').dataset.pc = 'off';
     if (ev.code === 4005) {
       // This phone was removed (or signed out): forget the key and go back to the start screen.
+      if($('settings').open)$('settings').close();
       setDevice(null); phoneClearPins(); token = null; last = null; artUrl = '';
       resetColour(); show();
       toast('This phone was removed. Pair it again to use it.');
@@ -2588,7 +2589,7 @@ function renderDevices(list) {
   if (!list || !list.length) { const li = document.createElement('li'); li.className = 'small'; li.textContent = 'No paired phones yet.'; ul.append(li); }
 }
 $('pairNew').onclick = () => rawCmd('pair_start');
-$('devLeave').onclick = () => { if (confirm('Sign out of this phone? You will need a new pairing code.')) { rawCmd('device_leave'); setTimeout(() => { setDevice(null); drop(); token = null; $('settings').close(); show(); }, 400); } };
+$('devLeave').onclick=()=>{if(confirm('Sign out of this phone? You will need a new pairing code.')){if(rawCmd('device_leave'))toast('Signing out…');}};
 $('pairToggle').onclick = () => { $('pairBox').hidden = !$('pairBox').hidden; if (!$('pairBox').hidden) setTimeout(() => $('pairInput').focus(), 50); };
 $('pairGo').onclick = () => {
   const code = $('pairInput').value.toUpperCase().replace(/[^A-Z2-9]/g, '');
@@ -3136,7 +3137,7 @@ function phonePinnedOrder(items){return [...items].sort((a,b)=>Number(phonePins.
 function phoneLibraryRow(r){const li=itemRow(r);if(!r.playlistId||!['playlist','album'].includes(r.kind))return li;const pin=actionButton('i-pin','Pin collection on this phone',()=>{if(phonePins.has(r.playlistId))phonePins.delete(r.playlistId);else if(phonePins.size<80)phonePins.add(r.playlistId);phoneWrite('pins',JSON.stringify([...phonePins]));if(phoneLibSnapshot)drawLibrary(phoneLibSnapshot);});pin.classList.add('pin-btn');pin.setAttribute('aria-pressed',String(phonePins.has(r.playlistId)));pin.setAttribute('aria-label',phonePins.has(r.playlistId)?'Unpin collection':'Pin collection');li.append(pin);return li;}
 function phoneClearPins(){browseReset();browseCache.clear();phonePins.clear();phoneWrite('pins','[]');phoneLibSnapshot=null;for(const k of Object.keys(phoneScroll))delete phoneScroll[k];}
 $('forget').addEventListener('click',phoneClearPins);
-$('devLeave').addEventListener('click',phoneClearPins);
+
 /* Phone-only submenu navigation and confirmations. */
 function phoneTrackKey(s=last){return JSON.stringify([s?.videoId||'',s?.title||'',s?.artist||'',s?.art||'',s?.site||'']);}
 const phoneSettingsMeta=[['Appearance & feel','Theme, colors, density and gestures','i-sliders'],['Do-not-play list','Manage blocked songs and artists','i-block'],['On this phone','Lock screen, display and volume limit','i-vol-hi'],['Connection & diagnostics','Refresh, repair and check your PC','i-swap'],['Paired phones','Manage remote devices','i-user'],['Security','Access code and connection token','i-block']];
