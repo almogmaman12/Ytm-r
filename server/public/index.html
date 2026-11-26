@@ -316,6 +316,66 @@
     #calendarViewLabel { font-size: 25px; }
   }
   @media(max-height: 550px) and (max-width: 740px) { #calendarDlg .cal-head { max-height: 52dvh; } .cal-monthbar { margin: 8px 0; } .cal-day { min-height: 45px; } }
+  /* Planner finishing touches: quiet depth, date rail, event details and live progress. */
+  #calendarDlg { --cal-edge: color-mix(in srgb, var(--accent) 18%, transparent); --cal-card: #201e29; }
+  #calendarDlg::backdrop { background: #08070bbd; backdrop-filter: blur(8px); }
+  #calendarDlg .cal-head { background: radial-gradient(ellipse at 10% 0%, var(--cal-soft), transparent 64%), var(--cal-panel); }
+  .cal-top .icon-btn, .cal-arrow { border: 1px solid var(--line); transition: background .18s, transform .18s; }
+  .cal-top .icon-btn:active, .cal-arrow:active, #calendarToday:active, .cal-day:active { transform: scale(.94); }
+  .cal-monthbar > div { min-width: 0; }
+  #calendarMonthTitle { font-size: clamp(26px, 6vw, 35px); }
+  .cal-segments { border: 1px solid var(--line); }
+  .cal-segments button { transition: color .18s, background .18s; }
+  .cal-weeklabels { font-size: 11px; letter-spacing: .025em; margin-bottom: 8px; }
+  .cal-day { transition: background .16s, border-color .16s, transform .16s; }
+  .cal-day.has-events:not([aria-pressed="true"]) { background: linear-gradient(155deg, var(--cal-soft), transparent); border-color: var(--cal-edge); }
+  .cal-day[aria-pressed="true"] { background: linear-gradient(155deg, color-mix(in srgb, var(--accent) 76%, white), var(--accent)); }
+  .cal-day i b { width: 5px; height: 5px; }
+  .cal-day.past-date:not([aria-pressed="true"]) strong { color: var(--muted); }
+  .cal-scroll { background: radial-gradient(ellipse at 100% 0%, color-mix(in srgb, var(--accent) 5%, transparent), transparent 42%), var(--bg); }
+  .cal-overview { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 8px; margin: 0 0 18px; }
+  .cal-stat { display: flex; flex-direction: column; gap: 3px; min-width: 0; padding: 11px 12px; border-radius: 15px; border: 1px solid var(--line); background: var(--cal-panel); }
+  .cal-stat strong { font-size: 22px; font-weight: 800; line-height: 1.1; letter-spacing: -.04em; font-variant-numeric: tabular-nums; }
+  .cal-stat span { font-size: 10px; color: var(--muted); font-weight: 650; }
+  .cal-stat:first-child strong { color: var(--accent); }
+  .cal-hero { background: linear-gradient(125deg, color-mix(in srgb,var(--accent) 78%,white), var(--accent) 74%); padding: 20px; gap: 14px; box-shadow: 0 12px 32px color-mix(in srgb,var(--accent) 12%,transparent); }
+  .cal-hero::after { right: -35px; bottom: -65px; opacity: .055; }
+  .cal-hero-icon { border: 1px solid #0001; background: #ffffff32; }
+  .cal-hero-meta { display: flex; flex-direction: column; gap: 7px; margin-top: 13px; }
+  #calendarHeroDetail { font-size: 11px; font-weight: 750; }
+  .cal-hero-track { height: 5px; background: #0002; border-radius: 99px; overflow: hidden; }
+  #calendarHeroProgress { height: 100%; border-radius: inherit; background: var(--accent-ink); width: 0%; transition: width .5s ease; }
+  .cal-agenda-head { margin-bottom: 20px; }
+  .cal-group { position: relative; }
+  .cal-group h3 { position: relative; padding: 7px 0 0; }
+  .cal-group h3 span { font-size: 10px; }
+  .cal-group h3::after { content: ''; width: 1px; height: 22px; margin-top: 4px; background: linear-gradient(var(--line),transparent); }
+  .cal-group.today h3 strong { box-shadow: 0 4px 16px var(--cal-edge); }
+  .cal-event { border-radius: 19px; padding: 15px 13px 15px 17px; background: linear-gradient(120deg,var(--cal-card),var(--cal-panel)); }
+  .cal-event::before { inset: 10px auto 10px 0; width: 3px; }
+  .cal-event .cal-state { white-space: normal; line-height: 1.35; }
+  .cal-time { gap: 5px 7px; line-height: 1.5; }
+  .cal-duration { color: var(--muted); font-size: 10px; padding: 2px 6px; background: var(--surface); border-radius: 6px; white-space: nowrap; }
+  .cal-event.active { background: linear-gradient(120deg,var(--cal-soft),var(--cal-panel)); }
+  .cal-event.all-day .cal-time .i { color: #d9b3f7; }
+  .cal-empty { background: linear-gradient(150deg,var(--cal-panel),transparent); }
+  .cal-reminders { transition: background .18s; }
+  @media(max-width: 740px) {
+    .cal-monthbar { margin: 17px 0 12px; }
+    .cal-scroll { padding-top: 15px; }
+    #calendarStatus { margin-bottom: 14px; }
+    .cal-hero { padding: 17px; margin-bottom: 22px; }
+    .cal-overview { margin-bottom: 14px; }
+  }
+  @media(max-width: 360px) {
+    .cal-stat { padding: 10px 8px; }
+    .cal-stat strong { font-size: 20px; }
+    .cal-event { padding: 12px 9px 12px 13px; }
+    .cal-hero { padding: 15px; gap: 10px; }
+  }
+  @media(prefers-reduced-motion: reduce) {
+    #calendarDlg *, #calendarDlg *::before, #calendarDlg *::after { transition: none !important; animation: none !important; }
+  }
   dialog#settings { padding: 0; max-height: 90dvh; }
   dialog#settings[open] { display: flex; flex-direction: column; }
   .sheetBody { overflow-y: auto; padding: 22px 22px 6px; overscroll-behavior: contain; }
@@ -622,9 +682,20 @@
   </header>
   <div class="cal-scroll">
     <p id="calendarStatus" role="status" aria-live="polite"></p>
-    <section id="calendarHero" class="cal-hero" aria-label="Upcoming event" hidden>
+    <div id="calendarOverview" class="cal-overview" aria-label="Selected view summary" hidden>
+      <div class="cal-stat"><strong id="calendarStatEvents">0</strong><span>Saved events</span></div>
+      <div class="cal-stat"><strong id="calendarStatDays">0</strong><span>Days with events</span></div>
+      <div class="cal-stat"><strong id="calendarStatAllDay">0</strong><span>All-day events</span></div>
+    </div>
+    <section id="calendarHero" class="cal-hero" aria-label="Highlighted event" hidden>
       <div class="cal-hero-icon"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></div>
-      <div class="cal-hero-copy"><div class="cal-eyebrow" id="calendarHeroLabel">Up next</div><strong id="calendarHeroTitle" dir="auto"></strong><p id="calendarHeroTime"></p></div>
+      <div class="cal-hero-copy">
+        <div class="cal-eyebrow" id="calendarHeroLabel">Up next</div><strong id="calendarHeroTitle" dir="auto"></strong><p id="calendarHeroTime"></p>
+        <div id="calendarHeroMeta" class="cal-hero-meta" hidden>
+          <div id="calendarHeroDetail"></div>
+          <div id="calendarHeroTrack" class="cal-hero-track" role="progressbar" aria-label="Event progress" aria-valuemin="0" aria-valuemax="100" hidden><div id="calendarHeroProgress"></div></div>
+        </div>
+      </div>
     </section>
     <div class="cal-agenda-head">
       <div><h3 id="calendarViewLabel">This week</h3><div id="calendarCount"></div></div>
@@ -1692,6 +1763,10 @@ function calItems() {
     .filter(x=>x && typeof x.title==='string' && /^\d{4}-\d{2}-\d{2}$/.test(x.date) && calDayKey(calDate(x.date))===x.date)
     .slice(0,80).sort((a,b)=>a.date.localeCompare(b.date)||(a.start??0)-(b.start??0));
 }
+function calDuration(ms) {
+  const minutes=Math.max(1,Math.ceil(ms/60000)), days=Math.floor(minutes/1440), hours=Math.floor(minutes%1440/60), mins=minutes%60;
+  return [days?days+'d':'',hours?hours+'h':'',mins?mins+'m':''].filter(Boolean).join(' ');
+}
 function drawCalendar() {
   if (!calendarAllowed || !$('calendarDlg').open) return;
   const now=Date.now(), today=calToday(), items=calItems(), week=calendarWeek||calPeriod(today), end=calPeriodEnd(week);
@@ -1723,7 +1798,7 @@ function drawCalendar() {
   if(monthMode)for(let i=0;i<calDate(week).getDay();i++){const blank=document.createElement('span');blank.setAttribute('aria-hidden','true');days.append(blank);}
   for(let date=week;date<=end;date=calAdd(date,1)){
     const d=calDate(date), btn=document.createElement('button'), count=items.filter(e=>e.date===date).length;
-    btn.type='button';btn.dataset.date=date;btn.className='cal-day'+(date===today?' today':'')+(count?' has-events':'');
+    btn.type='button';btn.dataset.date=date;btn.className='cal-day'+(date===today?' today':'')+(count?' has-events':'')+(date<today?' past-date':'');
     btn.setAttribute('aria-label',longDay.format(d)+(date===today?', today':'')+', '+count+' saved '+(count===1?'event':'events'));
     if(date===today)btn.setAttribute('aria-current','date');
     btn.setAttribute('aria-pressed',String(calendarSelected===date));
@@ -1745,6 +1820,10 @@ function drawCalendar() {
   if(status.textContent!==statusText)status.textContent=statusText;
   const shown=items.filter(x=>calendarSelected?x.date===calendarSelected:x.date>=week&&x.date<=end)
     .sort((a,b)=>a.date.localeCompare(b.date)||Number(!!b.allDay)-Number(!!a.allDay)||(a.start??Infinity)-(b.start??Infinity));
+  $('calendarOverview').hidden=!saved;
+  $('calendarStatEvents').textContent=String(shown.length);
+  $('calendarStatDays').textContent=String(new Set(shown.map(e=>e.date)).size);
+  $('calendarStatAllDay').textContent=String(shown.filter(e=>e.allDay).length);
   const timed=shown.filter(formatTime).sort((a,b)=>a.start-b.start);
   const ongoing=fresh?timed.find(e=>e.live!==false&&hasEnd(e)&&e.start<=now&&now<e.end):null;
   const upcoming=ongoing||timed.find(e=>e.start>now);
@@ -1752,6 +1831,17 @@ function drawCalendar() {
   $('calendarHeroTitle').textContent=upcoming?.title||'';
   $('calendarHeroLabel').textContent=ongoing?'Happening now':fresh&&upcoming?.live!==false?'Up next':'Next saved event';
   $('calendarHeroTime').textContent=upcoming?(upcoming.date===today?'Today':longDay.format(calDate(upcoming.date)))+' · '+timeText(upcoming):'';
+  const heroMeta=$('calendarHeroMeta'), heroTrack=$('calendarHeroTrack'), heroDetail=$('calendarHeroDetail');
+  const liveHighlight=!!upcoming&&fresh&&upcoming.live!==false;
+  heroMeta.hidden=!liveHighlight;heroTrack.hidden=!ongoing;heroDetail.textContent='';
+  $('calendarHeroProgress').style.width='0%';heroTrack.removeAttribute('aria-valuenow');
+  if(ongoing){
+    const percent=Math.max(0,Math.min(100,Math.round((now-ongoing.start)/(ongoing.end-ongoing.start)*100)));
+    $('calendarHeroProgress').style.width=percent+'%';heroTrack.setAttribute('aria-valuenow',String(percent));
+    heroDetail.textContent=calDuration(ongoing.end-now)+' remaining';
+  }else if(liveHighlight){
+    heroDetail.textContent='Starts in '+calDuration(upcoming.start-now);
+  }
   $('calendarViewLabel').textContent=calendarSelected?(calendarSelected===today?'Today':longDay.format(calDate(calendarSelected))):(week===current?(monthMode?'This month':'This week'):(monthMode?'Month agenda':'Week agenda'));
   $('calendarViewLabel').dir='auto';
   $('calendarCount').textContent=saved?shown.length+' saved '+(shown.length===1?'event':'events'):'Agenda not synced';
@@ -1780,8 +1870,9 @@ function drawCalendar() {
     row.className='cal-event'+(event.allDay?' all-day':'')+(past?' past':'')+(active?' active':'')+(soon?' soon':'');
     info.className='cal-info';time.className='cal-time';
     title.textContent=event.title||'Untitled event';title.dir='auto';
-    time.innerHTML='<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>';
+    time.innerHTML=event.allDay?'<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M7 3v4m10-4v4M3 10h18"/></svg>':'<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>';
     const label=document.createElement('span');label.textContent=timeText(event);label.dir='auto';time.append(label);
+    if(hasEnd(event)){const duration=document.createElement('span');duration.className='cal-duration';duration.textContent=calDuration(event.end-event.start);time.append(duration);}
     info.append(title,time);row.append(info);
     if(active||soon){const state=document.createElement('small');state.className='cal-state';state.textContent=active?'In progress':'In '+Math.ceil((event.start-now)/60000)+' min';row.append(state);}
     body.append(row);
@@ -1795,6 +1886,8 @@ function renderCalendar(m) {
 function clearCalendarView() {
   calendarSelected='';calendarWeek='';calendarMode='week';
   $('calendarHero').hidden=true;$('calendarHeroTitle').textContent='';$('calendarHeroTime').textContent='';
+  $('calendarHeroMeta').hidden=true;$('calendarHeroDetail').textContent='';$('calendarHeroTrack').hidden=true;$('calendarHeroTrack').removeAttribute('aria-valuenow');$('calendarHeroProgress').style.width='0%';
+  $('calendarOverview').hidden=true;for(const id of ['calendarStatEvents','calendarStatDays','calendarStatAllDay'])$(id).textContent='0';
   clearInterval(calendarFreshTimer);calendarFreshTimer=null;
   $('calendarItems').textContent='';$('calendarDays').textContent='';
 }
