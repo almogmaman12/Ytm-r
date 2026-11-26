@@ -12,10 +12,12 @@ self.addEventListener('fetch', (e) => {
   const req = e.request;
   if (req.mode !== 'navigate') return;
   const url = new URL(req.url);
-  if (url.pathname !== '/') return;
+  if (url.pathname !== '/' && url.pathname !== '/index.html') return;
   e.respondWith((async () => {
     const cache = await caches.open(CACHE);
-    const net = fetch(req).then((res) => { if (res.ok) cache.put('/', res.clone()); return res; }).catch(() => null);
+    const net = fetch(req, {cache:'no-store'}).then(async (res) => { if (res.ok) { try { await cache.put('/', res.clone()); } catch {} } return res; }).catch(() => null);
+    // A user-requested update must not time out into the old cached shell.
+    if(url.searchParams.has('app_update'))return (await net)||(await cache.match('/'))||Response.error();
     const timeout = new Promise((r) => setTimeout(() => r(null), 3500));
     const first = await Promise.race([net, timeout]);
     if (first) return first;
