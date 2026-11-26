@@ -676,7 +676,7 @@ wss.on('connection', async (ws, info) => {
             const cal=calendarCache.diagnostics(token);
             data={generatedAt:Date.now(),appBuild:APP_VERSION,uptime:Date.now()-relayStarted,pc:!!room.pc,helper:!!room.agent,pcVersion:room.pc?room.version||'':'',calendar:cal,subscriptions:subscriptionsFor(token).length,usage:await system.usage(),features:await ops.breakdown(),events:(await ops.list(token)).slice(0,40)};
           }else{
-            const events=await ops.list(token),prefs=ops.preference(token);
+            const events=await ops.list(token,msg.cmd==='ops_logs'&&msg.value.live===true),prefs=ops.preference(token);
             data={events:msg.cmd==='ops_security'?events.filter(e=>e.category==='security'||e.category==='device'):msg.cmd==='ops_overview'?events.filter(e=>e.alert):events,prefs,mode:ops.mode,subscriptions:subscriptionsFor(token).length};
           }
           return send(ws,{type:msg.cmd,request,data});
