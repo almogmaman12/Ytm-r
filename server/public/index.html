@@ -210,49 +210,68 @@
   dialog label.lbl { display: block; margin: 0 0 6px; font-weight: 600; font-size: 15px; }
   dialog input[type=text], dialog input[type=password] { width: 100%; height: 48px; border-radius: 14px; border: 0; padding: 0 14px; margin-bottom: 8px; background: var(--surface-2); color: var(--ink); font-size: 17px; }
   dialog p.small { font-size: 13px; margin: 0 0 18px; }
-  /* Calendar agenda: full-height mobile sheet, independent of the player. */
-  #calendarDlg { padding: 0; width: min(100%, 480px); height: 100dvh; max-height: 100dvh; max-width: 100%; margin: auto; border-radius: 24px; background: var(--bg); }
+  /* Calendar: adaptive agenda, using the player's live theme. */
+  #calendarDlg { padding: 0; width: min(100%, 640px); height: min(880px, 94dvh); max-height: 100dvh; max-width: 100%; margin: auto; border-radius: 28px; background: var(--bg); border: 1px solid var(--line); overflow: hidden; }
   #calendarDlg[open] { display: flex; flex-direction: column; }
-  #calendarDlg .cal-head { padding: max(16px, env(safe-area-inset-top)) 20px 12px; flex: none; border-bottom: 1px solid var(--line); }
+  #calendarDlg .cal-head { padding: max(14px, env(safe-area-inset-top)) clamp(14px, 4vw, 26px) 14px; flex: none; border-bottom: 1px solid var(--line); background: linear-gradient(155deg, var(--surface), transparent 80%); }
   .cal-top { display: flex; align-items: center; gap: 10px; }
-  .cal-top h2 { font-size: 27px; margin: 0; flex: 1; letter-spacing: -.035em; }
-  #calendarRange { margin: 9px 0 11px; font-size: 15px; color: var(--muted); font-weight: 600; }
-  #calendarDays { display: grid; grid-template-columns: repeat(7,minmax(0,1fr)); gap: 4px; }
-  .cal-day { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; min-height: 66px; border-radius: 14px; padding: 6px 0; color: var(--muted); }
-  .cal-day span { font-size: 11px; }
-  .cal-day strong { color: var(--ink); font-size: 19px; font-weight: 650; }
-  .cal-day i { height: 5px; width: 5px; background: transparent; border-radius: 50%; }
-  .cal-day.has-events i { background: var(--accent); }
-  .cal-day.today { box-shadow: inset 0 0 0 1px var(--accent); }
+  .cal-top h2 { font-size: 26px; margin: 0; flex: 1; letter-spacing: -.04em; font-weight: 750; }
+  .cal-top .icon-btn { flex: none; background: var(--surface); color: var(--ink); }
+  .cal-nav { display: flex; align-items: center; gap: 6px; margin: 18px 0 12px; }
+  #calendarRange { flex: 1; min-width: 0; margin: 0; font-size: clamp(15px, 4vw, 20px); color: var(--ink); font-weight: 750; line-height: 1.2; }
+  .cal-nav button { flex: none; font-size: 13px; font-weight: 650; border-radius: 12px; padding: 0 10px; min-height: 44px; background: var(--surface); color: var(--ink); }
+  .cal-nav .cal-arrow { width: 44px; padding: 0; display: grid; place-items: center; }
+  .cal-arrow .i { width: 20px; height: 20px; }
+  .cal-nav button:disabled { opacity: .3; cursor: default; }
+  #calendarToday { color: var(--accent); }
+  #calendarDays { display: grid; grid-template-columns: repeat(7,minmax(0,1fr)); gap: 5px; }
+  .cal-day { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; min-width: 0; min-height: 75px; border: 1px solid transparent; border-radius: 15px; padding: 7px 0; color: var(--muted); background: var(--surface); }
+  .cal-day span { font-size: 11px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cal-day strong { color: var(--ink); font-size: 22px; line-height: 1; font-weight: 750; font-variant-numeric: tabular-nums; }
+  .cal-day i { min-height: 14px; min-width: 14px; border-radius: 8px; font-size: 9px; line-height: 14px; font-weight: 750; font-style: normal; color: var(--accent); }
+  .cal-day.has-events i { background: var(--surface-2); }
+  .cal-day.today { border-color: var(--accent); }
+  .cal-day.today strong { color: var(--accent); }
   .cal-day[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
-  .cal-day[aria-pressed="true"] strong { color: inherit; }
-  .cal-day[aria-pressed="true"].has-events i { background: currentColor; }
-  .cal-nav { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
-  .cal-nav button { font-size: 13px; font-weight: 650; border-radius: 12px; padding: 8px 11px; min-height: 38px; background: var(--surface); color: var(--ink); }
-  .cal-nav button:disabled { opacity: .35; cursor: default; }
-  .cal-nav #calendarAll { margin-left: auto; }
-  .cal-nav #calendarAll[aria-pressed="true"] { color: var(--accent); background: var(--surface-2); }
-  .cal-scroll { flex: 1; overflow: auto; overscroll-behavior: contain; padding: 14px 20px; }
-  #calendarStatus { font-size: 13px; color: var(--muted); margin: 0 0 15px; }
+  .cal-day[aria-pressed="true"] strong, .cal-day[aria-pressed="true"] i { color: inherit; }
+  .cal-scroll { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; padding: 16px clamp(14px,4vw,26px) calc(24px + var(--safe-b)); scrollbar-width: thin; }
+  #calendarStatus { display: flex; align-items: flex-start; gap: 8px; font-size: 12px; line-height: 1.45; color: var(--muted); margin: 0 0 20px; }
+  #calendarStatus::before { content: ''; flex: 0 0 7px; height: 7px; margin-top: 5px; border-radius: 50%; background: currentColor; }
   #calendarStatus[data-state="ok"] { color: var(--ok); }
-  #calendarItems { display: flex; flex-direction: column; gap: 17px; }
-  .cal-group h3 { font-size: 15px; color: var(--muted); font-weight: 650; margin: 0 0 9px; }
+  #calendarStatus[data-state="cached"]::before { background: #e8b765; }
+  .cal-agenda-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 18px; }
+  #calendarViewLabel { margin: 0 0 2px; font-size: 22px; font-weight: 750; letter-spacing: -.035em; }
+  #calendarCount { font-size: 12px; color: var(--muted); }
+  #calendarAll { flex: none; min-height: 44px; padding: 0 12px; border-radius: 12px; background: var(--surface); font-size: 12px; font-weight: 650; }
+  #calendarAll[aria-pressed="true"] { color: var(--accent); }
+  #calendarItems { display: flex; flex-direction: column; gap: 22px; }
+  .cal-group h3 { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; font-size: 13px; color: var(--muted); font-weight: 700; }
+  .cal-group h3::after { content: ''; flex: 1; height: 1px; background: var(--line); }
   .cal-group.today h3 { color: var(--accent); }
-  .cal-event { display: flex; align-items: stretch; gap: 11px; padding: 12px 13px; background: var(--surface); border-radius: 15px; margin-bottom: 7px; }
-  .cal-event::before { content: ''; flex: 0 0 3px; border-radius: 9px; background: var(--accent); }
-  .cal-event.past { opacity: .60; }
-  .cal-event .cal-info { min-width: 0; flex: 1; }
-  .cal-event strong { display: block; font-size: 16px; line-height: 1.35; overflow-wrap: anywhere; }
-  .cal-event small { display: block; font-size: 12px; color: var(--muted); margin-top: 5px; }
-  .cal-empty { text-align: center; border: 1px dashed var(--line); border-radius: 18px; padding: 25px 16px; color: var(--muted); }
-  .cal-empty strong { display: block; color: var(--ink); margin-bottom: 5px; }
-  .cal-reminders { margin-top: 22px; padding: 15px; background: var(--surface); border-radius: 18px; }
+  .cal-event { display: grid; grid-template-columns: minmax(68px, 84px) minmax(0, 1fr); align-items: stretch; gap: 10px; margin-bottom: 9px; }
+  .cal-event:last-child { margin-bottom: 0; }
+  .cal-time { display: flex; flex-direction: column; align-items: flex-start; justify-content: center; padding: 8px 0; font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+  .cal-time small { display: block; font-size: 11px; color: var(--muted); font-weight: 500; margin-top: 3px; }
+  .cal-info { position: relative; min-width: 0; padding: 14px 14px 14px 18px; border-radius: 15px; border: 1px solid var(--line); background: var(--surface); overflow: hidden; }
+  .cal-info::before { content: ''; position: absolute; width: 3px; top: 10px; bottom: 10px; left: 0; border-radius: 4px; background: var(--accent); }
+  .cal-event.past .cal-info::before { background: var(--muted); }
+  .cal-event.past .cal-info strong, .cal-event.past .cal-time { color: var(--muted); }
+  .cal-event.all-day .cal-info::before { background: var(--muted); }
+  .cal-event.active .cal-info, .cal-event.soon .cal-info { border-color: var(--accent); }
+  .cal-event strong { display: block; font-size: 16px; font-weight: 700; line-height: 1.35; overflow-wrap: anywhere; }
+  .cal-event .cal-state { display: block; color: var(--accent); font-weight: 650; font-size: 11px; margin-top: 6px; }
+  .cal-empty { text-align: center; border: 1px dashed var(--line); border-radius: 20px; padding: 32px 16px; color: var(--muted); font-size: 13px; }
+  .cal-empty .i { margin: 0 auto 12px; width: 28px; height: 28px; color: var(--accent); }
+  .cal-empty strong { display: block; color: var(--ink); margin-bottom: 5px; font-size: 16px; }
+  .cal-reminders { margin-top: 26px; padding: 16px; border: 1px solid var(--line); background: var(--surface); border-radius: 18px; }
   .cal-reminders h3 { font-size: 16px; margin: 0 0 5px; }
   .cal-reminders p { font-size: 12px; margin: 0 0 12px; }
-  .cal-reminders .row { gap: 7px; }
-  .cal-reminders button { min-height: 42px; }
-  .cal-footer { flex: none; padding: 10px 20px calc(12px + var(--safe-b)); border-top: 1px solid var(--line); color: var(--muted); font-size: 11px; text-align: center; }
-  @media(max-width: 500px) { #calendarDlg { border-radius: 0; } }
+  .cal-reminders .row { flex-direction: row; flex-wrap: wrap; gap: 8px; }
+  .cal-reminders button { flex: 1 1 130px; min-height: 44px; height: auto; padding: 10px; font-size: 13px; border-radius: 12px; }
+  .cal-footer { padding: 18px 0 0; color: var(--muted); font-size: 11px; text-align: center; }
+  @media(max-width: 660px) { #calendarDlg { width: 100%; height: 100dvh; border-radius: 0; border: 0; } }
+  @media(max-width: 360px) { #calendarDays { gap: 3px; } .cal-day { min-height: 66px; border-radius: 10px; } .cal-nav { gap: 4px; } .cal-nav .cal-arrow { width: 40px; } .cal-event { grid-template-columns: minmax(62px, 72px) minmax(0, 1fr); gap: 7px; } }
+  @media(max-height: 480px) { #calendarDlg .cal-head { padding-top: 6px; padding-bottom: 8px; } .cal-nav { margin: 6px 0; } .cal-day { min-height: 48px; gap: 1px; padding: 3px 0; } .cal-day strong { font-size: 17px; } }
   dialog#settings { padding: 0; max-height: 90dvh; }
   dialog#settings[open] { display: flex; flex-direction: column; }
   .sheetBody { overflow-y: auto; padding: 22px 22px 6px; overscroll-behavior: contain; }
@@ -539,18 +558,21 @@
       <h2 id="calendarHeading">Calendar</h2>
       <button id="calendarRefresh" class="icon-btn" aria-label="Refresh calendar"><svg class="i"><use href="#i-refresh"/></svg></button>
     </div>
-    <p id="calendarRange"></p>
-    <div id="calendarDays" aria-label="Week dates"></div>
     <div class="cal-nav">
-      <button id="calendarPrev" aria-label="Previous week">‹</button>
+      <p id="calendarRange"></p>
+      <button id="calendarPrev" class="cal-arrow" aria-label="Previous week"><svg class="i" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></button>
       <button id="calendarToday">Today</button>
-      <button id="calendarNext" aria-label="Next week">›</button>
-      <button id="calendarAll" aria-pressed="true">All events</button>
+      <button id="calendarNext" class="cal-arrow" aria-label="Next week"><svg class="i" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg></button>
     </div>
+    <div id="calendarDays" role="group" aria-label="Week dates"></div>
   </header>
   <div class="cal-scroll">
     <p id="calendarStatus" role="status" aria-live="polite"></p>
-    <div id="calendarItems"></div>
+    <div class="cal-agenda-head">
+      <div><h3 id="calendarViewLabel">This week</h3><div id="calendarCount"></div></div>
+      <button id="calendarAll" aria-pressed="true">Whole week</button>
+    </div>
+    <div id="calendarItems" aria-labelledby="calendarViewLabel"></div>
     <section class="cal-reminders" aria-label="Notifications">
       <h3>Event reminders</h3>
       <p id="calendarPushStatus" role="status">Get a push notification 10 minutes before readable timed events.</p>
@@ -560,8 +582,8 @@
         <button id="calendarDisablePush" class="secondary" hidden>Turn off notifications</button>
       </div>
     </section>
+    <footer class="cal-footer">Read-only · Events cached on your relay server</footer>
   </div>
-  <footer class="cal-footer">Read-only · Events cached on your relay server</footer>
 </dialog>
 <dialog id="settings">
   <div class="sheetBody">
@@ -1604,58 +1626,78 @@ function calItems() {
 }
 function drawCalendar() {
   if (!calendarAllowed || !$('calendarDlg').open) return;
-  const today=calToday(), items=calItems(), week=calendarWeek||calWeek(today), end=calAdd(week,6);
+  const now=Date.now(), today=calToday(), items=calItems(), week=calendarWeek||calWeek(today), end=calAdd(week,6);
   const weeks=[calWeek(today),...items.map(x=>calWeek(x.date))].sort();
   const low=weeks[0], high=weeks[weeks.length-1];
   const shortDay=new Intl.DateTimeFormat(undefined,{weekday:'short'});
   const dateLabel=new Intl.DateTimeFormat(undefined,{month:'short',day:'numeric'});
   const longDay=new Intl.DateTimeFormat(undefined,{weekday:'long',month:'short',day:'numeric'});
   const clock=new Intl.DateTimeFormat(undefined,{hour:'numeric',minute:'2-digit'});
-  $('calendarRange').textContent=new Intl.DateTimeFormat(undefined,{year:'numeric',month:'short',day:'numeric'}).formatRange(calDate(week),calDate(end));
+  const rangeFmt=new Intl.DateTimeFormat(undefined,{year:'numeric',month:'short',day:'numeric'});
+  $('calendarRange').textContent=rangeFmt.formatRange?rangeFmt.formatRange(calDate(week),calDate(end)):rangeFmt.format(calDate(week))+' – '+rangeFmt.format(calDate(end));
   $('calendarRange').dir='auto';
   $('calendarPrev').disabled=week<=low;
   $('calendarNext').disabled=week>=high;
   $('calendarAll').setAttribute('aria-pressed',String(!calendarSelected));
-  const days=$('calendarDays'); days.textContent='';
+  const days=$('calendarDays'), focusedDate=days.contains(document.activeElement)?document.activeElement.dataset.date:'';
+  days.textContent='';
   for(let i=0;i<7;i++){
     const date=calAdd(week,i), d=calDate(date), btn=document.createElement('button');
-    btn.type='button'; btn.className='cal-day'+(date===today?' today':'')+(items.some(e=>e.date===date)?' has-events':'');
-    btn.setAttribute('aria-label',longDay.format(d)+(date===today?', today':''));
+    const count=items.filter(e=>e.date===date).length;
+    btn.type='button'; btn.dataset.date=date; btn.className='cal-day'+(date===today?' today':'')+(count?' has-events':'');
+    btn.setAttribute('aria-label',longDay.format(d)+(date===today?', today':'')+(count?', '+count+' saved '+(count===1?'event':'events'):''));
+    if(date===today)btn.setAttribute('aria-current','date');
     btn.setAttribute('aria-pressed',String(calendarSelected===date));
     const name=document.createElement('span'), number=document.createElement('strong'), dot=document.createElement('i');
     name.textContent=shortDay.format(d); number.textContent=d.getDate();
-    dot.setAttribute('aria-hidden','true'); btn.append(name,number,dot);
+    dot.textContent=count?String(count):'';dot.setAttribute('aria-hidden','true'); btn.append(name,number,dot);
     btn.onclick=()=>{calendarSelected=calendarSelected===date?'':date;drawCalendar();}; days.append(btn);
+    if(focusedDate===date)btn.focus({preventScroll:true});
   }
-  const status=$('calendarStatus'), list=$('calendarItems'); list.textContent='';
-  const fresh=calendarConnected && calendarData?.status==='ok' && Number.isFinite(calendarData.at) && Date.now()-calendarData.at<180000;
-  status.dataset.state=fresh?'ok':'';
-  status.textContent=fresh?'● Synced from your PC · '+items.length+' '+(items.length===1?'event':'events'):
+  const status=$('calendarStatus'), list=$('calendarItems');
+  const fresh=calendarConnected && calendarData?.status==='ok' && Number.isFinite(calendarData.at) && now-calendarData.at<180000;
+  const saved=['ok','cached'].includes(calendarData?.status);
+  status.dataset.state=fresh?'ok':saved?'cached':'';
+  const statusText=fresh?'Synced from your PC · '+items.length+' '+(items.length===1?'event':'events'):
     calendarData?.status==='unsupported'?'Calendar layout could not be read. Try Agenda or Week view on your PC.':
-    ['ok','cached'].includes(calendarData?.status)?'Showing saved events · Last sync '+(calendarData.at?new Date(calendarData.at).toLocaleString():'unknown')+'. Saved on the server. Open any Calendar tab to update.':
+    saved?'Saved on server · Last sync '+(calendarData.at?new Date(calendarData.at).toLocaleString():'unknown')+'. Open Calendar on your PC to update.':
     calendarData?.status==='disabled'?'Calendar sharing is disabled on the PC.':calendarData?'No saved events yet. Open Google Calendar on the PC.':'Waiting for calendar data…';
-  const shown=items.filter(x=>calendarSelected?x.date===calendarSelected:x.date>=week&&x.date<=end);
+  if(status.textContent!==statusText)status.textContent=statusText;
+  const shown=items.filter(x=>calendarSelected?x.date===calendarSelected:x.date>=week&&x.date<=end)
+    .sort((a,b)=>a.date.localeCompare(b.date)||Number(!!b.allDay)-Number(!!a.allDay)||(a.start??Infinity)-(b.start??Infinity));
+  $('calendarViewLabel').textContent=calendarSelected?(calendarSelected===today?'Today':longDay.format(calDate(calendarSelected))):(week===calWeek(today)?'This week':'Week agenda');
+  $('calendarViewLabel').dir='auto';
+  $('calendarCount').textContent=saved?shown.length+' saved '+(shown.length===1?'event':'events'):'Agenda not synced';
+  list.textContent='';
   if(!shown.length){
     const empty=document.createElement('div'), title=document.createElement('strong'), desc=document.createElement('div');
-    empty.className='cal-empty'; title.textContent=calendarSelected?longDay.format(calDate(calendarSelected)):'No events in this view';
-    desc.textContent=['ok','cached'].includes(calendarData?.status)?'No saved events for '+(calendarSelected?'this day.':'this week.'): 'Open any Google Calendar tab on your PC to sync events.';
+    empty.className='cal-empty';
+    empty.innerHTML='<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M7 3v4m10-4v4M3 10h18m-9 4v3m-1.5-1.5h3"/></svg>';
+    title.textContent=saved?'No saved events':'Your agenda is waiting';
+    desc.textContent=saved?'No events have been saved for '+(calendarSelected?'this day.':'this week.')+' Open Calendar on your PC to sync more dates.':'Open any Google Calendar tab on your PC to sync events.';
     empty.append(title,desc);list.append(empty);return;
   }
   let lastDate='', group;
   for(const event of shown){
     if(event.date!==lastDate){
       lastDate=event.date; group=document.createElement('section');group.className='cal-group'+(lastDate===today?' today':'');
-      const heading=document.createElement('h3');heading.textContent=(lastDate===today?'Today · ':'')+longDay.format(calDate(lastDate));group.append(heading);list.append(group);
+      const heading=document.createElement('h3');heading.textContent=(lastDate===today?'Today · ':'')+longDay.format(calDate(lastDate));heading.dir='auto';group.append(heading);list.append(group);
     }
-    const row=document.createElement('article'), info=document.createElement('div'), title=document.createElement('strong'), when=document.createElement('small');
-    const timed=Number.isFinite(event.start)&&Number.isFinite(+new Date(event.start));
-    row.className='cal-event'+(timed&&(Number.isFinite(event.end)?event.end:event.start)<Date.now()?' past':'');info.className='cal-info';
-    title.textContent=event.title||'Untitled event';title.dir='auto';
+    const row=document.createElement('article'), info=document.createElement('div'), title=document.createElement('strong'), time=document.createElement('div');
+    const timed=!event.allDay&&Number.isFinite(event.start)&&Number.isFinite(+new Date(event.start));
     const ends=timed&&Number.isFinite(event.end)&&event.end>event.start&&Number.isFinite(+new Date(event.end));
-    when.textContent=timed?clock.format(new Date(event.start))+(ends?' – '+(calDayKey(new Date(event.end))!==calDayKey(new Date(event.start))?dateLabel.format(new Date(event.end))+' ':'')+clock.format(new Date(event.end)):''):(event.allDay?'All day':event.time||'Time unavailable');
-    when.dir='auto';
-    if(fresh&&event.live!==false&&timed&&event.start>=Date.now()&&event.start-Date.now()<600000)when.textContent+=' · Starting soon';
-    info.append(title,when);row.append(info);group.append(row);
+    const past=event.date<today||(ends&&event.end<=now);
+    const active=fresh&&event.live!==false&&ends&&event.start<=now&&now<event.end;
+    const soon=fresh&&event.live!==false&&timed&&event.start>now&&event.start-now<600000;
+    row.className='cal-event'+(event.allDay?' all-day':'')+(past?' past':'')+(active?' active':'')+(soon?' soon':'');
+    info.className='cal-info';time.className='cal-time';time.dir='auto';
+    title.textContent=event.title||'Untitled event';title.dir='auto';
+    const start=document.createElement('span'); start.textContent=event.allDay?'All day':timed?clock.format(new Date(event.start)):event.time||'Time unknown';
+    time.append(start);
+    if(ends){const finish=document.createElement('small');finish.textContent='to '+(calDayKey(new Date(event.end))!==calDayKey(new Date(event.start))?dateLabel.format(new Date(event.end))+' ':'')+clock.format(new Date(event.end));time.append(finish);}
+    info.append(title);
+    if(active||soon){const state=document.createElement('small');state.className='cal-state';state.textContent=active?'In progress':'Starts in '+Math.ceil((event.start-now)/60000)+' min';info.append(state);}
+    row.append(time,info);group.append(row);
   }
 }
 function renderCalendar(m) {
