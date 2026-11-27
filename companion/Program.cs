@@ -244,8 +244,17 @@ internal sealed class CompanionContext : ApplicationContext
             var result = await updater.CheckAsync(settings);
             Status(result);
             if (result == ExtensionUpdater.Waiting) nextCheck = DateTime.UtcNow.AddMinutes(2);
+            else if (result == ExtensionUpdater.NoRelease) nextCheck = DateTime.UtcNow.AddMinutes(30);
         }
-        catch { Status("Update check failed. Check again later."); nextCheck = DateTime.UtcNow.AddMinutes(30); }
+        catch (HttpRequestException)
+        { Status("Release download unavailable. Check GitHub or network access."); nextCheck = DateTime.UtcNow.AddMinutes(30); }
+        catch (OperationCanceledException)
+        { Status("Release download timed out. Check again later."); nextCheck = DateTime.UtcNow.AddMinutes(30); }
+        catch (Exception ex) when (ex is InvalidDataException or CryptographicException or JsonException or FormatException)
+        { Status("Release or extension validation failed. Review settings and release."); nextCheck = DateTime.UtcNow.AddHours(6); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
+        { Status("Extension folder unavailable or file operation failed. Review settings."); nextCheck = DateTime.UtcNow.AddMinutes(30); }
+        catch { Status("Unexpected update error. Check again later."); nextCheck = DateTime.UtcNow.AddMinutes(30); }
         finally { busy = false; }
     }
     protected override void ExitThreadCore()
