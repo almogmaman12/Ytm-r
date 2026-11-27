@@ -3611,10 +3611,11 @@ function sysTitle(root,t){root.append(sysEl('h4','system-section-title',t));}
 function nativeAction(action,value=null){
   if(systemTab!=='native'||systemId||!getToken()||!getCode())return;
   if(action==='chrome_close'&&!confirm('Close all visible Chrome windows on your PC? Unsaved work or prompts may prevent closure.'))return;
+  if(action==='companion_update'&&!confirm('Update the Windows companion? It will temporarily disconnect. Chrome will stay open.'))return;
   if(action==='extension_update'&&!confirm('Install this exact signed update? Chrome will close gracefully and reopen if it was open. Review the permissions above first.'))return;
   systemId=reqId();$('systemRefresh').disabled=true;$('systemStatus').textContent='Sending Windows action…';
   if(!rawCmd('native_action',{request:systemId,action,value})){systemDisconnected();return;}
-  clearTimeout(systemTimer);systemTimer=setTimeout(()=>{systemId='';$('systemRefresh').disabled=false;$('systemStatus').textContent='No confirmation. Refresh before trying again.';},action.startsWith('extension_')?340000:12000);
+  clearTimeout(systemTimer);systemTimer=setTimeout(()=>{systemId='';$('systemRefresh').disabled=false;$('systemStatus').textContent='No confirmation. Refresh before trying again.';},/^(extension|companion)_/.test(action)?340000:12000);
 }
 function nativeReceive(m){
   if(pcId&&m.request===pcId){clearTimeout(pcTimer);pcId='';$('pcRefresh').disabled=false;if(view==='pc'&&getToken()&&getCode())drawNative(m,$('pcResults'),$('pcStatusText'),pcAction);return;}
@@ -3632,6 +3633,19 @@ function drawNative(m,root,status,act){
   const gib=n=>Number.isFinite(n)?(n/1024).toFixed(1)+' GB':'Unavailable';
   const memory=Number.isFinite(s.ramTotal)&&Number.isFinite(s.ramAvailable)?gib(s.ramTotal-s.ramAvailable)+' / '+gib(s.ramTotal):'Unavailable';
   opsMetric(root,[['Companion version',s.version||'Unknown'],['PC uptime',Number.isFinite(s.uptime)?sysDuration(s.uptime*1000):'Unavailable'],['Memory used',memory],['Battery',Number.isFinite(s.battery)?s.battery+'%':'Not available'],['Power',s.power==='ac'?'Plugged in':s.power==='battery'?'On battery':'Unknown']]);
+  sysTitle(root,'Windows companion updates');
+  const cu=s.companionUpdate;
+  opsMetric(root,[['Installed companion',cu?.current||s.version||'Unknown'],['Latest MSIX release',cu?.latest||'Check for updates']]);
+  if(cu?.status)root.append(sysEl('p','relay-health-caption',cu.status));
+  if(cu?.enabled){
+    const actions=sysEl('div','ops-actions');opsButton(actions,'Check companion update',()=>act('companion_check'));
+    const newer=(a,b)=>{if(!a||!b)return false;const x=a.split('.').map(Number),y=b.split('.').map(Number);for(let i=0;i<4;i++)if(x[i]!==y[i])return x[i]>y[i];return false;};
+    if(newer(cu.latest,cu.current)){
+      const notes=sysEl('a','','View signed release channel');notes.href='https://github.com/almogmaman12/Ytm-r/releases/tag/companion-channel';notes.target='_blank';notes.rel='noopener noreferrer';root.append(notes);
+      opsButton(actions,'Approve & update companion',()=>act('companion_update',cu.latest));
+    }
+    root.append(actions);
+  }else root.append(sysEl('p','relay-health-caption',cu?.supported?'Enable owner-phone companion updates in Windows status connection settings.':'Requires the signed MSIX installed through its App Installer channel and an updated companion.'));
   sysTitle(root,'Chrome');
   const chrome=s.chromeOpen===true?'Open':s.chromeOpen===false?(s.chromeRunning===true?'Closed (background processes running)':'Closed'):'Unknown';
   opsMetric(root,[['Chrome windows',chrome]]);
@@ -3685,9 +3699,9 @@ function pcRequest(action=null,value=null){
   if(view!=='pc'||pcId||!getToken()||!getCode()||ws?.readyState!==1)return;
   pcId=reqId();$('pcRefresh').disabled=true;$('pcStatusText').textContent=action?'Sending Windows action…':'Loading PC status…';
   if(!rawCmd(action?'native_action':'native_status',{request:pcId,...(action?{action,value}:{})})){pcClear();return;}
-  pcTimer=setTimeout(()=>{pcId='';$('pcRefresh').disabled=false;$('pcStatusText').textContent='No response. Refresh before retrying.';},action?.startsWith('extension_')?340000:15000);
+  pcTimer=setTimeout(()=>{pcId='';$('pcRefresh').disabled=false;$('pcStatusText').textContent='No response. Refresh before retrying.';},/^(extension|companion)_/.test(action||'')?340000:15000);
 }
-function pcAction(action,value=null){if(action==='chrome_close'&&!confirm('Close all visible Chrome windows?'))return;if(action==='extension_update'&&!confirm('Install this exact signed update? Chrome will close gracefully and reopen if it was open. Review the permissions above first.'))return;pcRequest(action,value);}
+function pcAction(action,value=null){if(action==='companion_update'&&!confirm('Update the Windows companion? It will temporarily disconnect. Chrome will stay open.'))return;if(action==='chrome_close'&&!confirm('Close all visible Chrome windows?'))return;if(action==='extension_update'&&!confirm('Install this exact signed update? Chrome will close gracefully and reopen if it was open. Review the permissions above first.'))return;pcRequest(action,value);}
 function pcTabsRequest(action='list',tabId=null){
   if(view!=='pc'||pcTabsId||!getToken()||!getCode()||ws?.readyState!==1)return;
   if(action==='close'&&!confirm('Close this Chrome tab? Unsaved work may be lost.'))return;

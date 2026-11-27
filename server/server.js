@@ -664,7 +664,9 @@ wss.on('connection', async (ws, info) => {
       const r=u?.review;
       const extensionUpdate=u&&typeof u==='object'?{enabled:controls&&u.enabled===true,current:version(u.current),latest:version(u.latest),status:text(u.status,240),
         review:controls&&u.enabled===true&&r&&version(r.installed)&&version(r.version)&&typeof r.hash==='string'&&/^[0-9a-f]{64}$/.test(r.hash)&&typeof r.details==='string'&&r.details.length<=3000?{installed:r.installed,version:r.version,hash:r.hash,details:r.details}:null}:null;
-      room.nativeState={controls,extensionUpdate,nowPlaying:media,chromeRunning:typeof msg.chromeRunning==='boolean'?msg.chromeRunning:null,chromeOpen:typeof msg.chromeOpen==='boolean'?msg.chromeOpen:null,audio:nativeAudio,at:Date.now(),version:/^\d{1,5}(\.\d{1,5}){3}$/.test(String(msg.version))?String(msg.version):'',uptime:integer(msg.uptime,0,3155760000),ramTotal,ramAvailable,battery:integer(msg.battery,0,100),power:['ac','battery','unknown'].includes(msg.power)?msg.power:'unknown'};
+      const cu=msg.companionUpdate, msixVersion=v=>typeof v==='string'&&/^(0|[1-9]\d{0,4})(\.(0|[1-9]\d{0,4})){3}$/.test(v)&&v.split('.').every(n=>Number(n)<=65535)?v:null;
+      const companionUpdate=cu&&typeof cu==='object'?{supported:cu.supported===true,enabled:controls&&cu.supported===true&&cu.enabled===true,current:msixVersion(cu.current),latest:msixVersion(cu.latest),status:text(cu.status,240)}:null;
+      room.nativeState={controls,extensionUpdate,companionUpdate,nowPlaying:media,chromeRunning:typeof msg.chromeRunning==='boolean'?msg.chromeRunning:null,chromeOpen:typeof msg.chromeOpen==='boolean'?msg.chromeOpen:null,audio:nativeAudio,at:Date.now(),version:/^\d{1,5}(\.\d{1,5}){3}$/.test(String(msg.version))?String(msg.version):'',uptime:integer(msg.uptime,0,3155760000),ramTotal,ramAvailable,battery:integer(msg.battery,0,100),power:['ac','battery','unknown'].includes(msg.power)?msg.power:'unknown'};
       return;
     }
     // The helper only keeps the connection alive; it sends nothing else.
@@ -718,9 +720,13 @@ wss.on('connection', async (ws, info) => {
         const reply=error=>send(ws,{type:'native_status',request,error});
         const state=room.nativeState;
         if(!room.native||!state||Date.now()-state.at>=150000||state.controls!==true)return reply('Windows controls are offline or disabled in the companion.');
-        const update=action==='extension_check'||action==='extension_update';
-        if(update&&state.extensionUpdate?.enabled!==true)return reply('Remote extension updates are disabled in the companion.');
-        const valid=action==='extension_check'?value===null:
+        const companion=action==='companion_check'||action==='companion_update';
+        const update=companion||action==='extension_check'||action==='extension_update';
+        if(companion&&state.companionUpdate?.enabled!==true)return reply('Remote companion updates are disabled.');
+        if(update&&!companion&&state.extensionUpdate?.enabled!==true)return reply('Remote extension updates are disabled in the companion.');
+        const valid=action==='companion_check'?value===null:
+          action==='companion_update'?typeof value==='string'&&value===state.companionUpdate?.latest:
+          action==='extension_check'?value===null:
           action==='extension_update'?typeof value==='string'&&/^[0-9a-f]{64}$/.test(value)&&state.extensionUpdate?.review?.hash===value:
           action==='volume'?Number.isInteger(value)&&value>=0&&value<=100:
           action==='mute'?typeof value==='boolean':

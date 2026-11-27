@@ -29,6 +29,7 @@ internal sealed class Settings
     public string Salt { get; set; } = "";
     public string PasswordHash { get; set; } = "";
     public string NativeConfig { get; set; } = ""; // DPAPI-protected; empty means disabled
+    public bool NativeCompanionUpdates { get; set; } // Separate opt-in for updating the native app
     public bool NativeRemoteUpdates { get; set; } // Explicit local opt-in for owner-phone signed updates
     public bool NativeControls { get; set; } // Off by default, including existing installs
 }
@@ -120,6 +121,9 @@ internal sealed class CompanionContext : ApplicationContext
     private readonly NativeMonitor native;
     private readonly Control dispatcher = new();
     private volatile PermissionReview? remotePreview;
+    private volatile string? companionLatest;
+    private volatile string companionMessage = "Check the signed MSIX channel.";
+    private DateTime companionReviewUntil;
     private DateTime remotePreviewUntil; // UI-thread-only expiry; prevents the automatic updater racing a phone review.
     private volatile string? latestVersion;
     private volatile string remoteMessage = "Check for a signed extension release.";
@@ -139,7 +143,7 @@ internal sealed class CompanionContext : ApplicationContext
     {
         backgroundLaunch = background;
         _ = dispatcher.Handle; // Marshal remote updater work onto the same UI thread as the tray updater.
-        native = new NativeMonitor(RemoteSnapshot, DispatchRemoteUpdate);
+        native = new NativeMonitor(RemoteSnapshot, CompanionSnapshot, DispatchRemoteUpdate);
         try
         {
             settings = Store.Load();
@@ -263,6 +267,9 @@ internal sealed class CompanionContext : ApplicationContext
             panel.Controls.Add(control);
             var updates = new CheckBox { Text = "Allow owner phone to review and install signed extension updates", AutoSize = true, Checked = settings.NativeRemoteUpdates && control.Checked, Enabled = control.Checked && enable.Checked };
             panel.Controls.Add(updates);
+            var companionUpdates = new CheckBox { Text = "Allow owner phone to update the Windows companion itself", AutoSize = true, Checked = settings.NativeCompanionUpdates && control.Checked, Enabled = control.Checked && enable.Checked };
+            panel.Controls.Add(companionUpdates);
+            control.CheckedChanged += (_, _) => { companionUpdates.Enabled = control.Checked && enable.Checked; if (!companionUpdates.Enabled) companionUpdates.Checked = false; };
             control.CheckedChanged += (_, _) => { updates.Enabled = control.Checked && enable.Checked; if (!updates.Enabled) updates.Checked = false; };
             enable.CheckedChanged += (_, _) => { control.Enabled = enable.Checked; if (!enable.Checked) control.Checked = false; };
             Label("Remote update approval uses your authenticated owner phone; Chrome may still require its own permission confirmation.");
@@ -289,12 +296,14 @@ internal sealed class CompanionContext : ApplicationContext
                     var old = settings.NativeConfig;
                     var oldControls = settings.NativeControls;
                     var oldUpdates = settings.NativeRemoteUpdates;
+                    var oldCompanionUpdates = settings.NativeCompanionUpdates;
                     settings.NativeConfig = config;
                     settings.NativeControls = enable.Checked && control.Checked;
                     settings.NativeRemoteUpdates = settings.NativeControls && updates.Checked;
+                    settings.NativeCompanionUpdates = settings.NativeControls && companionUpdates.Checked;
                     try { Store.Save(settings); }
-                    catch { settings.NativeConfig = old; settings.NativeControls = oldControls; settings.NativeRemoteUpdates = oldUpdates; throw; }
-                    remotePreview = null;
+                    catch { settings.NativeConfig = old; settings.NativeControls = oldControls; settings.NativeRemoteUpdates = oldUpdates; settings.NativeCompanionUpdates = oldCompanionUpdates; throw; }
+                    remotePreview = null; companionLatest = null; companionReviewUntil = DateTime.MinValue;
                     native.Start(config, settings.NativeControls);
                     form.Close();
                 }
@@ -304,6 +313,74 @@ internal sealed class CompanionContext : ApplicationContext
         }
         finally { settingsOpen = false; }
     }
+    private object CompanionSnapshot()
+    {
+        bool supported=CompanionUpdater.Supported();
+        return new { supported, enabled=supported && !settingsUnreadable && settings.NativeControls && settings.NativeCompanionUpdates,
+            current=CompanionUpdater.CurrentVersion().ToString(), latest=companionLatest, status=companionMessage };
+    }
+
+    private async Task<(bool ok,string message)> RemoteCompanionUpdate(string action,JsonElement value,CancellationToken ct)
+    {
+        if(ct.IsCancellationRequested || settingsUnreadable || !settings.NativeControls || !settings.NativeCompanionUpdates ||
+            string.IsNullOrEmpty(settings.PasswordHash) || busy || settingsOpen || !CompanionUpdater.Supported())
+            return (false,"Remote companion updates are disabled, unsupported or busy.");
+        var approved=companionLatest;
+        if(action=="companion_update" && (approved==null || approved!=value.GetString() || DateTime.UtcNow>=companionReviewUntil))
+            return (false,"Check the companion release again before updating.");
+        busy=true;
+        bool queued=false;
+        try
+        {
+            companionLatest=null;
+            var latest=await CompanionUpdater.LatestAsync(ct);
+            var current=CompanionUpdater.CurrentVersion();
+            companionLatest=latest.ToString();
+            if(latest<=current)
+            {
+                companionMessage="Companion is up to date.";
+                return (true,companionMessage);
+            }
+            if(action=="companion_check")
+            {
+                companionReviewUntil=DateTime.UtcNow.AddMinutes(10);
+                companionMessage="New MSIX version available. Review and approve the update.";
+                return (true,companionMessage);
+            }
+            if(companionLatest!=approved)
+            {
+                companionReviewUntil=DateTime.MinValue;
+                companionMessage="Release changed. Check again before approving.";
+                return (false,companionMessage);
+            }
+            companionReviewUntil=DateTime.MinValue;
+            companionMessage="Windows update requested. Companion may disconnect and restart.";
+            queued=true;
+            // Give the native relay time to return the acknowledgement before Windows closes the app.
+            _=ApplyCompanionUpdate(ct);
+            return (true,companionMessage);
+        }
+        catch
+        {
+            companionMessage="Could not read the trusted MSIX channel.";
+            return (false,companionMessage);
+        }
+        finally { if(!queued)busy=false; }
+    }
+
+    private async Task ApplyCompanionUpdate(CancellationToken ct)
+    {
+        try
+        {
+            await Task.Delay(3000,ct);
+            if(ct.IsCancellationRequested)return;
+            await CompanionUpdater.InstallAsync();
+            companionMessage="Windows finished processing the update. Refresh the PC status.";
+        }
+        catch { companionMessage="Windows could not complete the companion update. Check App Installer on the PC."; }
+        finally { busy=false; Status(companionMessage); }
+    }
+
     private object RemoteSnapshot()
     {
         var s = settings;
@@ -327,7 +404,7 @@ internal sealed class CompanionContext : ApplicationContext
         {
             dispatcher.BeginInvoke(new Action(async () =>
             {
-                try { completion.TrySetResult(await RemoteUpdate(action, value, ct)); }
+                try { completion.TrySetResult(action.StartsWith("companion_",StringComparison.Ordinal) ? await RemoteCompanionUpdate(action,value,ct) : await RemoteUpdate(action, value, ct)); }
                 catch (Exception) { completion.TrySetResult((false, "Remote extension update failed.")); }
             }));
         }
@@ -507,7 +584,7 @@ internal sealed class SettingsForm : Form
         {
             try
             {
-                var next = new Settings { ExtensionFolder = folder.Text.Trim(), PublicKey = pinned ?? key.Text.Trim(), AutomaticUpdates = auto.Checked, StartWithWindows = startup.Checked, Salt = current.Salt, PasswordHash = current.PasswordHash, NativeConfig = current.NativeConfig, NativeControls = current.NativeControls, NativeRemoteUpdates = current.NativeRemoteUpdates };
+                var next = new Settings { ExtensionFolder = folder.Text.Trim(), PublicKey = pinned ?? key.Text.Trim(), AutomaticUpdates = auto.Checked, StartWithWindows = startup.Checked, Salt = current.Salt, PasswordHash = current.PasswordHash, NativeConfig = current.NativeConfig, NativeControls = current.NativeControls, NativeRemoteUpdates = current.NativeRemoteUpdates, NativeCompanionUpdates = current.NativeCompanionUpdates };
                 if (next.ExtensionFolder.Length > 0 || next.AutomaticUpdates)
                     ExtensionUpdater.ValidateFolder(next.ExtensionFolder);
                 if (next.PublicKey.Length > 0)

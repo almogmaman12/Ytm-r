@@ -39,9 +39,10 @@ internal sealed class NativeMonitor : IDisposable
     private CancellationTokenSource? stop;
     private Task? worker;
     private readonly Func<object> updateSnapshot;
+    private readonly Func<object> companionSnapshot;
     private readonly Func<string,JsonElement,CancellationToken,Task<(bool ok,string message)>> updateAction;
-    public NativeMonitor(Func<object> snapshot, Func<string,JsonElement,CancellationToken,Task<(bool ok,string message)>> action)
-    { updateSnapshot=snapshot; updateAction=action; }
+    public NativeMonitor(Func<object> snapshot, Func<object> companion, Func<string,JsonElement,CancellationToken,Task<(bool ok,string message)>> action)
+    { updateSnapshot=snapshot; companionSnapshot=companion; updateAction=action; }
     public void Start(string protectedConfig, bool controlsEnabled)
     {
         Dispose();
@@ -125,7 +126,9 @@ internal sealed class NativeMonitor : IDisposable
             if (enabled)
             {
                 ct.ThrowIfCancellationRequested();
-                if (action == "extension_check" && value.ValueKind == JsonValueKind.Null ||
+                if (action == "companion_check" && value.ValueKind == JsonValueKind.Null ||
+                    action == "companion_update" && value.ValueKind == JsonValueKind.String && CompanionUpdater.ParseVersion(value.GetString(),out _) ||
+                    action == "extension_check" && value.ValueKind == JsonValueKind.Null ||
                     action == "extension_update" && value.ValueKind == JsonValueKind.String && Regex.IsMatch(value.GetString() ?? "", @"\A[0-9a-f]{64}\z"))
                     (ok,message) = await updateAction(action!,value.Clone(),ct);
                 else if (action is null || !WindowsControls.Valid(action,value)) message="Unsupported action or value.";
@@ -192,6 +195,7 @@ internal sealed class NativeMonitor : IDisposable
             type = "native_snapshot",
             controls = controlsEnabled,
             extensionUpdate = updateSnapshot(),
+            companionUpdate = companionSnapshot(),
             chromeRunning = WindowsControls.ChromeRunning(),
             chromeOpen = WindowsControls.ChromeOpen(),
             audio = controlsEnabled ? WindowsControls.ReadAudio() : null,

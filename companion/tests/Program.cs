@@ -22,7 +22,16 @@ if (args.Length == 1 && args[0] == "native")
         !Valid("chrome_close","null") || Valid("chrome_open","\"https://example.com\"") ||
         Valid("powershell","null") || Valid("shutdown","null"))
         throw new Exception("Windows action allowlist failed.");
-    Console.WriteLine("PASS: native DPAPI credentials, authentication proof and Windows action allowlist");
+    var feed=CompanionUpdater.Feed;
+    var descriptor=$"""<AppInstaller xmlns="http://schemas.microsoft.com/appx/appinstaller/2018" Version="0.1.0.8" Uri="{feed}"><MainPackage Name="YtmRemote.Companion" Publisher="CN=YTM Remote Companion" Version="0.1.0.8" ProcessorArchitecture="x64" Uri="{CompanionUpdater.BaseUrl}YtmCompanion-0.1.0.8.msix"/><UpdateSettings/></AppInstaller>""";
+    if(CompanionUpdater.ParseFeed(descriptor)!=new Version(0,1,0,8))throw new Exception("Companion feed version mismatch");
+    foreach(var invalid in new[]{descriptor.Replace("CN=YTM Remote Companion","CN=Other"),descriptor.Replace("YtmCompanion-0.1.0.8.msix","other.msix"),descriptor.Replace("0.1.0.8","0.1.0.65536"),descriptor.Replace("<UpdateSettings/>","<OptionalPackages/>")})
+    {
+        bool blocked=false;
+        try { CompanionUpdater.ParseFeed(invalid); } catch(InvalidDataException) { blocked=true; }
+        if(!blocked)throw new Exception("Invalid companion feed accepted");
+    }
+    Console.WriteLine("PASS: native DPAPI credentials, authentication proof, Windows action allowlist and companion feed validation");
     return;
 }
 if (args.Length != 2) throw new ArgumentException("Expected mode and isolated settings path.");
