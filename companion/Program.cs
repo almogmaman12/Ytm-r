@@ -142,6 +142,9 @@ internal sealed class CompanionContext : ApplicationContext
             status = "Saved settings unreadable; updates disabled. Open Settings for details.";
         }
         var menu = new ContextMenuStrip();
+        var version = typeof(Program).Assembly.GetName().Version?.ToString(4) ?? "Unknown";
+        var channel = Store.Packaged ? "MSIX" : "Test EXE";
+        menu.Items.Add(new ToolStripMenuItem($"Companion {version} ({channel})") { Enabled = false });
         menu.Items.Add(statusItem);
         menu.Items.Add("Settings…", null, (_, _) => OpenSettings());
         menu.Items.Add("Check for extension update", null, async (_, _) => await CheckAsync(true));
