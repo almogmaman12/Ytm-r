@@ -152,6 +152,7 @@ internal static class WindowsControls
         return ids;
     }
     internal static bool ChromeRunning() => ChromeProcesses().Count > 0;
+    internal static bool ChromeOpen() => ChromeWindows(false) > 0;
     private static void OpenChrome()
     {
         var path = ChromePaths().FirstOrDefault(File.Exists) ?? throw new InvalidOperationException("Chrome was not found in a standard installation folder.");
@@ -165,13 +166,17 @@ internal static class WindowsControls
     [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr hwnd,out uint pid);
     [DllImport("user32.dll",SetLastError=true)] [return:MarshalAs(UnmanagedType.Bool)]
     private static extern bool PostMessage(IntPtr hwnd,uint message,IntPtr wParam,IntPtr lParam);
-    private static int CloseChrome()
+    [DllImport("user32.dll",CharSet=CharSet.Unicode)] private static extern int GetClassName(IntPtr hwnd,StringBuilder name,int maxCount);
+    private static int CloseChrome() => ChromeWindows(true);
+    private static int ChromeWindows(bool close)
     {
         var ids=ChromeProcesses();
         int count=0;
         EnumWindows((hwnd,_)=>{
             GetWindowThreadProcessId(hwnd,out uint pid);
-            if(ids.Contains((int)pid)&&IsWindowVisible(hwnd)&&PostMessage(hwnd,0x0010,IntPtr.Zero,IntPtr.Zero)) count++;
+            if(!ids.Contains((int)pid)||!IsWindowVisible(hwnd)) return true;
+            var name=new StringBuilder(64);
+            if(GetClassName(hwnd,name,name.Capacity)>0 && name.ToString()=="Chrome_WidgetWin_1" && (!close||PostMessage(hwnd,0x0010,IntPtr.Zero,IntPtr.Zero))) count++;
             return true;
         },IntPtr.Zero);
         return count;
