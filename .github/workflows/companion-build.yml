@@ -77,6 +77,7 @@ jobs:
                 $app.AppInstaller.MainPackage.Publisher -ne $cert.Subject -or
                 $app.AppInstaller.MainPackage.Version -ne '0.1.0.0' -or
                 $app.AppInstaller.MainPackage.Uri -notlike '*/companion-channel/YtmCompanion-0.1.0.0.msix' -or
+                $app.AppInstaller.UpdateSettings.OnLaunch.HoursBetweenUpdateChecks -ne '0' -or
                 $app.AppInstaller.UpdateSettings.OnLaunch.ShowPrompt -ne 'false' -or
                 $null -eq $app.AppInstaller.UpdateSettings.AutomaticBackgroundTask) { throw 'App Installer configuration invalid' }
             Write-Host 'PASS: MSIX packed, signed and verified; App Installer feed validated. Test package is not distributed.'
