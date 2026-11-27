@@ -41,6 +41,9 @@ function render(s) {
   if (!s) return;
   setRow('s-us', s.userScriptsReady ? 'On' : 'Off (see below)', s.userScriptsReady ? 'ok' : 'bad');
   $('us-help').hidden = s.userScriptsReady;
+  const shell = s.shellBuild || 'Unknown';
+  const manifest = s.manifestVersion || chrome.runtime.getManifest().version;
+  setRow('s-shell', `${shell} (API ${s.shellApi ?? '?'}) · installed manifest ${manifest}`, shell === manifest ? 'ok' : 'warn');
   $('shell-help').hidden = s.state !== 'needs-shell';
   $('reload-help').hidden = !(s.reloadNeeded && s.state === 'ok');
 
@@ -68,8 +71,9 @@ async function refresh() {
 }
 
 async function load() {
-  const c = await chrome.storage.local.get(['relayUrl', 'token', 'allowHttp', 'pcCode', 'agent', 'youtube', 'sound', 'calendar']);
+  const c = await chrome.storage.local.get(['relayUrl', 'token', 'allowHttp', 'pcCode', 'agent', 'youtube', 'sound', 'calendar', 'reloadShellAtStartup']);
   $('agent').checked = c.agent !== false;
+  $('shellAutoReload').checked = c.reloadShellAtStartup === true;
   $('calendar').checked = !!c.calendar && await chrome.permissions.contains({ origins: ['https://calendar.google.com/*'] }).catch(() => false);
   const soundAvailable = await chrome.permissions.contains({ permissions: ['debugger'] }).catch(() => false);
   $('sound').checked = !!c.sound && soundAvailable;
@@ -84,6 +88,18 @@ async function load() {
   refresh();
 }
 
+$('shellAutoReload').onchange = async () => {
+  if (!unlocked) return;
+  const enabled = $('shellAutoReload').checked;
+  try {
+    await chrome.storage.local.set({reloadShellAtStartup: enabled});
+    say(enabled ? 'Startup shell reload enabled.' : 'Startup shell reload disabled.', 'ok');
+  } catch { $('shellAutoReload').checked = !enabled; say('Could not save startup reload setting.', 'bad'); }
+};
+$('shellReload').onclick = () => {
+  if (!unlocked || !confirm('Reload this extension now? Your settings will be kept. Playback controls may reconnect briefly.')) return;
+  chrome.runtime.reload();
+};
 $('calendar').onchange = async () => {
   const origins = ['https://calendar.google.com/*'];
   if ($('calendar').checked) {
