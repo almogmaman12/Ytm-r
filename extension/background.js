@@ -16,6 +16,7 @@
 //   - a bad or unreachable download never replaces the copy that already works.
 
 const SHELL_API = 2;            // payloads that need a newer shell are not installed
+const SHELL_BUILD = '2.4.4';    // Must match manifest.version in every new shell release.
 const SCRIPT_PREFIX = 'ytmr-';
 const YTM = 'https://music.youtube.com/*';
 const YT = 'https://www.youtube.com/*';          // optional: regular YouTube, off unless enabled in the settings
@@ -253,6 +254,8 @@ async function summary() {
     ...rest,
     pcStatus,
     shellApi: SHELL_API,
+    shellBuild: SHELL_BUILD,
+    manifestVersion: chrome.runtime.getManifest().version,
     userScriptsReady: userScriptsReady(),
     canApplyLive: userScriptsReady() && typeof chrome.userScripts.execute === 'function',
     extensionId: chrome.runtime.id,
@@ -541,7 +544,32 @@ chrome.runtime.onInstalled.addListener((details) => {
   if (details.reason === 'install') chrome.runtime.openOptionsPage();
   checkForUpdate({ force: true });
 });
-chrome.runtime.onStartup.addListener(() => { checkForUpdate(); ensureAgent().catch(() => {}); });
+// A local, owner-enabled startup check for stale workers after an unpacked update.
+function newerShellVersion(candidate, running) {
+  const valid = v => typeof v === 'string' && /^\d+(\.\d+){1,3}$/.test(v) && v.split('.').every(n => Number(n) <= 65535 && String(Number(n)) === n);
+  if (!valid(candidate) || !valid(running)) return false;
+  const a = candidate.split('.').map(Number), b = running.split('.').map(Number);
+  for (let i=0; i<4; i++) {
+    const diff=(a[i]||0)-(b[i]||0);
+    if (diff) return diff>0;
+  }
+  return false;
+}
+async function reloadStaleShellAtStartup() {
+  const saved = await chrome.storage.local.get(['reloadShellAtStartup','shellReloadAttempt']);
+  if (saved.reloadShellAtStartup !== true) return false;
+  const target = chrome.runtime.getManifest().version;
+  if (!newerShellVersion(target,SHELL_BUILD)) return false;
+  // One attempt per target version, persisted across worker and browser restarts.
+  if (saved.shellReloadAttempt?.target === target) return false;
+  await chrome.storage.local.set({shellReloadAttempt:{target,from:SHELL_BUILD,at:Date.now()}});
+  chrome.runtime.reload();
+  return true;
+}
+chrome.runtime.onStartup.addListener(async () => {
+  try { if (await reloadStaleShellAtStartup()) return; } catch { /* Keep the current shell usable. */ }
+  checkForUpdate(); ensureAgent().catch(() => {});
+});
 chrome.alarms.create('ota-check', { periodInMinutes: CHECK_EVERY_MINUTES, delayInMinutes: 1 });
 chrome.alarms.create('agent-check', { periodInMinutes: 1 });
 chrome.alarms.onAlarm.addListener((a) => {
