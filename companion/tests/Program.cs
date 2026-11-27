@@ -15,7 +15,14 @@ if (args.Length == 1 && args[0] == "native")
     bool rejected = false;
     try { new NativeCredentials("short","weak").Protect(); } catch (ArgumentException) { rejected = true; }
     if (!rejected) throw new Exception("Invalid native credentials accepted.");
-    Console.WriteLine("PASS: native DPAPI credentials, validation and authentication proof");
+    bool Valid(string action,string json) { using var doc=System.Text.Json.JsonDocument.Parse(json); return WindowsControls.Valid(action,doc.RootElement); }
+    if (!Valid("volume","0") || !Valid("volume","100") || Valid("volume","101") || Valid("volume","50.5") ||
+        !Valid("mute","true") || Valid("mute","1") || !Valid("output","\""+new string('a',32)+"\"") ||
+        Valid("output","\"arbitrary-path\"") || !Valid("media_next","null") || !Valid("chrome_open","null") ||
+        !Valid("chrome_close","null") || Valid("chrome_open","\"https://example.com\"") ||
+        Valid("powershell","null") || Valid("shutdown","null"))
+        throw new Exception("Windows action allowlist failed.");
+    Console.WriteLine("PASS: native DPAPI credentials, authentication proof and Windows action allowlist");
     return;
 }
 if (args.Length != 2) throw new ArgumentException("Expected mode and isolated settings path.");
