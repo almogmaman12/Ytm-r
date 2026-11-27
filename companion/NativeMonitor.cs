@@ -124,7 +124,7 @@ internal sealed class NativeMonitor : IDisposable
                 if (action is null || !WindowsControls.Valid(action,value)) message="Unsupported action or value.";
                 else
                 {
-                    try { message=WindowsControls.Execute(action,value); ok=true; }
+                    try { message=WindowsControls.Execute(action,value); ok=true; if (action is "chrome_open" or "chrome_close") await Task.Delay(1200,ct); }
                     catch { message="Windows could not complete this action. Check the device or app locally."; }
                 }
             }
