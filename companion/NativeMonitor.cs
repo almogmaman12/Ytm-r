@@ -131,7 +131,7 @@ internal sealed class NativeMonitor : IDisposable
             await gate.WaitAsync(ct);
             try
             {
-                await Send(ws, Snapshot(enabled), ct);
+                await Send(ws, await SnapshotAsync(enabled,ct), ct);
                 await Send(ws,new { type="native_result", id, ok, message },ct);
             }
             finally { gate.Release(); }
@@ -142,7 +142,7 @@ internal sealed class NativeMonitor : IDisposable
         while (ws.State == WebSocketState.Open && !ct.IsCancellationRequested)
         {
             await gate.WaitAsync(ct);
-            try { await Send(ws, Snapshot(enabled), ct); }
+            try { await Send(ws, await SnapshotAsync(enabled,ct), ct); }
             finally { gate.Release(); }
             await Task.Delay(TimeSpan.FromSeconds(60), ct);
         }
@@ -172,7 +172,7 @@ internal sealed class NativeMonitor : IDisposable
     [DllImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool GlobalMemoryStatusEx(ref MemoryStatus buffer);
-    private static object Snapshot(bool controlsEnabled)
+    private static async Task<object> SnapshotAsync(bool controlsEnabled,CancellationToken ct)
     {
         var memory = new MemoryStatus { Length = (uint)Marshal.SizeOf<MemoryStatus>() };
         bool available = GlobalMemoryStatusEx(ref memory);
@@ -187,6 +187,7 @@ internal sealed class NativeMonitor : IDisposable
             chromeRunning = WindowsControls.ChromeRunning(),
             chromeOpen = WindowsControls.ChromeOpen(),
             audio = controlsEnabled ? WindowsControls.ReadAudio() : null,
+            nowPlaying = controlsEnabled ? await NowPlaying.ReadAsync(ct) : null,
             version = typeof(Program).Assembly.GetName().Version?.ToString(4),
             uptime = Math.Max(0L, Environment.TickCount64 / 1000),
             ramTotal = available ? (long?)(memory.TotalPhys / 1048576) : null,
