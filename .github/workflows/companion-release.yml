@@ -115,6 +115,9 @@ jobs:
           p=root.find('a:MainPackage',ns)
           assert root.attrib['Version']==v and root.attrib['Uri']==base+'YtmCompanion.appinstaller'
           assert p is not None and p.attrib['Version']==v and p.attrib['Publisher']=='CN=YTM Remote Companion' and p.attrib['Name']=='YtmRemote.Companion' and p.attrib['Uri']==base+'YtmCompanion-'+v+'.msix'
+          launch=root.find('a:UpdateSettings/a:OnLaunch',ns)
+          assert launch is not None and launch.attrib['HoursBetweenUpdateChecks']=='0' and launch.attrib['ShowPrompt']=='false' and launch.attrib['UpdateBlocksActivation']=='false'
+          assert root.find('a:UpdateSettings/a:AutomaticBackgroundTask',ns) is not None
           PY
           if gh release view "$TAG" >/dev/null 2>&1; then
             mkdir -p previous
