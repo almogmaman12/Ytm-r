@@ -16,7 +16,7 @@
 //   - a bad or unreachable download never replaces the copy that already works.
 
 const SHELL_API = 2;            // payloads that need a newer shell are not installed
-const SHELL_BUILD = '2.4.5';    // Must match manifest.version in every new shell release.
+const SHELL_BUILD = '2.4.6';    // Must match manifest.version in every new shell release.
 const SCRIPT_PREFIX = 'ytmr-';
 const YTM = 'https://music.youtube.com/*';
 const YT = 'https://www.youtube.com/*';          // optional: regular YouTube, off unless enabled in the settings
@@ -391,15 +391,19 @@ function sendCaps() {
   if (agentWs && agentWs.readyState === 1) { try { agentWs.send(JSON.stringify({ type: 'caps', yt: ytOn })); } catch {} }
 }
 
-// Browser tab management is explicitly opted in and limited to the test relay.
+// Browser tab management is explicitly opted in for the configured trusted HTTPS relay.
 function ordinaryRemoteTab(t) {
   if (!t || t.incognito || !Number.isInteger(t.id) || typeof t.url !== 'string') return false;
   try { const u=new URL(t.url);return ['https:','http:'].includes(u.protocol); } catch { return false; }
 }
 async function remoteTabsRequest(ws,m,origin,guarded) {
-  if (!guarded || origin !== 'https://ytm-r.onrender.com' || ws !== agentWs || !agentAuthed || !/^[0-9a-f]{32}$/.test(m.id || '')) return;
+  if (!guarded || !origin.startsWith('https://') || ws !== agentWs || !agentAuthed || !/^[0-9a-f]{32}$/.test(m.id || '')) return;
   const respond=(data)=>{if(ws===agentWs&&agentAuthed&&ws.readyState===1)ws.send(JSON.stringify({type:'chrome_tabs_result',id:m.id,...data}));};
-  const allowed=async()=>ws===agentWs&&agentAuthed&&(await chrome.storage.local.get('remoteTabs')).remoteTabs===true&&await chrome.permissions.contains({permissions:['tabs']});
+  const allowed=async()=>{
+    const c=await chrome.storage.local.get(['remoteTabs','remoteTabsOrigin','relayUrl','token','allowHttp']);
+    let current;try{current=relayOrigin(c.relayUrl,c.allowHttp);}catch{return false;}
+    return ws===agentWs&&agentAuthed&&c.remoteTabs===true&&c.remoteTabsOrigin===origin&&current===origin&&agentScope===origin+'|'+c.token&&await chrome.permissions.contains({permissions:['tabs']});
+  };
   try {
     if(!await allowed())return respond({ok:false,error:'Enable remote tabs in the extension settings and approve Chrome tab access.'});
     if(!['list','activate','close'].includes(m.action))return respond({ok:false,error:'Unsupported tab action.'});

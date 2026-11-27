@@ -8,15 +8,29 @@ using System.Text.RegularExpressions;
 namespace YtmCompanion;
 
 // A narrow authenticated connection. Controls require explicit local opt-in and a fixed action allowlist.
-// The experimental client is deliberately pinned to the test relay, not production.
-internal sealed record NativeCredentials(string Token, string PcCode)
+// Owner chooses a trusted HTTPS relay in local settings.
+internal sealed record NativeCredentials(string Token, string PcCode, string RelayUrl)
 {
-    public const string Relay = "https://ytm-r.onrender.com";
+    public static string NormalizeRelay(string? raw)
+    {
+        if (!Uri.TryCreate(raw?.Trim(),UriKind.Absolute,out var uri) || uri.Scheme != Uri.UriSchemeHttps ||
+            string.IsNullOrEmpty(uri.Host) || uri.UserInfo.Length != 0 || uri.Query.Length != 0 ||
+            uri.Fragment.Length != 0 || uri.AbsolutePath != "/")
+            throw new ArgumentException("Enter a trusted HTTPS relay origin, without a path, credentials or query.");
+        return uri.GetLeftPart(UriPartial.Authority);
+    }
+    public Uri SocketUri()
+    {
+        Validate();
+        return new UriBuilder(NormalizeRelay(RelayUrl)) { Scheme = "wss", Path = "/ws",
+            Query = "role=native&token=" + Uri.EscapeDataString(Token) }.Uri;
+    }
     public void Validate()
     {
+        _ = NormalizeRelay(RelayUrl);
         if (Token is null || !Regex.IsMatch(Token, @"\A[A-Za-z0-9_-]{20,200}\z") ||
             PcCode is null || PcCode.Length < 8 || PcCode.Length > 256)
-            throw new ArgumentException("Enter the test relay token and PC code (at least eight characters).");
+            throw new ArgumentException("Enter the relay token and PC code (at least eight characters).");
     }
     public string Protect()
     {
@@ -82,7 +96,7 @@ internal sealed class NativeMonitor : IDisposable
         ws.Options.KeepAliveInterval = TimeSpan.FromSeconds(25);
         using var auth = CancellationTokenSource.CreateLinkedTokenSource(ct);
         auth.CancelAfter(TimeSpan.FromSeconds(25));
-        var uri = new Uri("wss://ytm-r.onrender.com/ws?role=native&token=" + Uri.EscapeDataString(config.Token));
+        var uri = config.SocketUri();
         await ws.ConnectAsync(uri, auth.Token);
         using (var first = await Read(ws, auth.Token))
         {

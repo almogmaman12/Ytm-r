@@ -3,7 +3,7 @@ using YtmCompanion;
 if (args.Length == 1 && args[0] == "updater") { await UpdaterTests.Run(); return; }
 if (args.Length == 1 && args[0] == "native")
 {
-    var credentials = new NativeCredentials("abcdefghijklmnopqrstuvwx_1234", "test-only-pc-code");
+    var credentials = new NativeCredentials("abcdefghijklmnopqrstuvwx_1234", "test-only-pc-code", "https://relay.example.com:8443");
     var encrypted = credentials.Protect();
     if (encrypted.Contains(credentials.Token) || NativeCredentials.Unprotect(encrypted) != credentials)
         throw new Exception("Native credential round trip failed.");
@@ -13,8 +13,17 @@ if (args.Length == 1 && args[0] == "native")
         System.Text.Encoding.UTF8.GetBytes(credentials.Token + "|native|" + nonce))).ToLowerInvariant();
     if (credentials.Proof(nonce) != expected) throw new Exception("Native challenge proof mismatch.");
     bool rejected = false;
-    try { new NativeCredentials("short","weak").Protect(); } catch (ArgumentException) { rejected = true; }
+    try { new NativeCredentials("short","weak","https://relay.example.com").Protect(); } catch (ArgumentException) { rejected = true; }
     if (!rejected) throw new Exception("Invalid native credentials accepted.");
+    if (credentials.SocketUri().AbsoluteUri != "wss://relay.example.com:8443/ws?role=native&token="+credentials.Token)
+        throw new Exception("Configurable relay URI mismatch.");
+    foreach (var invalid in new[]{"http://relay.example.com","https://user:pass@relay.example.com","https://relay.example.com/path","https://relay.example.com/?q=1","https://relay.example.com/#fragment","wss://relay.example.com",""})
+    {
+        bool blocked=false;
+        try { NativeCredentials.NormalizeRelay(invalid); } catch(ArgumentException) { blocked=true; }
+        if(!blocked)throw new Exception("Unsafe relay accepted.");
+    }
+    if(NativeCredentials.NormalizeRelay(" https://relay.example.com/ ")!="https://relay.example.com")throw new Exception("Relay normalization failed.");
     bool Valid(string action,string json) { using var doc=System.Text.Json.JsonDocument.Parse(json); return WindowsControls.Valid(action,doc.RootElement); }
     if (!Valid("volume","0") || !Valid("volume","100") || Valid("volume","101") || Valid("volume","50.5") ||
         !Valid("mute","true") || Valid("mute","1") || !Valid("output","\""+new string('a',32)+"\"") ||

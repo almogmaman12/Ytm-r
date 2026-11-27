@@ -254,12 +254,18 @@ internal sealed class CompanionContext : ApplicationContext
         settingsOpen = true;
         try
         {
-            using var form = new Form { Text = "Windows status connection (test relay)", Width = 565, Height = 490,
+            using var form = new Form { Text = "Windows status connection", Width = 565, Height = 590,
                 StartPosition = FormStartPosition.CenterScreen };
             var panel = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, WrapContents = false, AutoScroll = true, Padding = new Padding(12) };
             form.Controls.Add(panel);
             void Label(string text) => panel.Controls.Add(new Label { Text = text, AutoSize = true, MaximumSize = new Size(510, 0) });
-            Label("Test relay: " + NativeCredentials.Relay);
+            NativeCredentials? prior = null;
+            try { if (settings.NativeConfig.Length > 0) prior = NativeCredentials.Unprotect(settings.NativeConfig); } catch { }
+            Label("Trusted HTTPS relay (use the same address as the Chrome extension).");
+            var relay = new TextBox { Width = 500, Text = prior?.RelayUrl ?? "" };
+            panel.Controls.Add(relay);
+            if (prior == null && settings.NativeConfig.Length > 0)
+                Label("Older connection settings need migration: enter your relay URL, token and PC code again.");
             Label("Share Windows status with your authenticated owner phone. Remote controls are optional and limited to audio, media keys and Chrome.");
             var enable = new CheckBox { Text = "Share Windows status with my owner phone", AutoSize = true, Checked = settings.NativeConfig.Length > 0 };
             panel.Controls.Add(enable);
@@ -274,10 +280,10 @@ internal sealed class CompanionContext : ApplicationContext
             enable.CheckedChanged += (_, _) => { control.Enabled = enable.Checked; if (!enable.Checked) control.Checked = false; };
             Label("Remote update approval uses your authenticated owner phone; Chrome may still require its own permission confirmation.");
             Label("Chrome closes gracefully; unsaved work or confirmation dialogs may prevent closure. No shell commands are accepted.");
-            Label("Test relay token (leave both fields blank to retain saved credentials)");
+            Label("Room token (leave token and code blank only to retain credentials for the same relay)");
             var token = new TextBox { Width = 500, UseSystemPasswordChar = true };
             panel.Controls.Add(token);
-            Label("Test relay PC code");
+            Label("Relay PC code");
             var code = new TextBox { Width = 500, UseSystemPasswordChar = true };
             panel.Controls.Add(code);
             var save = new Button { Text = "Save", AutoSize = true };
@@ -289,9 +295,13 @@ internal sealed class CompanionContext : ApplicationContext
                     string config = "";
                     if (enable.Checked)
                     {
-                        config = token.Text.Length == 0 && code.Text.Length == 0 && settings.NativeConfig.Length > 0
-                            ? NativeCredentials.Unprotect(settings.NativeConfig).Protect()
-                            : new NativeCredentials(token.Text.Trim(), code.Text).Protect();
+                        var origin = NativeCredentials.NormalizeRelay(relay.Text);
+                        bool sameRelay = prior != null && NativeCredentials.NormalizeRelay(prior.RelayUrl) == origin;
+                        var next = sameRelay && token.Text.Length == 0 && code.Text.Length == 0
+                            ? prior! : new NativeCredentials(token.Text.Trim(), code.Text, origin);
+                        config = next.Protect();
+                        if ((!sameRelay || prior?.Token != next.Token) && MessageBox.Show("Allow this trusted relay and room to receive the selected PC status and control permissions? Only connect to a relay you control.",
+                            "Confirm relay", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes) return;
                     }
                     var old = settings.NativeConfig;
                     var oldControls = settings.NativeControls;
@@ -307,7 +317,7 @@ internal sealed class CompanionContext : ApplicationContext
                     native.Start(config, settings.NativeControls);
                     form.Close();
                 }
-                catch { MessageBox.Show("Could not save connection. Enter a valid token and PC code, or disable the connection.", "Windows status"); }
+                catch { MessageBox.Show("Could not save connection. Enter a trusted HTTPS relay origin, valid token and PC code, or disable the connection.", "Windows status"); }
             };
             form.ShowDialog();
         }

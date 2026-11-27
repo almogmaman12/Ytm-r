@@ -71,10 +71,10 @@ async function refresh() {
 }
 
 async function load() {
-  const c = await chrome.storage.local.get(['relayUrl', 'token', 'allowHttp', 'pcCode', 'agent', 'youtube', 'sound', 'calendar', 'reloadShellAtStartup', 'remoteTabs']);
+  const c = await chrome.storage.local.get(['relayUrl', 'token', 'allowHttp', 'pcCode', 'agent', 'youtube', 'sound', 'calendar', 'reloadShellAtStartup', 'remoteTabs', 'remoteTabsOrigin']);
   $('agent').checked = c.agent !== false;
   $('shellAutoReload').checked = c.reloadShellAtStartup === true;
-  $('remoteTabs').checked = c.remoteTabs === true && await chrome.permissions.contains({permissions:['tabs']}).catch(()=>false);
+  $('remoteTabs').checked = c.remoteTabs === true && c.remoteTabsOrigin === c.relayUrl && await chrome.permissions.contains({permissions:['tabs']}).catch(()=>false);
   $('calendar').checked = !!c.calendar && await chrome.permissions.contains({ origins: ['https://calendar.google.com/*'] }).catch(() => false);
   const soundAvailable = await chrome.permissions.contains({ permissions: ['debugger'] }).catch(() => false);
   $('sound').checked = !!c.sound && soundAvailable;
@@ -92,9 +92,12 @@ async function load() {
 $('remoteTabs').onchange = async () => {
   if(!unlocked)return;
   if($('remoteTabs').checked){
+    const c=await chrome.storage.local.get(['relayUrl','pcCode']);
+    if(!c.relayUrl?.startsWith('https://')||!c.pcCode||c.pcCode.length<8){$('remoteTabs').checked=false;return say('Save a trusted HTTPS relay and strong PC code before enabling remote tabs.','warn');}
+    if(!confirm('Allow authenticated owner phones on '+c.relayUrl+' to list, switch and close ordinary tabs?')){$('remoteTabs').checked=false;return;}
     const ok=await chrome.permissions.request({permissions:['tabs']}).catch(()=>false);
-    $('remoteTabs').checked=ok;await chrome.storage.local.set({remoteTabs:ok});say(ok?'Remote tabs enabled on the test relay.':'Tab permission denied.',ok?'ok':'warn');
-  }else{await chrome.storage.local.set({remoteTabs:false});await chrome.permissions.remove({permissions:['tabs']}).catch(()=>{});say('Remote tabs disabled.','ok');}
+    $('remoteTabs').checked=ok;await chrome.storage.local.set({remoteTabs:ok,remoteTabsOrigin:ok?c.relayUrl:''});say(ok?'Remote tabs enabled for your configured relay.':'Tab permission denied.',ok?'ok':'warn');
+  }else{await chrome.storage.local.set({remoteTabs:false,remoteTabsOrigin:''});await chrome.permissions.remove({permissions:['tabs']}).catch(()=>{});say('Remote tabs disabled.','ok');}
 };
 $('shellAutoReload').onchange = async () => {
   if (!unlocked) return;
@@ -177,7 +180,10 @@ $('save').onclick = async () => {
   say('Saving…');
   const pcCode = $('pccode').value.trim();
   if (pcCode && !/^\S{6,100}$/.test(pcCode)) { $('save').disabled = false; return say('The PC code needs 6 or more characters and no spaces (or leave it empty).', 'bad'); }
-  await chrome.storage.local.set({ relayUrl, token, allowHttp, pcCode, agent: $('agent').checked });
+  const previous=await chrome.storage.local.get(['relayUrl','token']);
+  const changed=previous.relayUrl!==relayUrl||previous.token!==token;
+  await chrome.storage.local.set({ relayUrl, token, allowHttp, pcCode, agent: $('agent').checked, ...(changed?{remoteTabs:false,remoteTabsOrigin:''}:{}) });
+  if(changed){$('remoteTabs').checked=false;await chrome.permissions.remove({permissions:['tabs']}).catch(()=>{});}
   const r = await chrome.runtime.sendMessage({ type: 'ota-check', force: true }).catch(() => null);
   $('save').disabled = false;
   render(r);
