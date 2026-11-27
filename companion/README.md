@@ -132,6 +132,14 @@ The signed-release workflow permits the exact reviewed experimental 2.4.4 source
 
 ## Companion auto-update (signed package)
 
+The Windows build workflow smoke-tests packaging with a disposable CI-only code-signing certificate. It verifies the package signature and the App Installer descriptor without installing the app or distributing that test package.
+
+A separate `.github/workflows/companion-release.yml` is reserved for explicit signed Windows releases. It is triggered only by `companion/release/companion-request.json` on `feature/windows-companion`, with a four-part increasing package version. Before requesting a release, the maintainer must configure the separate GitHub environment `companion-signing`, restricted to this exact branch, with secrets `YTM_MSIX_PFX_BASE64` and `YTM_MSIX_PFX_PASSWORD`, and a pinned SHA-256 certificate fingerprint in the environment variable `YTM_MSIX_CERT_SHA256`. The signing certificate must have the subject `CN=YTM Remote Companion` and be trusted by the intended Windows computer. Keep the original certificate and private key securely backed up. Never upload the PFX as a build artifact or commit it. The existing extension PEM keys remain separate and unchanged.
+
+The release job tests the companion, checks the certificate fingerprint, signs and verifies a versioned MSIX, and publishes it before updating the App Installer descriptor. The private certificate is never passed to the publishing job. The companion channel remains non-latest so extension downloads continue to use the extension release.
+
+For personal testing, a dedicated self-signed code-signing certificate can be created at no cost. Trusting that certificate on the destination PC is a one-time, explicit Windows administrator action; do not trust the disposable CI certificate. Windows can defer updates while the companion is running. The unpackaged EXE is not an App Installer installation, so one initial migration is needed. Stop the old companion and disable its old startup entry before installing the packaged edition, back up settings, verify the packaged app can read them, then enable the packaged startup entry if desired. Do not remove the old files until migration is verified.
+
 On a trusted Windows signing machine, with .NET 8, Node.js, the Windows SDK (makeappx and signtool on PATH) and a
 legitimate, trusted code-signing certificate already installed, run:
 
