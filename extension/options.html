@@ -93,9 +93,14 @@
   </details>
   <div id="msg" aria-live="polite"></div>
 
+  <h2>Extension updates</h2>
+  <label class="check"><input id="shellAutoReload" type="checkbox"><span>Reload this extension at Chrome startup if its loaded worker is older than its installed manifest. Enable only if you use the companion to install verified extension updates.</span></label>
+  <p class="small">This does not close Chrome or approve new browser permissions. One reload attempt per newer version.</p>
+  <div class="row"><button id="shellReload" type="button">Reload extension now</button></div>
   <h2>Status</h2>
   <dl>
     <dt>Chrome setting</dt><dd id="s-us">…</dd>
+    <dt>Extension shell</dt><dd id="s-shell">…</dd>
     <dt>Code from relay</dt><dd id="s-ota">…</dd>
     <dt>YouTube Music tab</dt><dd id="s-pc">…</dd>
   </dl>
