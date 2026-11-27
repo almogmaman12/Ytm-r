@@ -48,6 +48,45 @@ jobs:
         run: |
           dotnet run --project companion/tests/YtmCompanion.Tests.csproj -c Release --no-build -- updater
           if ($LASTEXITCODE -ne 0) { throw 'Extension updater test failed' }
+      - name: Smoke-test MSIX packaging with disposable test certificate
+        shell: pwsh
+        env:
+          YTM_EXTENSION_PUBLIC_KEY_PEM: ${{ vars.YTM_EXTENSION_PUBLIC_KEY_PEM }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $work = Join-Path $env:RUNNER_TEMP ('ytmr-msix-test-' + [Guid]::NewGuid().ToString('N'))
+          New-Item -ItemType Directory -Path $work | Out-Null
+          $cert = $null
+          try {
+            $key = Join-Path $work 'extension-public.pem'
+            if ($env:YTM_EXTENSION_PUBLIC_KEY_PEM) {
+              [IO.File]::WriteAllText($key, $env:YTM_EXTENSION_PUBLIC_KEY_PEM.Trim())
+            } else {
+              node -e "const k=require('node:crypto').generateKeyPairSync('ec',{namedCurve:'prime256v1'});require('node:fs').writeFileSync(process.argv[1],k.publicKey.export({type:'spki',format:'pem'}))" "$key"
+              if ($LASTEXITCODE -ne 0) { throw 'Test public key creation failed' }
+            }
+            $cert = New-SelfSignedCertificate -Type CodeSigningCert -Subject 'CN=YTM Remote Companion CI Test' -CertStoreLocation Cert:\CurrentUser\My -KeyAlgorithm RSA -KeyLength 2048 -HashAlgorithm SHA256 -NotAfter (Get-Date).AddDays(2)
+            $cer = Join-Path $work 'test.cer'
+            Export-Certificate -Cert $cert -FilePath $cer | Out-Null
+            Import-Certificate -FilePath $cer -CertStoreLocation Cert:\LocalMachine\TrustedPeople | Out-Null
+            & ./companion/release/package-msix.ps1 -Publisher $cert.Subject -CertificateThumbprint $cert.Thumbprint -Version '0.1.0.0' -OutputDirectory $work -ExtensionPublicKeyPath $key
+            $msix = Join-Path $work 'YtmCompanion-0.1.0.0.msix'
+            if (!(Test-Path $msix)) { throw 'Signed MSIX missing' }
+            [xml]$app = Get-Content (Join-Path $work 'YtmCompanion.appinstaller') -Raw
+            if ($app.AppInstaller.MainPackage.Name -ne 'YtmRemote.Companion' -or
+                $app.AppInstaller.MainPackage.Publisher -ne $cert.Subject -or
+                $app.AppInstaller.MainPackage.Version -ne '0.1.0.0' -or
+                $app.AppInstaller.MainPackage.Uri -notlike '*/companion-channel/YtmCompanion-0.1.0.0.msix' -or
+                $app.AppInstaller.UpdateSettings.OnLaunch.ShowPrompt -ne 'false' -or
+                $null -eq $app.AppInstaller.UpdateSettings.AutomaticBackgroundTask) { throw 'App Installer configuration invalid' }
+            Write-Host 'PASS: MSIX packed, signed and verified; App Installer feed validated. Test package is not distributed.'
+          } finally {
+            if ($cert) {
+              Remove-Item -LiteralPath "Cert:\LocalMachine\TrustedPeople\$($cert.Thumbprint)" -ErrorAction SilentlyContinue
+              Remove-Item -LiteralPath "Cert:\CurrentUser\My\$($cert.Thumbprint)" -ErrorAction SilentlyContinue
+            }
+            Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue
+          }
       - uses: actions/upload-artifact@v4
         with:
           name: YtmCompanion-windows-x64-test-build
