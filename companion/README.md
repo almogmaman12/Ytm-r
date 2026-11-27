@@ -42,6 +42,8 @@ Generate the release signing key pair on your own trusted signing machine, outsi
 
 For the production MSIX package, the public PEM file is required by the packaging script. This is a release-maintainer step, not an installation step on the companion PC. All future releases should use the same trusted publisher key unless a reviewed key rotation is needed.
 
+The tray status distinguishes a missing or inaccessible release manifest (HTTP 404), download errors, timeouts, validation failures, and local file errors. A 404 can also mean GitHub access is restricted. Missing releases and transient download errors are retried after 30 minutes. No routine notification is displayed.
+
 Routine checks occur every six hours when Chrome is closed. If Chrome is running, the updater waits
 locally and checks again in two minutes, without downloading anything. Chrome can keep running after
 all its windows are closed, so this may require a full Chrome exit. Do not close or terminate Chrome
