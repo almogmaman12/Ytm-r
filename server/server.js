@@ -326,7 +326,7 @@ function calendarFor(room,token){
 function getRoom(token) {
   let room = rooms.get(token);
   if (!room) {
-    room = { pc: null, agent: null, agentYt: false, lastSite: 0, version: '', lastSeen: 0, lastAgent: 0, lastWake: 0, phones: new Set(), lastState: null, lastYtQueue: null };
+    room = { pc: null, native: null, nativeState: null, agent: null, agentYt: false, lastSite: 0, version: '', lastSeen: 0, lastAgent: 0, lastWake: 0, phones: new Set(), lastState: null, lastYtQueue: null };
     room.calendar=calendarCache.get(token);
     rooms.set(token, room);
   }
@@ -349,7 +349,7 @@ const tellPhones = (room) => room.phones.forEach((p) => send(p, pcStatus(room)))
 
 function cleanupRoom(token) {
   const room = rooms.get(token);
-  if (room && !room.pc && !room.agent && room.phones.size === 0) rooms.delete(token);
+  if (room && !room.pc && !room.agent && !room.native && room.phones.size === 0) rooms.delete(token);
 }
 
 // Returns a normalised https URL, or '' if it is not a plain https URL.
@@ -470,10 +470,11 @@ server.on('upgrade', (req, socket, head) => {
     });
   }
   if (token.length < MIN_TOKEN_LEN || token.length > 200 || !/^[A-Za-z0-9_-]+$/.test(token) ||
-      (role !== 'pc' && role !== 'phone' && role !== 'agent')) {
+      (role !== 'pc' && role !== 'phone' && role !== 'agent' && role !== 'native')) {
     if (LOG_COMMANDS) console.log(`${new Date().toISOString()} [rejected] bad connection request from ${clientIp(req)} (${deviceLabel(String(req.headers['user-agent'] || ''))})`);
     return rejectUpgrade(socket, 400, 'Bad Request');
   }
+  if (role === 'native' && !calendarSecure()) return rejectUpgrade(socket, 403, 'Forbidden');
   if (isBlocked(clientIp(req))) {
     ops.emit(null,'blocked_request');    if (LOG_COMMANDS) console.log(`${new Date().toISOString()} [blocked] ${clientIp(req)} is blocked for too many wrong codes`);
     return rejectUpgrade(socket, 429, 'Too Many Requests');
@@ -539,7 +540,7 @@ wss.on('connection', async (ws, info) => {
 
   const room = getRoom(token);
   ws.isAlive = true;
-  ws.on('pong', () => { ws.isAlive = true;if(ws.joined&&ws.pingAt){ops.sample(token,role==='agent'?'helper':role,Date.now()-ws.pingAt);ws.pingAt=0;} });
+  ws.on('pong', () => { ws.isAlive = true;if(ws.joined&&ws.pingAt&&role!=='native'){ops.sample(token,role==='agent'?'helper':role,Date.now()-ws.pingAt);ws.pingAt=0;} });
 
   let windowStart = Date.now();
   let count = 0;
@@ -560,7 +561,11 @@ wss.on('connection', async (ws, info) => {
     authed = true;
     clearTimeout(authTimer);
     ws.joined = true;
-    if (role === 'agent') {
+    if (role === 'native') {
+      if (room.native && room.native !== ws) { ws.close(4000, 'native already connected'); return; }
+      room.native = ws; room.nativeState = null;
+      log(rid, 'Windows companion connected');
+    } else if (role === 'agent') {
       if (room.agent && room.agent !== ws) room.agent.close(4000, 'replaced');
       room.agent = ws;
       system.transition(token,'helper',true);ops.conn(token,'helper',true);
@@ -637,6 +642,13 @@ wss.on('connection', async (ws, info) => {
       return;
     }
 
+    if (role === 'native') {
+      if (room.native !== ws || !calendarSecure() || raw.length > 1024 || overLimit(2) || msg.type !== 'native_snapshot') return;
+      const integer=(v,min,max)=>Number.isSafeInteger(v)&&v>=min&&v<=max?v:null;
+      const ramTotal=integer(msg.ramTotal,1,16777216),ramAvailable=integer(msg.ramAvailable,0,ramTotal||0);
+      room.nativeState={at:Date.now(),version:/^\d{1,5}(\.\d{1,5}){3}$/.test(String(msg.version))?String(msg.version):'',uptime:integer(msg.uptime,0,3155760000),ramTotal,ramAvailable,battery:integer(msg.battery,0,100),power:['ac','battery','unknown'].includes(msg.power)?msg.power:'unknown'};
+      return;
+    }
     // The helper only keeps the connection alive; it sends nothing else.
     if (role === 'agent') {
       if (msg.type === 'calendar_snapshot' && room.agent === ws && calendarSecure() && !overLimit(5)) {
@@ -658,6 +670,14 @@ wss.on('connection', async (ws, info) => {
     if (role === 'phone') {
       if (raw.length > MAX_PHONE_MSG_BYTES || msg.type !== 'cmd') return;
       if (overLimit(MAX_CMDS_PER_SEC)) return;
+      if(msg.cmd==='native_status'){
+        if(!calendarOwner())return;
+        const request=String(msg.value?.request||'');if(!/^[a-zA-Z0-9_-]{1,32}$/.test(request))return;
+        if(Date.now()-lastSystemRead<2000)return send(ws,{type:'native_status',request,error:'Please wait before refreshing.'});
+        lastSystemRead=Date.now();
+        const state=room.native&&room.nativeState&&Date.now()-room.nativeState.at<150000?room.nativeState:null;
+        return send(ws,{type:'native_status',request,data:{online:!!room.native, state}});
+      }
       if(['ops_overview','ops_logs','ops_security','ops_analytics','ops_optimization','ops_report','ops_mark_read','ops_push'].includes(msg.cmd)){
         if(viaDevice||!accessCode())return;
         const request=String(msg.value?.request||'');if(!/^[a-zA-Z0-9_-]{1,32}$/.test(request))return;
@@ -970,8 +990,10 @@ wss.on('connection', async (ws, info) => {
 
   ws.on('close', (code) => {
     clearTimeout(authTimer);
-    if (ws.joined) log(rid, `${role === 'pc' ? 'PC' : role === 'agent' ? 'PC helper' : 'phone'} disconnected: ${who}${code === 4000 ? ' (replaced by another PC)' : ''}`);
-    if (role === 'agent') {
+    if (ws.joined) log(rid, `${role === 'pc' ? 'PC' : role === 'agent' ? 'PC helper' : role === 'native' ? 'Windows companion' : 'phone'} disconnected: ${who}${code === 4000 ? ' (replaced by another PC)' : ''}`);
+    if (role === 'native') {
+      if (room.native === ws) { room.native=null; room.nativeState=null; }
+    } else if (role === 'agent') {
       if (room.agent === ws) { room.calendar=calendarCache.get(token);room.agent=null;room.agentYt=false;room.lastAgent=Date.now();if(!shuttingDown){system.transition(token,'helper',false);ops.conn(token,'helper',false);}tellPhones(room);sendCalendar(room,token); }
     } else if (role === 'pc') {
       if (room.pc === ws) {
