@@ -38,7 +38,7 @@ Unsigned development builds without a bundled key still allow initial setup, but
 
 ### One-time publisher setup
 
-Generate the release signing key pair on your own trusted signing machine, outside the repository (see below). Keep the private key offline, and never add it to repository variables, commits, build artifacts, or the companion. For GitHub Actions test builds, add the contents of the **public** PEM file as the repository Actions variable `YTM_EXTENSION_PUBLIC_KEY_PEM` (Settings > Secrets and variables > Actions > Variables). The next build validates the P-256 public key and embeds it as an assembly resource. Without that variable, CI builds the development edition.
+Generate the release signing key pair on your own trusted signing machine, outside the repository (see below). Keep an offline backup of the private key, and never add it to repository variables, commits, build artifacts, or the companion. For automated releases, only the protected environment secret described below should contain the signing key. For GitHub Actions test builds, add the contents of the **public** PEM file as the repository Actions variable `YTM_EXTENSION_PUBLIC_KEY_PEM` (Settings > Secrets and variables > Actions > Variables). The next build validates the P-256 public key and embeds it as an assembly resource. Without that variable, CI builds the development edition.
 
 For the production MSIX package, the public PEM file is required by the packaging script. This is a release-maintainer step, not an installation step on the companion PC. All future releases should use the same trusted publisher key unless a reviewed key rotation is needed.
 
@@ -49,13 +49,47 @@ automatically. The update can be deferred indefinitely when Chrome never fully s
 
 ## Publish an extension release (trusted maintainer)
 
-Use a separate P-256 key pair and keep the private key off GitHub and off the companion PC. Run the following outside the repository on a trusted signing machine.
+If you already generated a P-256 key pair, reuse it. Do not rotate the existing companion's public key unnecessarily. Keep the private key out of repository files and off the companion PC. For a new publisher only, run the following outside the repository on a trusted signing machine.
 For example, on a trusted signing machine:
 
 ```sh
 openssl ecparam -name prime256v1 -genkey -noout -out extension-signing-private.pem
 openssl ec -in extension-signing-private.pem -pubout -out extension-signing-public.pem
 ```
+
+### Automated signing and publishing (recommended for convenience)
+
+Create a GitHub Actions environment named `extension-signing` under repository Settings > Environments.
+Restrict its deployment branches to the exact branch `feature/windows-companion` (selected branches
+and tags, branch rule). Add an **environment secret**, not a variable, called
+`YTM_EXTENSION_PRIVATE_KEY_PEM` containing the entire existing private PEM file. Keep the existing
+repository Actions variable `YTM_EXTENSION_PUBLIC_KEY_PEM` unchanged. Protect write access to the
+release branch and signing workflow; anyone who can modify trusted signing workflow code may be able
+to misuse the secret. Required reviewers provide extra protection but would require an approval for
+each release. Never paste the private key into chat, repository files, command arguments or logs.
+Using an Actions secret is a convenience/security tradeoff compared with offline signing.
+
+The new `.github/workflows/extension-release.yml` runs only when a release maintainer commits
+`companion/release/request.json` on `feature/windows-companion`. The file must contain the exact
+reviewed production commit SHA and its existing extension manifest version, for example:
+
+```json
+{"source":"<40-character reviewed OTA commit SHA>","version":"2.4.4"}
+```
+
+Replace the example with actual reviewed values. A phone-only change or an ordinary companion build
+does not create a release. The workflow verifies the commit belongs to the OTA branch history,
+checks its extension version, archives only the extension directory without executing its contents,
+verifies the signing key matches the public key, signs the archive, verifies its signature and hash
+again, and publishes a new GitHub Release. It refuses to overwrite existing release tags with
+published releases. The signing job has read-only repository access and the publish job has no
+private key. No Render/Neon calls or changes to main/OTA branches are needed for signing.
+
+This workflow does not sign the companion's MSIX package; that requires a separate Windows
+code-signing certificate. Do not create a request until the version is reviewed and approved.
+A first signed release and Windows update test are still required before relying on unattended updates.
+
+### Offline signing alternative
 
 Increment the existing manifest version in a reviewed extension release. ZIP the contents of the
 extension directory (manifest.json at the root), not the parent directory. Put the input ZIP outside
