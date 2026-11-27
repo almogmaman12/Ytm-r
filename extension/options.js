@@ -89,6 +89,13 @@ async function load() {
   refresh();
 }
 
+$('remoteTabs').onchange = async () => {
+  if(!unlocked)return;
+  if($('remoteTabs').checked){
+    const ok=await chrome.permissions.request({permissions:['tabs']}).catch(()=>false);
+    $('remoteTabs').checked=ok;await chrome.storage.local.set({remoteTabs:ok});say(ok?'Remote tabs enabled on the test relay.':'Tab permission denied.',ok?'ok':'warn');
+  }else{await chrome.storage.local.set({remoteTabs:false});await chrome.permissions.remove({permissions:['tabs']}).catch(()=>{});say('Remote tabs disabled.','ok');}
+};
 $('shellAutoReload').onchange = async () => {
   if (!unlocked) return;
   const enabled = $('shellAutoReload').checked;
