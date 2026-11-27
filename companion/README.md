@@ -73,15 +73,14 @@ Using an Actions secret is a convenience/security tradeoff compared with offline
 
 The new `.github/workflows/extension-release.yml` runs only when a release maintainer commits
 `companion/release/request.json` on `feature/windows-companion`. The file must contain the exact
-reviewed production commit SHA and its existing extension manifest version, for example:
+reviewed source commit SHA and its existing extension manifest version, for example:
 
 ```json
 {"source":"<40-character reviewed OTA commit SHA>","version":"2.4.4"}
 ```
 
 Replace the example with actual reviewed values. A phone-only change or an ordinary companion build
-does not create a release. The workflow verifies the commit belongs to the OTA branch history,
-checks its extension version, archives only the extension directory without executing its contents,
+does not create a release. The workflow normally verifies the commit belongs to the OTA branch history. The explicitly reviewed experimental 2.4.4 shell commit has a narrow exception that checks its branch ancestry, exact changed extension files and unchanged manifest permissions. The workflow checks its extension version, archives only the extension directory without executing its contents,
 verifies the signing key matches the public key, signs the archive, verifies its signature and hash
 again, and publishes a new GitHub Release. It refuses to overwrite existing release tags with
 published releases. The signing job has read-only repository access and the publish job has no
@@ -126,10 +125,7 @@ This feature requires an initial installation/reload of the experimental shell a
 opt-in. Increment both manifest.version and SHELL_BUILD on every subsequent shell release.
 If Chrome caches both the manifest and the worker, or the reload attempt fails, use Chrome's
 normal extension reload UI. Actual startup behavior must be tested in Chrome.
-The production signed-release workflow continues to package reviewed OTA-branch source only;
-this experimental shell is not published automatically. Installing it manually puts the
-test extension ahead of the current signed baseline, so future signed updates must use a
-higher version. Keep the original folder path and do not uninstall the extension.
+The signed-release workflow permits the exact reviewed experimental 2.4.4 source commit as a one-time exception to its OTA-source rule. The release is requested separately, and is not triggered by ordinary commits. The companion can download it without a new Windows build. Keep the original extension folder path and do not uninstall the extension. Once loaded, opt in via the extension settings. Actual Chrome activation still requires testing; a manual reload may remain necessary.
 
 ## Companion auto-update (signed package)
 
