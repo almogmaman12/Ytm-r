@@ -87,6 +87,7 @@ verifies the signing key matches the public key, signs the archive, verifies its
 again, and publishes a new GitHub Release. It refuses to overwrite existing release tags with
 published releases. The signing job has read-only repository access and the publish job has no
 private key. No Render/Neon calls or changes to main/OTA branches are needed for signing.
+To avoid GitHub's restriction on creating tags for some older commits, the release workflow uses the triggering commit as the tag target only when its complete extension tree is identical to the reviewed source tree. Release notes record both commits; the signed archive is still built from the reviewed source.
 
 This workflow does not sign the companion's MSIX package; that requires a separate Windows
 code-signing certificate. Do not create a request until the version is reviewed and approved.
