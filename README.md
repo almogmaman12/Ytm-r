@@ -2,7 +2,21 @@
 
 Control YouTube Music playing on a PC from your phone, with no shared Google account.
 
-> **Two versions.** This branch (`main`) is the simple one: you install the extension and update it by hand. The [`feature/ota-remote-loader` branch](https://github.com/almogmaman12/Ytm-r/tree/feature/ota-remote-loader) is the self-updating version, where the extension downloads its code from your own relay, and it also shows and edits YouTube Music's queue from the phone. Pick one; they don't work together.
+## Downloads
+
+[![Windows companion](https://img.shields.io/badge/Windows-Companion-0078D4?logo=windows&logoColor=white)](https://github.com/almogmaman12/Ytm-r/releases/tag/companion-channel)
+[![Chrome extension](https://img.shields.io/badge/Chrome-Signed%20extension-4285F4?logo=googlechrome&logoColor=white)](https://github.com/almogmaman12/Ytm-r/releases/latest)
+[![Installation guide](https://img.shields.io/badge/Setup-Installation%20guide-555555)](https://github.com/almogmaman12/Ytm-r/blob/feature/windows-companion/companion/README.md)
+
+| Windows companion | Chrome extension |
+|---|---|
+| [Download App Installer](https://github.com/almogmaman12/Ytm-r/releases/download/companion-channel/YtmCompanion.appinstaller) | [Download signed extension ZIP](https://github.com/almogmaman12/Ytm-r/releases/latest/download/extension.zip) |
+| [Publisher certificate (first install)](https://github.com/almogmaman12/Ytm-r/releases/download/companion-channel/publisher.cer) | [Extension setup](https://github.com/almogmaman12/Ytm-r/blob/feature/windows-companion/extension/README.md) |
+| [Windows installation guide](https://github.com/almogmaman12/Ytm-r/blob/feature/windows-companion/companion/README.md) | [Update guide](https://github.com/almogmaman12/Ytm-r/blob/feature/windows-companion/docs/updates/README.md) |
+
+These downloads are for the [unified OTA and Windows companion branch](https://github.com/almogmaman12/Ytm-r/tree/feature/windows-companion). The companion release channel intentionally is not marked Latest: Latest is reserved for signed Chrome extension updates.
+
+> **Legacy branch documentation.** This branch (`main`) is the simple one: you install the extension and update it by hand. The [`feature/ota-remote-loader` branch](https://github.com/almogmaman12/Ytm-r/tree/feature/ota-remote-loader) is the self-updating version, where the extension downloads its code from your own relay, and it also shows and edits YouTube Music's queue from the phone. For new self-hosted setups, use the unified companion branch linked above; the older branches remain available for their respective setups.
 
 ```
 Phone page  <--wss-->  Relay server  <--wss-->  Chrome extension  -->  music.youtube.com
