@@ -16,7 +16,7 @@
 //   - a bad or unreachable download never replaces the copy that already works.
 
 const SHELL_API = 2;            // payloads that need a newer shell are not installed
-const SHELL_BUILD = '2.4.4';    // Must match manifest.version in every new shell release.
+const SHELL_BUILD = '2.4.5';    // Must match manifest.version in every new shell release.
 const SCRIPT_PREFIX = 'ytmr-';
 const YTM = 'https://music.youtube.com/*';
 const YT = 'https://www.youtube.com/*';          // optional: regular YouTube, off unless enabled in the settings
@@ -391,6 +391,30 @@ function sendCaps() {
   if (agentWs && agentWs.readyState === 1) { try { agentWs.send(JSON.stringify({ type: 'caps', yt: ytOn })); } catch {} }
 }
 
+// Browser tab management is explicitly opted in and limited to the test relay.
+function ordinaryRemoteTab(t) {
+  if (!t || t.incognito || !Number.isInteger(t.id) || typeof t.url !== 'string') return false;
+  try { const u=new URL(t.url);return ['https:','http:'].includes(u.protocol); } catch { return false; }
+}
+async function remoteTabsRequest(ws,m,origin,guarded) {
+  if (!guarded || origin !== 'https://ytm-r.onrender.com' || ws !== agentWs || !agentAuthed || !/^[0-9a-f]{32}$/.test(m.id || '')) return;
+  const respond=(data)=>{if(ws===agentWs&&agentAuthed&&ws.readyState===1)ws.send(JSON.stringify({type:'chrome_tabs_result',id:m.id,...data}));};
+  const allowed=async()=>ws===agentWs&&agentAuthed&&(await chrome.storage.local.get('remoteTabs')).remoteTabs===true&&await chrome.permissions.contains({permissions:['tabs']});
+  try {
+    if(!await allowed())return respond({ok:false,error:'Enable remote tabs in the extension settings and approve Chrome tab access.'});
+    if(!['list','activate','close'].includes(m.action))return respond({ok:false,error:'Unsupported tab action.'});
+    if(m.action!=='list'){
+      if(!Number.isSafeInteger(m.tabId)||m.tabId<0)return respond({ok:false,error:'Invalid tab.'});
+      const t=await chrome.tabs.get(m.tabId);
+      if(!ordinaryRemoteTab(t)||!await allowed())return respond({ok:false,error:'This tab is not available for remote control.'});
+      if(m.action==='activate'){await chrome.tabs.update(t.id,{active:true});await chrome.windows.update(t.windowId,{focused:true});}
+      else await chrome.tabs.remove(t.id);
+    }
+    const tabs=(await chrome.tabs.query({})).filter(ordinaryRemoteTab);
+    if(!await allowed())return respond({ok:false,error:'Remote tabs disabled.'});
+    respond({ok:true,total:tabs.length,tabs:tabs.slice(0,60).map(t=>({id:t.id,title:String(t.title||'Web tab').slice(0,120),active:!!t.active,audible:!!t.audible,windowId:t.windowId}))});
+  }catch{respond({ok:false,error:'Chrome could not complete the tab request. Refresh the list.'});}
+}
 async function ensureAgent() {
   const { agent } = await chrome.storage.local.get('agent');
   const cfg = await getConfig();
@@ -403,6 +427,7 @@ async function ensureAgent() {
   agentScope=origin+'|'+cfg.token;
   const ws = new WebSocket(`${origin.replace(/^http/, 'ws')}/ws?token=${encodeURIComponent(cfg.token)}&role=agent`);
   agentWs = ws;
+  let guarded=false;
   ws.onmessage = async (ev) => {
     let m; try { m = JSON.parse(ev.data); } catch { return; }
     if (m.type === 'challenge') {
@@ -412,11 +437,14 @@ async function ensureAgent() {
       ws.send(JSON.stringify({ type: 'auth', proof: hex(sig) }));
     } else if (m.type === 'authed') {
       agentAuthed = true;
+      guarded=m.guarded===true;
       agentDelay = 3000;
       clearInterval(agentPing);
       // A message every 20 s also keeps Chrome from stopping this worker.
       agentPing = setInterval(() => { try { ws.send('{"type":"ping"}'); } catch {} }, 20000);
       sendCaps(); publishCalendar();
+    } else if (m.type === 'chrome_tabs_request') {
+      await remoteTabsRequest(ws,m,origin,guarded);
     } else if (m.type === 'wake') {
       openMusicTab();
     } else if (m.type === 'site') {
