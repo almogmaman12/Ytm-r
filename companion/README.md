@@ -44,6 +44,8 @@ For the production MSIX package, the public PEM file is required by the packagin
 
 The tray status distinguishes a missing or inaccessible release manifest (HTTP 404), download errors, timeouts, validation failures, and local file errors. A 404 can also mean GitHub access is restricted. Missing releases and transient download errors are retried after 30 minutes. No routine notification is displayed.
 
+The tray's Check for extension update action does not require the settings password. Opening settings and approving new permissions still require it. All checks retain signature, archive integrity, manifest compatibility and Chrome-closed safeguards.
+
 Routine checks occur every six hours when Chrome is closed. If Chrome is running, the updater waits
 locally and checks again in two minutes, without downloading anything. Chrome can keep running after
 all its windows are closed, so this may require a full Chrome exit. Do not close or terminate Chrome
