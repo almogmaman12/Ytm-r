@@ -127,15 +127,19 @@ internal sealed class ExtensionUpdater
         }
     }
 
-    public async Task<string> CheckAsync(Settings settings)
+    public Task<string> CheckAsync(Settings settings) => CheckCoreAsync(settings.ExtensionFolder, settings.EffectivePublicKey, Download, ChromeOpen);
+
+    // Internal test seam: production uses only the built-in release origin and real Chrome process check.
+    internal static async Task<string> CheckCoreAsync(string extensionFolder, string publicKey,
+        Func<string,int,Task<byte[]>> download, Func<bool> chromeOpen)
     {
-        var folder = ValidateFolder(settings.ExtensionFolder);
-        if (ChromeOpen()) return Waiting; // no network activity while waiting
+        var folder = ValidateFolder(extensionFolder);
+        if (chromeOpen()) return Waiting;
         using var key = ECDsa.Create();
-        key.ImportFromPem(settings.EffectivePublicKey);
+        key.ImportFromPem(publicKey);
         if (key.ExportParameters(false).Curve.Oid.Value != "1.2.840.10045.3.1.7") throw new InvalidDataException("Invalid publisher key.");
-        var manifestBytes = await Download("extension-release.json", 8192);
-        var signature = await Download("extension-release.sig", 128);
+        var manifestBytes = await download("extension-release.json", 8192);
+        var signature = await download("extension-release.sig", 128);
         if (!key.VerifyData(manifestBytes, signature, HashAlgorithmName.SHA256, DSASignatureFormat.IeeeP1363FixedFieldConcatenation))
             throw new InvalidDataException("Release signature invalid.");
         using var release = JsonDocument.Parse(manifestBytes);
@@ -146,7 +150,7 @@ internal sealed class ExtensionUpdater
         var installed = Version.Parse(old.GetProperty("version").GetString()!);
         var next = Version.Parse(meta.GetProperty("version").GetString()!);
         if (next <= installed) return "Extension up to date (" + installed + ")";
-        var zip = await Download("extension.zip", 8 * 1024 * 1024);
+        var zip = await download("extension.zip", 8 * 1024 * 1024);
         var expected = Convert.FromHexString(meta.GetProperty("sha256").GetString()!);
         if (!CryptographicOperations.FixedTimeEquals(SHA256.HashData(zip), expected))
             throw new InvalidDataException("Release archive hash mismatch.");
@@ -162,7 +166,7 @@ internal sealed class ExtensionUpdater
             if (Version.Parse(candidate.GetProperty("version").GetString()!) != next ||
                 StableManifest(old) != StableManifest(candidate))
                 return "Manifest capabilities changed; review and update manually.";
-            if (ChromeOpen()) return Waiting;
+            if (chromeOpen()) return Waiting;
             if (ValidateFolder(folder) != folder || Manifest(folder).GetRawText() != old.GetRawText())
                 return "Extension changed during check; retry later.";
             // Keep the existing unpacked extension path; do not modify Chrome profile/storage.
