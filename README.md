@@ -2,6 +2,20 @@
 
 Self-hosted remote for YouTube Music, YouTube and Windows. Use a phone web app to control music, browse your library, see Google Calendar events and manage your PC. No Google sign-in is needed on the phone.
 
+## Downloads
+
+[![Windows companion](https://img.shields.io/badge/Windows-Companion-0078D4?logo=windows&logoColor=white)](https://github.com/almogmaman12/Ytm-r/releases/tag/companion-channel)
+[![Chrome extension](https://img.shields.io/badge/Chrome-Signed%20extension-4285F4?logo=googlechrome&logoColor=white)](https://github.com/almogmaman12/Ytm-r/releases/latest)
+[![Installation guide](https://img.shields.io/badge/Setup-Installation%20guide-555555)](https://github.com/almogmaman12/Ytm-r/blob/feature/windows-companion/companion/README.md)
+
+| Windows companion | Chrome extension |
+|---|---|
+| [Download App Installer](https://github.com/almogmaman12/Ytm-r/releases/download/companion-channel/YtmCompanion.appinstaller) | [Download signed extension ZIP](https://github.com/almogmaman12/Ytm-r/releases/latest/download/extension.zip) |
+| [Publisher certificate (first install)](https://github.com/almogmaman12/Ytm-r/releases/download/companion-channel/publisher.cer) | [Extension setup](https://github.com/almogmaman12/Ytm-r/blob/feature/windows-companion/extension/README.md) |
+| [Windows installation guide](https://github.com/almogmaman12/Ytm-r/blob/feature/windows-companion/companion/README.md) | [Update guide](https://github.com/almogmaman12/Ytm-r/blob/feature/windows-companion/docs/updates/README.md) |
+
+These downloads are for the [unified OTA and Windows companion branch](https://github.com/almogmaman12/Ytm-r/tree/feature/windows-companion). The companion release channel intentionally is not marked Latest: Latest is reserved for signed Chrome extension updates.
+
 **This branch: `feature/windows-companion`** · Chrome shell 2.4.6 in source · Node.js 18+ · optional Neon PostgreSQL
 
 ## Choose your setup
