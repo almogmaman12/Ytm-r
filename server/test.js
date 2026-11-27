@@ -499,6 +499,41 @@ let port;
   assert.ok(!phoneOk.closed, 'phone with the right code gets in');
   assert.ok(!phoneOk.w.msgs.some((m) => m.type === 'state' || m.type === 'pc_status') || phoneOk.w.msgs.findIndex((m) => m.type === 'challenge') < phoneOk.w.msgs.findIndex((m) => m.type === 'pc_status'), 'nothing is sent before the code is verified');
 
+  // Native status is separate from music and available only to an authenticated owner.
+  {
+    const native=await connectCoded('native','pc-secret-456',{ip:'198.51.100.40'});
+    assert(!native.closed,'native companion authenticated');
+    native.w.send(JSON.stringify({type:'native_snapshot',version:'0.1.0.3',uptime:123,ramTotal:16384,ramAvailable:8192,power:'ac',battery:93,privateField:'must not travel'}));
+    await wait(100);
+    const ask=(w,request)=>w.send(JSON.stringify({type:'cmd',cmd:'native_status',value:{request}}));
+    const find=(w,request)=>w.msgs.find(m=>m.type==='native_status'&&m.request===request);
+    ask(phoneOk.w,'native1');await wait(100);
+    const state=find(phoneOk.w,'native1').data.state;
+    assert.strictEqual(state.ramAvailable,8192);
+    assert.strictEqual(state.battery,93);
+    assert(!('privateField' in state),'only allowlisted fields');
+    const wrong=await connectCoded('native','open-sesame-123',{ip:'198.51.100.41'});
+    assert(wrong.closed&&wrong.code===4003,'native needs PC code');
+    const duplicate=await connectCoded('native','pc-secret-456',{ip:'198.51.100.42'});
+    assert(duplicate.closed&&duplicate.code===4000,'native duplicate cannot replace active connection');
+    assert.strictEqual(native.w.readyState,1);
+    phoneOk.w.send(JSON.stringify({type:'native_snapshot',ramTotal:1}));
+    phoneOk.w.send(JSON.stringify({type:'cmd',cmd:'eval',value:'forbidden'}));
+    await wait(100);
+    assert(!native.w.msgs.some(m=>m.type==='cmd'),'no command forwarded to native');
+    const otherToken='other_native_room_token_12345';
+    const isolated=await new Promise((resolve,reject)=>{
+      const w=new WebSocket(`ws://localhost:${port}/ws?role=phone&token=${otherToken}`,{headers:{'x-forwarded-for':'198.51.100.43'}});
+      w.msgs=[];w.on('message',raw=>{const m=JSON.parse(raw);w.msgs.push(m);if(m.type==='challenge')w.send(JSON.stringify({type:'auth',proof:crypto2.createHmac('sha256','open-sesame-123').update(`${otherToken}|phone|${m.nonce}`).digest('hex')}));if(m.type==='authed')resolve(w);});w.on('error',reject);
+    });
+    ask(isolated,'other');await wait(100);
+    assert.deepStrictEqual(find(isolated,'other').data,{online:false,state:null});
+    isolated.close();
+    native.w.close();await wait(2200);
+    ask(phoneOk.w,'native2');await wait(100);
+    assert.deepStrictEqual(find(phoneOk.w,'native2').data,{online:false,state:null},'snapshot removed on disconnect');
+  }
+
   // Verify the relay cache after tab closure, agent disconnect, new phone and disk reload.
   {
     const agent=await connectCoded('agent','pc-secret-456');
