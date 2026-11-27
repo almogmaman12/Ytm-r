@@ -1,4 +1,4 @@
 {
-  "version": "0.1.0.8",
-  "reason": "Owner phone Windows companion update manager"
+  "version": "0.1.0.9",
+  "reason": "Configurable HTTPS relay and unified OTA phone interface"
 }
