@@ -90,8 +90,24 @@ internal static class UpdaterTests
             await Reject("Archive hash mismatch rejected",badHash);
             await Reject("Archive traversal rejected",Release(traversal:true));
             Check(!File.Exists(Path.Combine(root,"outside.txt")),"No file escaped staging folder");
+            var cosmeticFolder=MakeFolder("cosmetic");
+            File.WriteAllText(Path.Combine(cosmeticFolder,"manifest.json"),
+                """{"background":{"service_worker":"background.js"},"permissions":["storage"],"version":"2.4.3","name":"Tab Helper","manifest_version":3,"description":"Old description","short_name":"Old label","icons":{"16":"old.png"}}""");
+            Check((await Run(cosmeticFolder,valid)).StartsWith("Extension 2.4.4 installed"),"Cosmetic metadata and reordered fields allow signed update");
+            string[] Diff(string left,string right)
+            {
+                using var x=JsonDocument.Parse(left);using var y=JsonDocument.Parse(right);
+                return ExtensionUpdater.ManifestChanges(x.RootElement,y.RootElement);
+            }
+            Check(Diff(
+                """{"permissions":["storage","alarms"],"background":{"service_worker":"background.js","type":"module"},"action":{"default_title":"Old","default_icon":{"16":"old.png"}}}""",
+                """{"action":{"default_icon":{"16":"new.png"},"default_title":"New"},"background":{"type":"module","service_worker":"background.js"},"permissions":["alarms","storage"],"optional_permissions":[]}""").Length==0,"Reordered permission sets, nested objects and cosmetic action metadata are equivalent");
+            Check(Diff("""{"permissions":["storage"]}""","""{"permissions":["storage","debugger"]}""").SequenceEqual(new[]{"permissions"}),"New API permissions require review");
+            Check(Diff("""{"host_permissions":["https://music.youtube.com/*"]}""","""{"host_permissions":["<all_urls>"]}""").SequenceEqual(new[]{"host_permissions"}),"Broader host access requires review");
+            Check(Diff("""{"key":"old","action":{"default_popup":"old.html"}}""","""{"key":"new","action":{"default_popup":"new.html"}}""").SequenceEqual(new[]{"action","key"}),"Identity and action behavior changes require review");
+            Check(Diff("""{"content_scripts":[{"js":["a.js","b.js"]}]}""","""{"content_scripts":[{"js":["b.js","a.js"]}]}""").SequenceEqual(new[]{"content_scripts"}),"Execution order changes require review");
             var changedFolder=MakeFolder("changed");
-            Check((await Run(changedFolder,Release(changed:true))).StartsWith("Manifest capabilities changed")&&File.ReadAllText(Path.Combine(changedFolder,"background.js"))=="old fixture","Permission changes require manual review");
+            Check((await Run(changedFolder,Release(changed:true))).StartsWith("Manifest capabilities changed: permissions")&&File.ReadAllText(Path.Combine(changedFolder,"background.js"))=="old fixture","Permission changes require manual review");
             var raceFolder=MakeFolder("race");int checks=0;
             Check(await Run(raceFolder,valid,()=>++checks>1)==ExtensionUpdater.Waiting&&File.ReadAllText(Path.Combine(raceFolder,"background.js"))=="old fixture","Chrome opening during check defers replacement");
             Console.WriteLine($"Passed {passed} isolated updater checks.");
