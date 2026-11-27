@@ -47,12 +47,12 @@ internal static class UpdaterTests
             return new(){["extension.zip"]=zip,["extension-release.json"]=meta,
                 ["extension-release.sig"]=signer.SignData(meta,HashAlgorithmName.SHA256,DSASignatureFormat.IeeeP1363FixedFieldConcatenation)};
         }
-        Task<string> Run(string folder,Dictionary<string,byte[]> data,Func<bool>? chrome=null)
+        Task<string> Run(string folder,Dictionary<string,byte[]> data,Func<bool>? chrome=null,Func<PermissionReview,bool>? review=null)
             =>ExtensionUpdater.CheckCoreAsync(folder,pub,(name,limit)=>
             {
                 var bytes=data[name];if(bytes.Length>limit)throw new InvalidDataException("fixture too large");
                 return Task.FromResult(bytes);
-            },chrome??(()=>false));
+            },chrome??(()=>false),review);
         async Task Reject(string label,Dictionary<string,byte[]> data)
         {
             var folder=MakeFolder("reject-"+Guid.NewGuid().ToString("N"));
@@ -108,6 +108,23 @@ internal static class UpdaterTests
             Check(Diff("""{"content_scripts":[{"js":["a.js","b.js"]}]}""","""{"content_scripts":[{"js":["b.js","a.js"]}]}""").SequenceEqual(new[]{"content_scripts"}),"Execution order changes require review");
             var changedFolder=MakeFolder("changed");
             Check((await Run(changedFolder,Release(changed:true))).StartsWith("Manifest capabilities changed: permissions")&&File.ReadAllText(Path.Combine(changedFolder,"background.js"))=="old fixture","Permission changes require manual review");
+            var reviewedRelease=Release(changed:true);
+            int reviewCount=0;
+            Check((await Run(changedFolder,reviewedRelease,review:r=>{reviewCount++;return false;})).StartsWith("Update declined")&&reviewCount==1&&File.ReadAllText(Path.Combine(changedFolder,"background.js"))=="old fixture","Declined permission review makes no change");
+            Check((await Run(changedFolder,reviewedRelease,review:r=>{
+                reviewCount++;
+                Check(r.InstalledVersion=="2.4.3"&&r.ReleaseVersion=="2.4.4"&&r.Details.Contains("ADD \"tabs\"")&&r.ArchiveSha256==Convert.ToHexString(SHA256.HashData(reviewedRelease["extension.zip"])),"Review identifies precise permission addition and signed archive");
+                return true;
+            })).StartsWith("Extension 2.4.4 installed")&&reviewCount==2,"Explicit permission approval installs exact verified release");
+            var identityFolder=MakeFolder("identity");
+            File.WriteAllText(Path.Combine(identityFolder,"manifest.json"),"""{"manifest_version":3,"name":"Tab Helper","version":"2.4.3","permissions":["storage"],"key":"fixture","background":{"service_worker":"background.js"}}""");
+            Check((await Run(identityFolder,valid,review:r=>throw new Exception("Identity change must never be offered for approval"))).Contains("Review in Chrome required")&&File.ReadAllText(Path.Combine(identityFolder,"background.js"))=="old fixture","Identity changes remain blocked");
+            var invalidFolder=MakeFolder("invalid-review");bool invalidRejected=false;
+            try { await Run(invalidFolder,badSignature,review:r=>throw new Exception("Invalid signature must never be offered for approval")); }
+            catch(InvalidDataException){invalidRejected=true;}
+            Check(invalidRejected&&File.ReadAllText(Path.Combine(invalidFolder,"background.js"))=="old fixture","Invalid signature cannot reach review");
+            var reviewRace=MakeFolder("review-race");bool reopened=false;
+            Check(await Run(reviewRace,reviewedRelease,()=>reopened,r=>{reopened=true;return true;})==ExtensionUpdater.Waiting&&File.ReadAllText(Path.Combine(reviewRace,"background.js"))=="old fixture","Chrome reopening during review prevents replacement");
             var raceFolder=MakeFolder("race");int checks=0;
             Check(await Run(raceFolder,valid,()=>++checks>1)==ExtensionUpdater.Waiting&&File.ReadAllText(Path.Combine(raceFolder,"background.js"))=="old fixture","Chrome opening during check defers replacement");
             Console.WriteLine($"Passed {passed} isolated updater checks.");
