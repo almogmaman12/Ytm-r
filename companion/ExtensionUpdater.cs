@@ -8,6 +8,7 @@ namespace YtmCompanion;
 internal sealed class ExtensionUpdater
 {
     public const string Waiting = "Waiting for Chrome to close fully";
+    public const string NoRelease = "No accessible signed extension release yet";
     private const string Release = "https://github.com/almogmaman12/Ytm-r/releases/latest/download/";
     private static readonly HttpClient Http = new(new HttpClientHandler { AllowAutoRedirect = false }) { Timeout = TimeSpan.FromSeconds(60) };
 
@@ -138,7 +139,10 @@ internal sealed class ExtensionUpdater
         using var key = ECDsa.Create();
         key.ImportFromPem(publicKey);
         if (key.ExportParameters(false).Curve.Oid.Value != "1.2.840.10045.3.1.7") throw new InvalidDataException("Invalid publisher key.");
-        var manifestBytes = await download("extension-release.json", 8192);
+        byte[] manifestBytes;
+        try { manifestBytes = await download("extension-release.json", 8192); }
+        catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+        { return NoRelease; }
         var signature = await download("extension-release.sig", 128);
         if (!key.VerifyData(manifestBytes, signature, HashAlgorithmName.SHA256, DSASignatureFormat.IeeeP1363FixedFieldConcatenation))
             throw new InvalidDataException("Release signature invalid.");
