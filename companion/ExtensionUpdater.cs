@@ -83,14 +83,63 @@ internal sealed class ExtensionUpdater
         return document.RootElement.Clone();
     }
 
-    // Existing manifest metadata and capability declarations must be identical.
-    // An owner must review permission or identity changes using Chrome itself.
-    private static string StableManifest(JsonElement root)
+    // Compare JSON values rather than serialization order. Only known cosmetic
+    // fields and ordering of permission sets may differ without review.
+    private static readonly HashSet<string> Cosmetic = new(StringComparer.Ordinal)
+    { "version", "version_name", "description", "short_name", "icons" };
+    private static readonly HashSet<string> PermissionSets = new(StringComparer.Ordinal)
+    { "permissions", "optional_permissions", "host_permissions", "optional_host_permissions" };
+    private static Dictionary<string,JsonElement> Properties(JsonElement value) =>
+        value.EnumerateObject().ToDictionary(p => p.Name, p => p.Value, StringComparer.Ordinal);
+    private static bool EqualJson(JsonElement a, JsonElement b)
     {
-        return JsonSerializer.Serialize(root.EnumerateObject()
-            .Where(p => p.Name is not ("version" or "version_name" or "description"))
-            .OrderBy(p => p.Name, StringComparer.Ordinal)
-            .ToDictionary(p => p.Name, p => p.Value));
+        if (a.ValueKind != b.ValueKind) return false;
+        switch (a.ValueKind)
+        {
+            case JsonValueKind.Object:
+                var x = Properties(a); var y = Properties(b);
+                return x.Count == y.Count && x.All(p => y.TryGetValue(p.Key, out var v) && EqualJson(p.Value,v));
+            case JsonValueKind.Array:
+                return a.GetArrayLength() == b.GetArrayLength() &&
+                    a.EnumerateArray().Zip(b.EnumerateArray()).All(p => EqualJson(p.First,p.Second));
+            case JsonValueKind.String: return a.GetString() == b.GetString();
+            case JsonValueKind.Number: return a.GetRawText() == b.GetRawText();
+            default: return a.GetRawText() == b.GetRawText();
+        }
+    }
+    private static HashSet<string> ReadPermissionSet(Dictionary<string,JsonElement> fields,string name)
+    {
+        if (!fields.TryGetValue(name,out var value)) return new(StringComparer.Ordinal);
+        if (value.ValueKind != JsonValueKind.Array) throw new InvalidDataException("Invalid permission declaration.");
+        var result = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var item in value.EnumerateArray())
+            if (item.ValueKind != JsonValueKind.String || !result.Add(item.GetString()!))
+                throw new InvalidDataException("Invalid or duplicate permission declaration.");
+        return result;
+    }
+    private static bool EqualAction(JsonElement a, JsonElement b)
+    {
+        if (a.ValueKind != JsonValueKind.Object || b.ValueKind != JsonValueKind.Object) return EqualJson(a,b);
+        var x=Properties(a); var y=Properties(b);
+        foreach(var cosmetic in new[]{"default_title","default_icon"}) { x.Remove(cosmetic);y.Remove(cosmetic); }
+        return x.Count==y.Count && x.All(p=>y.TryGetValue(p.Key,out var v)&&EqualJson(p.Value,v));
+    }
+    internal static string[] ManifestChanges(JsonElement old, JsonElement candidate)
+    {
+        var a=Properties(old); var b=Properties(candidate);
+        var changed=new List<string>();
+        foreach(var field in a.Keys.Union(b.Keys,StringComparer.Ordinal).OrderBy(x=>x,StringComparer.Ordinal))
+        {
+            if(Cosmetic.Contains(field))continue;
+            bool equal;
+            if(PermissionSets.Contains(field))
+                equal=ReadPermissionSet(a,field).SetEquals(ReadPermissionSet(b,field));
+            else
+                equal=a.TryGetValue(field,out var x)&&b.TryGetValue(field,out var y)&&
+                    (field=="action"?EqualAction(x,y):EqualJson(x,y));
+            if(!equal)changed.Add(field);
+        }
+        return changed.ToArray();
     }
 
     private static void Extract(byte[] data, string destination)
@@ -167,9 +216,20 @@ internal sealed class ExtensionUpdater
         {
             Extract(zip, stage);
             var candidate = Manifest(stage);
-            if (Version.Parse(candidate.GetProperty("version").GetString()!) != next ||
-                StableManifest(old) != StableManifest(candidate))
-                return "Manifest capabilities changed; review and update manually.";
+            if (Version.Parse(candidate.GetProperty("version").GetString()!) != next)
+                throw new InvalidDataException("Archive manifest version does not match signed release.");
+            var changes = ManifestChanges(old,candidate);
+            if (changes.Length > 0)
+            {
+                // Display only known field names, never manifest contents or arbitrary text.
+                var known = new HashSet<string>(StringComparer.Ordinal)
+                { "permissions","optional_permissions","host_permissions","optional_host_permissions",
+                  "key","name","manifest_version","background","content_scripts","action","options_ui",
+                  "minimum_chrome_version","content_security_policy","externally_connectable",
+                  "web_accessible_resources","update_url","incognito" };
+                var labels = changes.Select(x=>known.Contains(x)?x:"other manifest field").Distinct().Take(4);
+                return "Manifest capabilities changed: "+string.Join(", ",labels)+". Manual review required.";
+            }
             if (chromeOpen()) return Waiting;
             if (ValidateFolder(folder) != folder || Manifest(folder).GetRawText() != old.GetRawText())
                 return "Extension changed during check; retry later.";
