@@ -326,7 +326,7 @@ function calendarFor(room,token){
 function getRoom(token) {
   let room = rooms.get(token);
   if (!room) {
-    room = { pc: null, native: null, nativeState: null, agent: null, agentYt: false, lastSite: 0, version: '', lastSeen: 0, lastAgent: 0, lastWake: 0, phones: new Set(), lastState: null, lastYtQueue: null };
+    room = { pc: null, native: null, nativeState: null, nativePending: null, agent: null, agentYt: false, lastSite: 0, version: '', lastSeen: 0, lastAgent: 0, lastWake: 0, phones: new Set(), lastState: null, lastYtQueue: null };
     room.calendar=calendarCache.get(token);
     rooms.set(token, room);
   }
@@ -563,7 +563,7 @@ wss.on('connection', async (ws, info) => {
     ws.joined = true;
     if (role === 'native') {
       if (room.native && room.native !== ws) { ws.close(4000, 'native already connected'); return; }
-      room.native = ws; room.nativeState = null;
+      room.native = ws; room.nativeState = null; room.nativePending = null;
       log(rid, 'Windows companion connected');
     } else if (role === 'agent') {
       if (room.agent && room.agent !== ws) room.agent.close(4000, 'replaced');
@@ -643,10 +643,23 @@ wss.on('connection', async (ws, info) => {
     }
 
     if (role === 'native') {
-      if (room.native !== ws || !calendarSecure() || raw.length > 1024 || overLimit(2) || msg.type !== 'native_snapshot') return;
+      if (room.native !== ws || !calendarSecure() || raw.length > 8192 || overLimit(12)) return;
+      if(msg.type==='native_result'){
+        const pending=room.nativePending;
+        if(!pending||msg.id!==pending.id)return;
+        room.nativePending=null;clearTimeout(pending.timer);
+        if(pending.phone.readyState===1&&pending.phone.joined&&!pending.phone.dev)send(pending.phone,{type:'native_status',request:pending.request,data:{online:true,state:room.nativeState},actionMessage:msg.ok===true?text(msg.message,160):'Windows could not complete the requested action.',actionOk:msg.ok===true});
+        return;
+      }
+      if(msg.type!=='native_snapshot')return;
       const integer=(v,min,max)=>Number.isSafeInteger(v)&&v>=min&&v<=max?v:null;
       const ramTotal=integer(msg.ramTotal,1,16777216),ramAvailable=integer(msg.ramAvailable,0,ramTotal||0);
-      room.nativeState={at:Date.now(),version:/^\d{1,5}(\.\d{1,5}){3}$/.test(String(msg.version))?String(msg.version):'',uptime:integer(msg.uptime,0,3155760000),ramTotal,ramAvailable,battery:integer(msg.battery,0,100),power:['ac','battery','unknown'].includes(msg.power)?msg.power:'unknown'};
+      const audio=msg.audio&&typeof msg.audio==='object'?msg.audio:null;
+      const validId=id=>typeof id==='string'&&/^[0-9a-f]{32}$/.test(id);
+      const controls=msg.controls===true;
+      const devices=controls&&audio&&Array.isArray(audio.devices)?audio.devices.slice(0,12).filter(d=>d&&validId(d.id)&&typeof d.name==='string').map(d=>({id:d.id,name:text(d.name,96)})):[];
+      const nativeAudio=controls&&audio?{volume:integer(audio.volume,0,100),muted:typeof audio.muted==='boolean'?audio.muted:null,device:validId(audio.device)?audio.device:null,devices}:null;
+      room.nativeState={controls,chromeRunning:typeof msg.chromeRunning==='boolean'?msg.chromeRunning:null,chromeOpen:typeof msg.chromeOpen==='boolean'?msg.chromeOpen:null,audio:nativeAudio,at:Date.now(),version:/^\d{1,5}(\.\d{1,5}){3}$/.test(String(msg.version))?String(msg.version):'',uptime:integer(msg.uptime,0,3155760000),ramTotal,ramAvailable,battery:integer(msg.battery,0,100),power:['ac','battery','unknown'].includes(msg.power)?msg.power:'unknown'};
       return;
     }
     // The helper only keeps the connection alive; it sends nothing else.
@@ -670,6 +683,26 @@ wss.on('connection', async (ws, info) => {
     if (role === 'phone') {
       if (raw.length > MAX_PHONE_MSG_BYTES || msg.type !== 'cmd') return;
       if (overLimit(MAX_CMDS_PER_SEC)) return;
+      if(msg.cmd==='native_action'){
+        if(!calendarOwner())return;
+        const request=msg.value?.request,action=msg.value?.action,value=msg.value?.value;
+        if(typeof request!=='string'||!/^[a-zA-Z0-9_-]{1,32}$/.test(request))return;
+        const reply=error=>send(ws,{type:'native_status',request,error});
+        const state=room.nativeState;
+        if(!room.native||!state||Date.now()-state.at>=150000||state.controls!==true)return reply('Windows controls are offline or disabled in the companion.');
+        const valid=action==='volume'?Number.isInteger(value)&&value>=0&&value<=100:
+          action==='mute'?typeof value==='boolean':
+          action==='output'?typeof value==='string'&&state.audio?.devices.some(d=>d.id===value):
+          ['media_toggle','media_next','media_previous','media_stop','chrome_open','chrome_close'].includes(action)&&value===null;
+        if(!valid)return reply('Unsupported Windows action or value.');
+        if(room.nativePending)return reply('A Windows action is already in progress.');
+        const id=crypto.randomBytes(16).toString('hex');
+        const timer=setTimeout(()=>{if(room.nativePending?.id!==id)return;room.nativePending=null;reply('No confirmation from Windows. Refresh status before retrying.');},10000);
+        timer.unref();
+        room.nativePending={id,request,phone:ws,timer};
+        send(room.native,{type:'native_action',id,action,value});
+        return;
+      }
       if(msg.cmd==='native_status'){
         if(!calendarOwner())return;
         const request=String(msg.value?.request||'');if(!/^[a-zA-Z0-9_-]{1,32}$/.test(request))return;
@@ -992,7 +1025,7 @@ wss.on('connection', async (ws, info) => {
     clearTimeout(authTimer);
     if (ws.joined) log(rid, `${role === 'pc' ? 'PC' : role === 'agent' ? 'PC helper' : role === 'native' ? 'Windows companion' : 'phone'} disconnected: ${who}${code === 4000 ? ' (replaced by another PC)' : ''}`);
     if (role === 'native') {
-      if (room.native === ws) { room.native=null; room.nativeState=null; }
+      if (room.native === ws) { room.native=null; room.nativeState=null; const p=room.nativePending;room.nativePending=null;if(p){clearTimeout(p.timer);send(p.phone,{type:'native_status',request:p.request,error:'Windows companion disconnected. Refresh before retrying.'});} }
     } else if (role === 'agent') {
       if (room.agent === ws) { room.calendar=calendarCache.get(token);room.agent=null;room.agentYt=false;room.lastAgent=Date.now();if(!shuttingDown){system.transition(token,'helper',false);ops.conn(token,'helper',false);}tellPhones(room);sendCalendar(room,token); }
     } else if (role === 'pc') {
