@@ -14,6 +14,7 @@ jobs:
     outputs:
       version: ${{ steps.prepare.outputs.version }}
       source: ${{ steps.prepare.outputs.source }}
+      tag_target: ${{ steps.prepare.outputs.tag_target }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -45,6 +46,14 @@ jobs:
             git merge-base --is-ancestor "$SOURCE" refs/remotes/origin/feature/ota-remote-loader
           fi
           git show "$SOURCE:extension/manifest.json" | node -e 'const m=JSON.parse(require("fs").readFileSync(0,"utf8"));if(m.manifest_version!==3||m.name!=="Tab Helper"||m.version!==process.argv[1])process.exit(1)' "$VERSION"
+          # The Actions token can create a tag at the triggering commit. Use that
+          # commit only if its entire extension tree is identical to the reviewed source.
+          # Keep the reviewed source SHA separately for release provenance.
+          TAG_TARGET="$SOURCE"
+          if [ "$(git rev-parse "$SOURCE:extension")" = "$(git rev-parse "$GITHUB_SHA:extension")" ]; then
+            TAG_TARGET="$GITHUB_SHA"
+          fi
+          printf 'tag_target=%s\n' "$TAG_TARGET" >> "$GITHUB_OUTPUT"
           mkdir -p release-input
           git archive --format=zip --output=release-input/extension.zip "$SOURCE:extension"
           test "$(stat -c%s release-input/extension.zip)" -le 8388608
@@ -120,6 +129,7 @@ jobs:
           GH_REPO: ${{ github.repository }}
           RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
           RELEASE_SOURCE: ${{ needs.prepare.outputs.source }}
+          TAG_TARGET: ${{ needs.prepare.outputs.tag_target }}
           YTM_EXTENSION_PUBLIC_KEY_PEM: ${{ vars.YTM_EXTENSION_PUBLIC_KEY_PEM }}
         shell: bash
         run: |
@@ -139,4 +149,4 @@ jobs:
             echo 'Release already exists; refusing to overwrite it.'
             exit 1
           fi
-          gh release create "$TAG" signed-release/extension.zip signed-release/extension-release.json signed-release/extension-release.sig --target "$RELEASE_SOURCE" --title "YTM Remote extension $RELEASE_VERSION" --notes "Signed extension release from reviewed commit $RELEASE_SOURCE." --latest
+          gh release create "$TAG" signed-release/extension.zip signed-release/extension-release.json signed-release/extension-release.sig --target "$TAG_TARGET" --title "YTM Remote extension $RELEASE_VERSION" --notes "Signed extension release from reviewed commit $RELEASE_SOURCE. Release tag points to $TAG_TARGET (identical extension tree)." --latest
