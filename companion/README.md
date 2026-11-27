@@ -163,6 +163,12 @@ self-update.
 See Microsoft's documentation:
 https://learn.microsoft.com/en-us/windows/msix/app-installer/update-settings
 
+## Experimental Windows status connection
+
+This feature is off by default. It is pinned to the test relay at https://ytm-r.onrender.com/; deploy the companion branch to that test relay only. The production OTA deployment must remain unchanged. Both ACCESS_CODE and PC_CODE must have at least eight characters. From the tray, select Windows status connection, unlock settings, explicitly opt in, then enter the test relay token and PC code. The credentials are protected with Windows DPAPI for the current user. Disabling the feature deletes the saved protected credentials and disconnects the session.
+
+In the authenticated owner phone's System Center, open Windows status. The connection exposes only companion version, PC uptime, physical memory, battery and AC power. It sends a small snapshot once per minute while enabled, with no new Neon tables or queries, no server-side history, and no remote commands. A second native connection cannot replace an active one. Paired guest phones are not allowed to access status. The extra websocket may affect test-relay connection usage; no hosting plan change is required by the code.
+
 ## Security and limitations
 
 The local password protects the settings UI from casual access, not against an administrator or a user
