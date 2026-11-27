@@ -48,6 +48,11 @@ jobs:
         run: |
           dotnet run --project companion/tests/YtmCompanion.Tests.csproj -c Release --no-build -- updater
           if ($LASTEXITCODE -ne 0) { throw 'Extension updater test failed' }
+      - name: Test native status credentials
+        shell: pwsh
+        run: |
+          dotnet run --project companion/tests/YtmCompanion.Tests.csproj -c Release --no-build -- native
+          if ($LASTEXITCODE -ne 0) { throw 'Native status credentials test failed' }
       - name: Smoke-test MSIX packaging with disposable test certificate
         shell: pwsh
         env:
