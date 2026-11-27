@@ -975,6 +975,65 @@
   #settings .ops-filters select {flex:1 1 100px;min-height:44px;}
   #settings button:focus-visible,#settings input:focus-visible {outline:2px solid var(--accent);outline-offset:-2px;}
   @media(max-width:600px){#settings .settings-top{padding-top:max(14px,env(safe-area-inset-top));}}
+  /* Phone-only music, calendar, appearance and cache tools */
+  :root[data-phone-theme="midnight"]{--bg:#080f1d;--phone-panel:#142237;--ink:#f0f6ff;--muted:#a6b9d1;}
+  :root[data-phone-theme="forest"]{--bg:#0a1712;--phone-panel:#172a20;--ink:#edf9f0;--muted:#a4bdad;}
+  :root[data-phone-theme="plum"]{--bg:#160f1d;--phone-panel:#291c35;--ink:#fbf1ff;--muted:#c1afc9;}
+  :root[data-phone-theme="warm"]{--bg:#1c1411;--phone-panel:#30231f;--ink:#fff5ea;--muted:#cfb8a9;}
+  :root[data-phone-accent="rose"]{--accent:#ffa9c4!important;--accent-ink:#411829!important;--tint:#683349!important;}
+  :root[data-phone-accent="amber"]{--accent:#f7cb88!important;--accent-ink:#412c10!important;--tint:#694725!important;}
+  :root[data-phone-accent="teal"]{--accent:#80e1dc!important;--accent-ink:#143735!important;--tint:#245856!important;}
+  #phoneThemes,#phoneAccents{flex-wrap:wrap;}#phoneThemes button,#phoneAccents button{flex:1 1 29%;min-height:44px;}
+  .phone-pref-select{display:block;width:100%;min-height:46px;padding:9px 12px;border:1px solid var(--line);border-radius:13px;background:var(--phone-panel);color:var(--ink);font:inherit;margin:8px 0 17px;}
+  .phone-mix-link,.phone-calendar-preview{display:flex;align-items:center;gap:12px;width:100%;padding:13px;margin:10px 0;border:1px solid var(--phone-edge);border-radius:17px;text-align:start;background:var(--surface);}
+  .phone-mix-link>span:nth-child(2),.calendar-preview-copy{flex:1;min-width:0;}
+  .phone-mix-link small,.calendar-preview-copy small{display:block;font-size:11px;color:var(--muted);margin-top:3px;}
+  .calendar-preview-copy strong{display:block;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin:3px 0;}
+  .calendar-preview-icon{display:grid;place-items:center;width:42px;height:42px;border-radius:14px;background:var(--phone-soft);color:var(--accent);flex:none;}
+  .phone-mix-link>.i{color:var(--accent);flex:none;}
+  .phone-color-options{display:grid;gap:7px;margin:14px 0;}
+  .phone-color-options label{display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:13px;padding:10px 12px;background:var(--surface);border-radius:12px;}
+  .phone-color-options input{width:48px;height:36px;padding:2px;border:0;background:transparent;}
+  #calendarDlg{--event-timed:var(--accent);--event-allday:#d9b3f7;--event-current:#67d4a1;}
+  #calendarDlg .cal-event{--event-color:var(--event-timed);}
+  #calendarDlg .cal-event.all-day{--event-color:var(--event-allday);}
+  #calendarDlg .cal-event.active{--event-color:var(--event-current);}
+  #calendarDlg .cal-event.past{--event-color:var(--muted);}
+  #calendarDlg .cal-event.all-day .cal-time .i{color:var(--event-allday);}
+  #calendarDlg .cal-event.active .cal-state{background:var(--event-current);color:#12251e;}
+  #calendarDlg .cal-map-block:not(.point){background:var(--event-timed);}
+  #calendarDlg[data-cal-palette="app"]{--cal-panel:var(--phone-panel);--cal-card:color-mix(in srgb,var(--phone-panel) 87%,var(--ink));}
+  #calendarDlg[data-cal-palette="ocean"]{--cal-panel:#111c30;--cal-card:#182b43;--event-timed:#84beff;--event-allday:#a6e2e9;--event-current:#73e2b8;}
+  #calendarDlg[data-cal-palette="sunset"]{--cal-panel:#271a25;--cal-card:#392437;--event-timed:#ffb078;--event-allday:#f4a1d5;--event-current:#f7d380;}
+  #calendarDlg[data-cal-palette="botanical"]{--cal-panel:#13241c;--cal-card:#1c3328;--event-timed:#91d6ab;--event-allday:#d7dca2;--event-current:#7de5c9;}
+  .cal-layout-switch{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;background:var(--surface);padding:4px;border-radius:13px;margin:12px 0;}
+  .cal-layout-switch button{min-height:40px;font-size:12px;border-radius:10px;color:var(--muted);}
+  .cal-layout-switch button[aria-pressed="true"]{background:var(--cal-card);color:var(--ink);font-weight:750;}
+  .cal-timeline-entry{display:block;min-width:0;}
+  .cal-timeline-rail{display:none;}
+  #calendarDlg[data-cal-layout="timeline"] .cal-timeline-entry{display:grid;grid-template-columns:58px minmax(0,1fr);gap:10px;}
+  #calendarDlg[data-cal-layout="timeline"] .cal-timeline-rail{display:block;position:relative;text-align:end;padding:12px 8px 12px 0;color:var(--muted);font-size:10px;font-weight:650;border-right:1px solid var(--line);overflow-wrap:anywhere;}
+  #calendarDlg[data-cal-layout="timeline"] .cal-timeline-rail:after{content:'';position:absolute;right:-4px;top:17px;width:7px;height:7px;background:var(--event-timed);border-radius:50%;}
+  #calendarDlg[data-cal-layout="timeline"] .cal-group{grid-template-columns:1fr;gap:8px;}
+  #calendarDlg[data-cal-layout="timeline"] .cal-group>h3{display:flex;align-items:center;gap:7px;position:static;}
+  #calendarDlg[data-cal-layout="compact"] .cal-event-main{padding:9px 10px 9px 13px;}
+  #calendarDlg[data-cal-layout="compact"] .cal-event strong{font-size:13px;}
+  #calendarDlg[data-cal-layout="compact"] .cal-group-body{gap:5px;}
+  #mixDlg{width:min(94vw,480px);max-height:92dvh;height:min(740px,90dvh);border:1px solid var(--phone-edge);border-radius:24px;background:var(--phone-panel);color:var(--ink);padding:0;}
+  #mixDlg[open]{display:flex;flex-direction:column;}
+  #mixDlg .sheetBody{flex:1;min-height:0;padding:16px;}
+  #mixDlg .sheetFoot{padding:12px 16px calc(12px + var(--safe-b));}
+  #mixDlg .sheetFoot button{width:100%;min-height:48px;background:var(--accent);color:var(--accent-ink);border-radius:14px;font-weight:750;}
+  .mix-actions{display:flex;gap:8px;}.mix-actions button{flex:1;min-height:44px;}
+  .mix-row{display:flex;align-items:center;gap:12px;padding:12px 3px;border-bottom:1px solid var(--line);min-height:54px;}
+  .mix-row input{width:21px;height:21px;accent-color:var(--accent);flex:none;}
+  .mix-row span{flex:1;min-width:0;overflow-wrap:anywhere;font-size:14px;}
+  .mix-row small{display:block;color:var(--muted);font-size:11px;margin-top:4px;}
+  .cache-row{display:flex;align-items:center;gap:9px;border-bottom:1px solid var(--line);padding:13px 0;}
+  .cache-row>div{flex:1;min-width:0;}
+  .cache-row strong,.cache-row small{display:block;}.cache-row small{font-size:11px;color:var(--muted);margin-top:4px;}
+  .cache-row button{min-height:44px;padding:8px 12px;border-radius:12px;font-size:12px;}
+  @media(max-width:600px){#mixDlg{width:100%;height:100dvh;max-height:100dvh;max-width:100%;border:0;border-radius:0;margin:0;}#mixDlg .settings-top{padding-top:max(14px,env(safe-area-inset-top));}}
   @media (prefers-reduced-motion: reduce) { * { transition:none !important;animation:none !important; } }
 </style>
 </head>
@@ -1088,6 +1147,8 @@
       <button id="blockBtn" aria-label="Never play this artist" title="Never play this artist" type="button"><svg class="i"><use href="#i-block"/></svg>Block</button>
     </div>
     </details>
+    <button id="playerMix" type="button" class="phone-mix-link"><svg class="i"><use href="#i-shuffle"/></svg><span>Quick Mix<small>Build a queue from your music</small></span><span aria-hidden="true">›</span></button>
+    <button id="playerCalendarCard" type="button" class="phone-calendar-preview" hidden><span class="calendar-preview-icon"><svg class="i" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M7 3v4m10-4v4M3 10h18"/></svg></span><span class="calendar-preview-copy"><small id="playerCalendarLabel">Next event</small><strong id="playerCalendarTitle" dir="auto"></strong><small id="playerCalendarTime"></small></span><span aria-hidden="true">›</span></button>
     <div id="siteNote">Regular YouTube. Videos queue on this phone; the library, artist pages and albums need YouTube Music.</div>
     <div id="repair" role="status"></div>
   </section>
@@ -1126,7 +1187,7 @@
   </section>
 
   <section id="v-library" class="view" aria-label="Library" hidden>
-    <div class="head phone-page-head"><div><span class="page-eyebrow">Your collection</span><h2 class="section">Library</h2></div><button id="libRefresh" class="pill">Refresh</button></div>
+    <div class="head phone-page-head"><div><span class="page-eyebrow">Your collection</span><h2 class="section">Library</h2></div><div class="pills"><button id="libMix" class="pill">Quick Mix</button><button id="libRefresh" class="pill">Refresh</button></div></div>
     <div id="libTabs" class="chips" role="group" aria-label="Library section">
       <button class="chip" data-section="home" aria-pressed="true">Home</button>
       <button class="chip" data-section="playlists" aria-pressed="false">Playlists</button>
@@ -1196,6 +1257,7 @@
   </div>
 </div>
 
+<dialog id="mixDlg" aria-labelledby="mixHeading"><header class="settings-top"><div class="settings-title"><span class="page-eyebrow">Your music</span><h2 id="mixHeading">Quick Mix</h2></div><button type="button" id="mixClose" class="icon-btn" aria-label="Close mix"><svg class="i"><use href="#i-x"/></svg></button></header><div class="sheetBody"><p class="settings-intro">Choose songs or entire albums and playlists from music already loaded on your phone. No extra searches are performed.</p><div class="mix-tools"><label for="mixSource">Source</label><select id="mixSource" class="phone-pref-select"><option value="all">All loaded music</option><option value="songs">Songs only</option><option value="collections">Albums & playlists</option></select><div class="mix-actions"><button type="button" id="mixRandom" class="secondary">Surprise me</button><button type="button" id="mixClear" class="secondary">Clear selection</button></div></div><p id="mixCount" class="small" aria-live="polite"></p><div id="mixItems"></div><p id="mixStatus" class="small" role="status"></p></div><div class="sheetFoot"><button type="button" id="mixAppend">Add mix to queue</button></div></dialog>
 <dialog id="calendarDlg" aria-labelledby="calendarHeading">
   <header class="cal-head">
     <div class="cal-top">
@@ -1251,7 +1313,7 @@
       <div class="cal-map-labels" id="calendarMapLabels" aria-hidden="true"></div>
       <p id="calendarMapNote"></p>
     </section>
-    <div class="cal-agenda-head">
+    <div class="cal-layout-switch" role="group" aria-label="Agenda layout"><button type="button" data-cal-layout="timeline">Timeline</button><button type="button" data-cal-layout="cards">Cards</button><button type="button" data-cal-layout="compact">Compact</button></div><div class="cal-agenda-head">
       <div class="cal-agenda-title"><h3 id="calendarViewLabel">Today</h3><div id="calendarViewDate" hidden></div><div id="calendarCount"></div></div>
       <div class="cal-agenda-controls">
         <button id="calendarAll" aria-pressed="false">Whole week</button>
@@ -1291,9 +1353,9 @@
     <details open>
       <summary>Appearance &amp; feel</summary><div id="settingsThemePreview"><div class="theme-preview-row"><span class="theme-preview-art">♪</span><div class="theme-preview-copy">Your music<small>Live appearance preview</small></div><span class="theme-preview-play"><svg class="i"><use href="#i-play"/></svg></span></div><div class="theme-preview-bar"><i></i></div></div>
       <label class="lbl">Theme</label>
-      <div class="appearance-row" id="phoneThemes" role="group" aria-label="Theme"><button data-theme="dark">Dark</button><button data-theme="black">AMOLED</button></div>
+      <div class="appearance-row" id="phoneThemes" role="group" aria-label="Theme"><button data-theme="dark">Dark</button><button data-theme="black">AMOLED</button><button data-theme="midnight">Midnight</button><button data-theme="forest">Forest</button><button data-theme="plum">Plum</button><button data-theme="warm">Warm dusk</button></div>
       <label class="lbl">Accent</label>
-      <div class="appearance-row" id="phoneAccents" role="group" aria-label="Accent"><button data-accent="auto">Album art</button><button data-accent="purple">Purple</button><button data-accent="blue">Blue</button><button data-accent="green">Green</button></div>
+      <div class="appearance-row" id="phoneAccents" role="group" aria-label="Accent"><button data-accent="auto">Album art</button><button data-accent="purple">Purple</button><button data-accent="blue">Blue</button><button data-accent="green">Green</button><button data-accent="rose">Rose</button><button data-accent="amber">Amber</button><button data-accent="teal">Teal</button></div>
       <label class="lbl">List density</label>
       <div class="appearance-row" id="phoneDensities" role="group" aria-label="List density"><button data-density="normal">Comfortable</button><button data-density="compact">Compact</button></div>
       <label class="optrow"><input type="checkbox" id="phoneHaptics"><span>Haptic feedback<small>When supported by this phone.</small></span></label>
@@ -1355,6 +1417,18 @@
       <p class="small" style="margin-top:10px">Changing the token disconnects this phone until you enter a new one.</p>
     </details>
     <details id="systemSec"><summary>System Center</summary><div id="systemMenu"><p class="settings-intro">Check, troubleshoot and manage your remote.</p><section class="settings-group" data-system-owner-group><h3>Windows PC</h3><div class="settings-group-body"><button type="button" class="settings-nav-row" data-system-tab="native"><span class="settings-section-icon"><svg class="i"><use href="#i-speed"/></svg></span><span class="settings-section-copy"><strong>Windows status</strong><small>Companion, memory, power and uptime</small></span><span class="settings-section-arrow">›</span></button></div></section><section class="settings-group" data-system-owner-group><h3>Health & activity</h3><div class="settings-group-body"><button type="button" class="settings-nav-row" data-system-tab="overview"><span class="settings-section-icon"><svg class="i"><use href="#i-user"/></svg></span><span class="settings-section-copy"><strong>Notifications</strong><small>System alerts and push settings</small></span><span class="settings-section-arrow">›</span></button><button type="button" class="settings-nav-row" data-system-tab="history"><span class="settings-section-icon"><svg class="i"><use href="#i-swap"/></svg></span><span class="settings-section-copy"><strong>Connection history</strong><small>Relay sessions and recent connections</small></span><span class="settings-section-arrow">›</span></button><button type="button" class="settings-nav-row" data-system-tab="analytics"><span class="settings-section-icon"><svg class="i"><use href="#i-swap"/></svg></span><span class="settings-section-copy"><strong>Connection analytics</strong><small>Latency charts and observed uptime</small></span><span class="settings-section-arrow">›</span></button></div></section><section class="settings-group" data-system-owner-group><h3>Database & troubleshooting</h3><div class="settings-group-body"><button type="button" class="settings-nav-row" data-system-tab="usage"><span class="settings-section-icon"><svg class="i"><use href="#i-lib"/></svg></span><span class="settings-section-copy"><strong>Database usage</strong><small>Storage and SQL request totals</small></span><span class="settings-section-arrow">›</span></button><button type="button" class="settings-nav-row" data-system-tab="optimization"><span class="settings-section-icon"><svg class="i"><use href="#i-speed"/></svg></span><span class="settings-section-copy"><strong>Neon optimization</strong><small>Requests by feature and suggestions</small></span><span class="settings-section-arrow">›</span></button><button type="button" class="settings-nav-row" data-system-tab="logs"><span class="settings-section-icon"><svg class="i"><use href="#i-lib"/></svg></span><span class="settings-section-copy"><strong>Live relay logs</strong><small>Search and filter sanitized events</small></span><span class="settings-section-arrow">›</span></button></div></section><section class="settings-group" data-system-owner-group><h3>Security & support</h3><div class="settings-group-body"><button type="button" class="settings-nav-row" data-system-tab="security"><span class="settings-section-icon"><svg class="i"><use href="#i-block"/></svg></span><span class="settings-section-copy"><strong>Security monitor</strong><small>Rejected codes and rate-limit blocks</small></span><span class="settings-section-arrow">›</span></button><button type="button" class="settings-nav-row" data-system-tab="report"><span class="settings-section-icon"><svg class="i"><use href="#i-lib"/></svg></span><span class="settings-section-copy"><strong>Diagnostic report</strong><small>Copy or download troubleshooting data</small></span><span class="settings-section-arrow">›</span></button></div></section><section class="settings-group"><h3>Application</h3><div class="settings-group-body"><button type="button" class="settings-nav-row" data-system-tab="updates"><span class="settings-section-icon"><svg class="i"><use href="#i-swap"/></svg></span><span class="settings-section-copy"><strong>App updates</strong><small>Check for a new phone app build</small></span><span class="settings-section-arrow">›</span></button></div></section><p id="systemOwnerNote" class="small" hidden>System diagnostics are available on the owner phone with an access code.</p></div><section id="systemUpdateCard" class="relay-health-card" hidden><div class="relay-health-head"><h3>App updates</h3><button id="systemCheckUpdate">Check</button></div><p id="systemVersion" class="relay-health-caption"></p><p id="systemUpdateState" class="relay-health-caption">Updates are checked while connected.</p><button id="systemApplyUpdate" class="activity-open" hidden>Update now</button></section><section id="systemOwner" class="relay-health-card" hidden><div class="relay-health-head"><h3 id="systemViewTitle">System Center</h3><button id="systemRefresh">Refresh</button></div><p id="systemStatus" class="relay-health-caption" role="status"></p><div id="systemResults"></div></section></details>
+    <details id="calendarPrefsSec"><summary>Calendar appearance</summary>
+      <p class="settings-intro">Customize the calendar on this phone. These options do not change Google Calendar.</p>
+      <label class="lbl" for="phoneCalDefault">Default calendar view</label><select id="phoneCalDefault" class="phone-pref-select"><option value="week">Week</option><option value="month">Month</option></select>
+      <label class="lbl" for="phoneCalLayout">Agenda style</label><select id="phoneCalLayout" class="phone-pref-select"><option value="timeline">Timeline</option><option value="cards">Event cards</option><option value="compact">Compact agenda</option></select>
+      <label class="lbl" for="phoneCalPalette">Calendar palette</label><select id="phoneCalPalette" class="phone-pref-select"><option value="app">Match app accent</option><option value="ocean">Ocean</option><option value="sunset">Sunset</option><option value="botanical">Botanical</option></select>
+      <div class="phone-color-options"><label>Timed events <input type="color" id="phoneCalTimed" value="#91b8ff"></label><label>All-day events <input type="color" id="phoneCalAllDay" value="#d9b3f7"></label><label>Current event <input type="color" id="phoneCalCurrent" value="#67d4a1"></label></div>
+      <label class="optrow"><input type="checkbox" id="phoneCalCustomColors"><span>Use custom event colors<small>Overrides the palette colors.</small></span></label>
+      <label class="optrow"><input type="checkbox" id="phoneCalPlayer"><span>Upcoming events on Now Playing<small>Only shows saved events you are allowed to view.</small></span></label>
+      <label class="optrow"><input type="checkbox" id="phoneCalPrivate"><span>Hide event names on the player<small>Show only the time and calendar status.</small></span></label>
+    </details>
+    <details id="phoneCacheSec"><summary>Cache manager</summary><p class="settings-intro">Clear only selected data on this phone. Your token, paired key, passwords, settings, calendar backup and database stay unchanged.</p><div id="phoneCacheRows"></div><p id="phoneCacheNote" class="small" role="status"></p><button type="button" id="phoneCacheRefresh" class="secondary">Recalculate</button></details>
+
   </div>
   <div class="sheetFoot"><button id="closeSettings" class="secondary">Close</button></div>
 </dialog>
@@ -1412,6 +1486,7 @@
 const $ = (id) => document.getElementById(id);
 const root = document.documentElement;
 let ws = null, token = null, retry = 1000, retryTimer = null, lastRx = 0;
+let phoneConnectTimer=null,phoneProbeTimer=null;
 let phonePaused=false;
 let volTimer = null, volDragging = false, volSentAt = 0;
 let last = null, lastAt = 0, artUrl = '', searchTimer = null, toastTimer = null, view = 'playing', lastQuery = '';
@@ -1471,6 +1546,7 @@ function setView(name) {
   if(name==='pc')pcRequest();else if(changed)pcClear();
   if(changed)window.scrollTo(0,phoneScroll[name]||0);
   if (name === 'library') loadLibrary(false);
+  if (name === 'playing') drawUpcomingEvent();
   if(name==='search'){$('musicSearchClear').hidden=!$('q').value;if(!phoneBrowse&&!$('q').value&&!$('results').children.length)drawSuggest();}
 }
 document.querySelectorAll('#tabs button').forEach((b) => { b.onclick = () => { buzz(); setView(b.dataset.view); }; });
@@ -1600,17 +1676,20 @@ function askCode(msg) {
 function connect() {
   if (needCode && !getCode()) return;
   clearTimeout(retryTimer);
-  if (!token) return;
+  if (!token || navigator.onLine===false) return;
   if (ws && ws.readyState <= 1) return;
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
   const dev = !getToken() && getDevice();
   const sock = new WebSocket(`${proto}://${location.host}/ws?role=phone&${dev ? 'device=' + encodeURIComponent(dev) : 'token=' + encodeURIComponent(token)}`);
   ws = sock;
+  sock.phoneAuthed=false;sock.phoneStarted=Date.now();
+  clearTimeout(phoneConnectTimer);
+  phoneConnectTimer=setTimeout(()=>{if(ws===sock&&!sock.phoneAuthed&&!needCode){try{sock.close();}catch{}}},60000);
   // Each handler ignores sockets we have already replaced, so an old connection can never
   // restart a retry loop or overwrite the status of the current one.
   sock.onopen = () => {
     if (ws !== sock) return;
-    retry = 1000; lastRx = Date.now();
+    lastRx = Date.now();
     if(!phonePaused)$('status').textContent = 'Waiting for PC…';
   };
   sock.onmessage = (ev) => {
@@ -1643,11 +1722,11 @@ function connect() {
     else if (m.type === 'calendar') renderCalendar(m);
     else if(m.type==='calendar_access'){calendarAuth(m);}
     else if (m.type === 'calendar_push') $('calendarPushStatus').textContent = m.message;
-    else if (m.type === 'authed') { needCode=false;phoneSetPaused(false);sendName();calendarAuth(m);checkAppUpdate(false);$('pcNav').hidden=!getToken()||!getCode();if(view==='pc')pcRequest(); }
+    else if (m.type === 'authed') { sock.phoneAuthed=true;clearTimeout(phoneConnectTimer);retry=1000;needCode=false;phoneSetPaused(false);sendName();calendarAuth(m);checkAppUpdate(false);$('pcNav').hidden=!getToken()||!getCode();if(view==='pc')pcRequest(); }
   };
   sock.onclose = (ev) => {
     if (ws !== sock) return;
-    ws = null;relayHealthDisconnected();systemDisconnected();pcClear();
+    clearTimeout(phoneConnectTimer);clearTimeout(phoneProbeTimer);phoneProbeTimer=null;ws = null;wasOnline=false;relayHealthDisconnected();systemDisconnected();pcClear();
     $('app').dataset.pc = 'off';
     if(ev.code===4008){phoneSetPaused(true);retryTimer=setTimeout(connect,20000);return;}
     calendarDisconnect(ev.code===4003||ev.code===4005);
@@ -1670,8 +1749,7 @@ function connect() {
     }
     if(phonePaused){retryTimer=setTimeout(connect,20000);return;}
     $('status').textContent = 'Reconnecting…';
-    retryTimer = setTimeout(connect, retry);
-    retry = Math.min(retry * 2, 15000);
+    if(navigator.onLine!==false){retryTimer = setTimeout(connect, Math.round(retry*(.85+Math.random()*.3)));retry = Math.min(retry * 2, 15000);}
   };
   sock.onerror = () => { try { sock.close(); } catch {} };
 }
@@ -1679,8 +1757,9 @@ function connect() {
 // Close the current connection without scheduling a retry.
 function drop() {
   const s = ws;
-  ws = null;
-  calendarDisconnect(false);
+  ws = null;wasOnline=false;$('app').dataset.pc='off';
+  clearTimeout(phoneConnectTimer);clearTimeout(phoneProbeTimer);phoneProbeTimer=null;
+  relayHealthDisconnected();systemDisconnected();calendarDisconnect(false);
   clearTimeout(retryTimer);
   try { s && s.close(); } catch {}
 }
@@ -1693,15 +1772,16 @@ setInterval(() => {
   ws.send(JSON.stringify({ type: 'ping' }));
 }, 15000);
 function probe() {
-  if (!token) return;
-  if (!ws || ws.readyState > 1) { retry = 1000; connect(); return; }
-  if (ws.readyState !== 1) return;
-  const sock = ws, t0 = Date.now();
-  sock.send(JSON.stringify({ type: 'ping' }));
-  setTimeout(() => { if (ws === sock && lastRx < t0) reconnectNow(); }, 3000);
+  if(!token||needCode||navigator.onLine===false||phonePaused)return;
+  if(!ws||ws.readyState>1){retry=1000;connect();return;}
+  if(ws.readyState!==1||!ws.phoneAuthed||phoneProbeTimer)return;
+  const sock=ws,t0=Date.now();
+  try{sock.send(JSON.stringify({type:'ping'}));}catch{reconnectNow();return;}
+  phoneProbeTimer=setTimeout(()=>{phoneProbeTimer=null;if(ws===sock&&lastRx<t0&&!document.hidden)reconnectNow();},3000);
 }
-document.addEventListener('visibilitychange', () => { if (!document.hidden) probe(); });
-window.addEventListener('online', probe);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)probe();});
+window.addEventListener('online',()=>{if(phonePaused){clearTimeout(retryTimer);retryTimer=setTimeout(connect,20000);return;}probe();});
+window.addEventListener('offline',()=>{if(!token)return;drop();$('status').textContent='No internet connection';});
 
 /* ---------- colour from album art ---------- */
 function resetColour() {
@@ -2421,7 +2501,7 @@ let calendarConnected=false, calendarOwnerToken='', calendarMode='week', calenda
 const CAL_DISPLAY_TTL=14*86400000;
 try{localStorage.removeItem('ytmrCalendarSaved');}catch{}
 // The relay owns the cache; only keep the current in-memory view during a transient disconnect.
-function forgetSavedCalendar(){calendarData=null;}
+function forgetSavedCalendar(){calendarData=null;drawUpcomingEvent();}
 function cachedPhoneData(){return calendarData&&['ok','cached'].includes(calendarData.status)&&Date.now()-calendarData.at<CAL_DISPLAY_TTL?{...calendarData,status:'cached',items:calendarData.items.map(x=>({...x,live:false}))}:null;}
 const calDayKey = d => [d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-');
 function calDate(key) { const [y,m,d]=key.split('-').map(Number); return new Date(y,m-1,d,12); }
@@ -2442,7 +2522,7 @@ function calSetMode(mode){
   calendarMode=mode;calendarWeek=calPeriod(anchor);drawCalendar();calScrollTop();
 }
 function calItems() {
-  return (['ok','cached'].includes(calendarData?.status) && Array.isArray(calendarData.items) ? calendarData.items : [])
+  return (['ok','cached'].includes(calendarData?.status) && Number.isFinite(calendarData.at) && Date.now()-calendarData.at<CAL_DISPLAY_TTL && Array.isArray(calendarData.items) ? calendarData.items : [])
     .filter(x=>x && typeof x.title==='string' && /^\d{4}-\d{2}-\d{2}$/.test(x.date) && calDayKey(calDate(x.date))===x.date)
     .slice(0,80).sort((a,b)=>a.date.localeCompare(b.date)||(a.start??0)-(b.start??0));
 }
@@ -2484,6 +2564,7 @@ function calDrawDayMap(date,events,now,today,saved) {
 }
 function calEventKey(e){return JSON.stringify([e.date,e.title,e.start??null,e.end??null,!!e.allDay,e.time||'']);}
 function drawCalendar() {
+  applyCalendarPrefs();
   if (!calendarAllowed || !$('calendarDlg').open) return;
   const now=Date.now(), today=calToday(), items=calItems(), week=calendarWeek||calPeriod(today), end=calPeriodEnd(week);
   const monthMode=calendarMode==='month', current=calPeriod(today);
@@ -2627,14 +2708,14 @@ function drawCalendar() {
     if(!nowMarker&&calendarSelected===today&&fresh&&event.live!==false&&formatTime(event)&&event.start>now){
       const marker=document.createElement('div');marker.className='cal-now-line';marker.textContent='Now · '+clock.format(new Date(now));body.append(marker);nowMarker=true;
     }
-    body.append(row);if(focusedEvent===key)main.focus({preventScroll:true});
+    const wrap=document.createElement('div'),rail=document.createElement('div'),railTime=document.createElement('span');wrap.className='cal-timeline-entry';rail.className='cal-timeline-rail';railTime.textContent=event.allDay?'All day':formatTime(event)?clock.format(new Date(event.start)):'Unknown';rail.append(railTime);wrap.append(rail,row);body.append(wrap);if(focusedEvent===key)main.focus({preventScroll:true});
   }
 }
 function calendarIdentity(){return getToken()||getDevice()||'';}
 function renderCalendar(m) {
   if(!calendarAllowed||!calendarConnected||calendarOwnerToken!==calendarIdentity())return;
   calendarData=m;
-  drawCalendar();
+  drawCalendar();drawUpcomingEvent();
 }
 function clearCalendarView() {
   calendarSelected='';calendarWeek='';calendarMode='week';calendarRemaining=false;calendarExpanded='';
@@ -2681,16 +2762,18 @@ function calendarDisconnect(revoked) {
     calendarAllowed=false;calendarOwnerToken='';forgetSavedCalendar();clearCalendarView();$('calendarBtn').hidden=true;
     if($('calendarDlg').open)$('calendarDlg').close();
   }else{calendarData=cachedPhoneData()||calendarData;drawCalendar();}
+  drawUpcomingEvent();
 }
 function calendarAuth(m) {
   calendarEpoch++;calendarConnected=true;calendarAllowed=m.calendar===true&&!!calendarIdentity();calendarKey=getToken()?(m.pushKey||''):'';pushUI();
   $('calendarBtn').hidden=!calendarAllowed;
   if(!calendarAllowed){calendarDisconnect(true);return;}
+  if(calendarOwnerToken!==calendarIdentity())forgetSavedCalendar();
   calendarOwnerToken=calendarIdentity();calendarData=cachedPhoneData()||calendarData;
-  drawCalendar();rawCmd('calendar_get');syncPush(false).catch(()=>{});
+  drawCalendar();drawUpcomingEvent();rawCmd('calendar_get');syncPush(false).catch(()=>{});
 }
 $('calendarBtn').onclick=()=>{
-  clearCalendarView(); calendarSelected=calToday(); calendarWeek=calPeriod(calendarSelected); $('calendarDlg').showModal();
+  clearCalendarView(); calendarMode=phoneRead('calDefault','week')==='month'?'month':'week';calendarSelected=calToday(); calendarWeek=calPeriod(calendarSelected); $('calendarDlg').showModal();
   drawCalendar(); calScrollTop(); if(calendarConnected)rawCmd('calendar_get'); calendarFreshTimer=setInterval(drawCalendar,30000);
 };
 $('calendarRefresh').onclick=()=>{ if(calendarConnected){$('calendarStatus').textContent='Refreshing…';rawCmd('calendar_get');}else{drawCalendar();toast('Offline. Showing saved events.');} };
@@ -3273,8 +3356,8 @@ function phoneAppearance(key,selector,allowed,fallback){
   const apply=v=>{if(!allowed.includes(v))v=fallback;root.dataset['phone'+key[0].toUpperCase()+key.slice(1)]=v;buttons.forEach(b=>b.setAttribute('aria-pressed',String(b.dataset[key]===v)));};
   apply(phoneRead(key,fallback));buttons.forEach(b=>b.onclick=()=>{phoneWrite(key,b.dataset[key]);apply(b.dataset[key]);buzz();});
 }
-phoneAppearance('theme','#phoneThemes',['dark','black'],'dark');
-phoneAppearance('accent','#phoneAccents',['auto','purple','blue','green'],'auto');
+phoneAppearance('theme','#phoneThemes',['dark','black','midnight','forest','plum','warm'],'dark');
+phoneAppearance('accent','#phoneAccents',['auto','purple','blue','green','rose','amber','teal'],'auto');
 phoneAppearance('density','#phoneDensities',['normal','compact'],'normal');
 for(const [id,key] of [['phoneHaptics','haptics'],['phoneGestures','gestures']]){$(id).checked=phoneRead(key,'1')!=='0';$(id).onchange=()=>phoneWrite(key,$(id).checked?'1':'0');}
 function attachPhoneSwipe(el,action,queue=false){
@@ -3310,12 +3393,12 @@ function phoneDrawRecent(section,m){
 }
 function phonePinnedOrder(items){return [...items].sort((a,b)=>Number(phonePins.has(b.playlistId))-Number(phonePins.has(a.playlistId)));}
 function phoneLibraryRow(r){const li=itemRow(r);if(!r.playlistId||!['playlist','album'].includes(r.kind))return li;const pin=actionButton('i-pin','Pin collection on this phone',()=>{if(phonePins.has(r.playlistId))phonePins.delete(r.playlistId);else if(phonePins.size<80)phonePins.add(r.playlistId);phoneWrite('pins',JSON.stringify([...phonePins]));if(phoneLibSnapshot)drawLibrary(phoneLibSnapshot);});pin.classList.add('pin-btn');pin.setAttribute('aria-pressed',String(phonePins.has(r.playlistId)));pin.setAttribute('aria-label',phonePins.has(r.playlistId)?'Unpin collection':'Pin collection');li.append(pin);return li;}
-function phoneClearPins(){browseReset();browseCache.clear();phonePins.clear();phoneWrite('pins','[]');phoneLibSnapshot=null;for(const k of Object.keys(phoneScroll))delete phoneScroll[k];}
+function phoneClearPins(){browseReset();browseCache.clear();phonePins.clear();phoneWrite('pins','[]');phoneLibSnapshot=null;for(const k of Object.keys(phoneScroll))delete phoneScroll[k];for(const k of Object.keys(libCache))delete libCache[k];try{for(const k of phoneCacheKeys())localStorage.removeItem(k);}catch{}currentResults=[];lastQuery='';clearTimeout(searchTimer);clearTimeout(libTimer);$('results').textContent='';$('libList').textContent='';$('libRecentItems').textContent='';$('libRecent').hidden=true;mixCancel=true;mixSelected.clear();mixCandidates=[];if($('mixDlg').open)$('mixDlg').close();}
 $('forget').addEventListener('click',phoneClearPins);
 
 /* Phone-only submenu navigation and confirmations. */
 function phoneTrackKey(s=last){return JSON.stringify([s?.videoId||'',s?.title||'',s?.artist||'',s?.art||'',s?.site||'']);}
-const phoneSettingsMeta=[['Appearance & feel','Theme, colors, density and gestures','i-sliders','theme accent dark amoled haptic gestures'],['Do-not-play list','Manage blocked songs and artists','i-block','blocked blacklist music'],['On this phone','Device name, lock screen, display and volume limit','i-vol-hi','rename profile name screen volume media'],['Connection & diagnostics','Relay, PC and calendar health, repair tools','i-swap','health database check reload troubleshoot'],['Paired phones','Pair, pause, resume and view activity','i-user','devices guest calendar permission history'],['Security','Change access code or connection token','i-block','password authentication token'],['System Center','Notifications, analytics, Neon, logs, security and updates','i-swap','alerts report update database usage optimization log latency']];
+const phoneSettingsMeta=[['Appearance & feel','Theme, colors, density and gestures','i-sliders','theme accent dark amoled haptic gestures'],['Do-not-play list','Manage blocked songs and artists','i-block','blocked blacklist music'],['On this phone','Device name, lock screen, display and volume limit','i-vol-hi','rename profile name screen volume media'],['Connection & diagnostics','Relay, PC and calendar health, repair tools','i-swap','health database check reload troubleshoot'],['Paired phones','Pair, pause, resume and view activity','i-user','devices guest calendar permission history'],['Security','Change access code or connection token','i-block','password authentication token'],['System Center','Notifications, analytics, Neon, logs, security and updates','i-swap','alerts report update database usage optimization log latency'],['Calendar appearance','Timeline, event colors and Now Playing preview','i-sliders','calendar agenda color event upcoming month week timeline privacy'],['Cache manager','View and clear data saved on this phone','i-lib','cache storage clear local library history']];
 const phoneSettingsSections=Array.from($('settings').querySelectorAll('.sheetBody > details'));
 const settingsBody=$('settings').querySelector('.sheetBody');
 let settingsIndex=-1,settingsHomeScroll=0,settingsSystemScroll=0;
@@ -3349,12 +3432,13 @@ function phoneSettingsPage(index){
   settingsBody.scrollTop=detail?0:settingsHomeScroll;phoneSettingsStatus();phoneSettingsFilter();
   if(index===3){$('relayHealthCard').hidden=!getToken();if(getToken())relayHealthRequest();}
   if(index===6)systemOpen();
+  if(index===8)phoneCacheDraw();
 }
 function phoneSettingsBack(){
   if(settingsIndex===6&&systemTab){systemShowMenu(true);return;}
   phoneSettingsPage(-1);
 }
-for(const [title,indices] of [['Personalize',[0,2]],['Music',[1]],['Devices & access',[4,5]],['Support & system',[3,6]]]){
+for(const [title,indices] of [['Personalize',[0,2,7]],['Music',[1]],['Devices & access',[4,5]],['Support & system',[3,6,8]]]){
   const section=document.createElement('section'),heading=document.createElement('h3'),body=document.createElement('div');section.className='settings-group';heading.textContent=title;body.className='settings-group-body';
   for(const i of indices){const [name,sub,icon]=phoneSettingsMeta[i],button=document.createElement('button'),badge=document.createElement('span'),copy=document.createElement('span'),strong=document.createElement('strong'),desc=document.createElement('small'),arrow=document.createElement('span');button.type='button';button.className='settings-nav-row';button.dataset.settingsIndex=i;badge.className='settings-section-icon';badge.innerHTML='<svg class="i"><use href="#'+icon+'"/></svg>';copy.className='settings-section-copy';strong.textContent=name;desc.textContent=sub;copy.append(strong,desc);arrow.className='settings-section-arrow';arrow.textContent='›';button.append(badge,copy,arrow);button.onclick=()=>{phoneSettingsPage(i);buzz();};body.append(button);}
   section.append(heading,body);$('settingsGroups').append(section);
@@ -3572,7 +3656,7 @@ $('systemCheckUpdate').onclick=()=>checkAppUpdate(true);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)checkAppUpdate(false);});
 setInterval(()=>checkAppUpdate(false),180000);
 function systemDisconnected(){
-  clearTimeout(systemTimer);systemId='';$('systemRefresh').disabled=false;$('systemResults').textContent='';$('systemStatus').textContent='Disconnected. Refresh after reconnecting.';
+  clearTimeout(systemTimer);systemId='';opsPendingAction='';opsData=null;opsReport=null;$('systemRefresh').disabled=false;$('systemResults').textContent='';$('systemStatus').textContent='Disconnected. Refresh after reconnecting.';
 }
 const systemTitles={native:'Windows status',overview:'Notifications',history:'Connection history',analytics:'Connection analytics',usage:'Database usage',optimization:'Neon optimization',logs:'Live relay logs',security:'Security monitor',report:'Diagnostic report',updates:'App updates'};
 function systemShowMenu(restore=false){
@@ -3824,6 +3908,121 @@ function opsDraw(){
   }
 }
 setInterval(()=>{if(systemTab==='logs'&&!systemId&&!document.hidden&&$('settings').open&&$('systemSec').open&&!$('systemSec').hidden&&ws?.readyState===1&&getToken()&&getCode()){const active=document.activeElement;if(active&&active.matches('#systemResults input,#systemResults select'))return;systemRequest(true);}},15000);
+/* Local-only calendar preferences, upcoming event card and mix builder. */
+const CAL_PREFS=[['phoneCalDefault','calDefault','week',['week','month']],['phoneCalLayout','calLayout','timeline',['timeline','cards','compact']],['phoneCalPalette','calPalette','app',['app','ocean','sunset','botanical']],['phoneCalTimed','calTimed','#91b8ff'],['phoneCalAllDay','calAllDay','#d9b3f7'],['phoneCalCurrent','calCurrent','#67d4a1']];
+const colorHex=(v,d)=>/^#[0-9a-f]{6}$/i.test(v)?v:d;
+function calPref(k,d,allowed){const v=phoneRead(k,d);return allowed?allowed.includes(v)?v:d:colorHex(v,d);}
+function applyCalendarPrefs(){
+  const el=$('calendarDlg'),layout=calPref('calLayout','timeline',['timeline','cards','compact']);
+  el.dataset.calLayout=layout;el.dataset.calPalette=calPref('calPalette','app',['app','ocean','sunset','botanical']);
+  const custom=phoneRead('calCustom','0')==='1';
+  for(const [v,k,d] of [['--event-timed','calTimed','#91b8ff'],['--event-allday','calAllDay','#d9b3f7'],['--event-current','calCurrent','#67d4a1']]){if(custom)el.style.setProperty(v,calPref(k,d));else el.style.removeProperty(v);}
+  document.querySelectorAll('[data-cal-layout]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.calLayout===layout)));
+}
+function chooseUpcoming(items,now,today,fresh){
+  const valid=items.filter(e=>!e.allDay&&Number.isFinite(e.start)&&e.date>=today);
+  const active=fresh?valid.filter(e=>e.live!==false&&Number.isFinite(e.end)&&e.end>now&&e.start<=now).sort((a,b)=>a.end-b.end)[0]:null;
+  const next=valid.filter(e=>e.start>now).sort((a,b)=>a.start-b.start)[0];
+  const all=items.filter(e=>e.allDay&&e.date>=today).sort((a,b)=>a.date.localeCompare(b.date))[0];
+  return active?{event:active,ongoing:true}:next?{event:next,ongoing:false}:all?{event:all,ongoing:false}:null;
+}
+let upcomingDate='';
+function drawUpcomingEvent(){
+  const card=$('playerCalendarCard');
+  const visible=phoneRead('calPlayer','0')==='1'&&calendarAllowed&&!phonePaused&&calendarOwnerToken===calendarIdentity()&&!!calendarOwnerToken;
+  const now=Date.now(),fresh=visible&&calendarConnected&&calendarData?.status==='ok'&&Number.isFinite(calendarData.at)&&now-calendarData.at<180000;
+  const chosen=visible?chooseUpcoming(calItems(),now,calToday(),fresh):null;
+  if(!chosen){card.hidden=true;upcomingDate='';for(const id of ['playerCalendarTitle','playerCalendarTime','playerCalendarLabel'])$(id).textContent='';return;}
+  const e=chosen.event,live=fresh&&e.live!==false;upcomingDate=e.date;
+  $('playerCalendarLabel').textContent=chosen.ongoing?'Happening now':live?'Upcoming event':'Next saved event';
+  $('playerCalendarTitle').textContent=phoneRead('calPrivate','0')==='1'?'Calendar event':e.title||'Untitled event';
+  const date=e.date===calToday()?'Today':new Date(e.date+'T12:00:00').toLocaleDateString(undefined,{weekday:'short',month:'short',day:'numeric'});
+  const when=e.allDay?'All day':new Date(e.start).toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit'});
+  const detail=chosen.ongoing?' · '+calDuration(e.end-now)+' left':live&&!e.allDay?' · in '+calDuration(e.start-now):'';
+  $('playerCalendarTime').textContent=date+' · '+when+detail+(live?'':' · Saved');card.hidden=false;
+}
+for(const [id,k,d,allowed] of CAL_PREFS){const el=$(id);el.value=calPref(k,d,allowed);el.onchange=()=>{phoneWrite(k,calPrefValue(el.value,d,allowed));applyCalendarPrefs();drawCalendar();drawUpcomingEvent();};}
+function calPrefValue(v,d,allowed){return allowed?(allowed.includes(v)?v:d):colorHex(v,d);}
+for(const [id,k] of [['phoneCalCustomColors','calCustom'],['phoneCalPlayer','calPlayer'],['phoneCalPrivate','calPrivate']]){const el=$(id);el.checked=phoneRead(k,'0')==='1';el.onchange=()=>{phoneWrite(k,el.checked?'1':'0');applyCalendarPrefs();drawCalendar();drawUpcomingEvent();};}
+document.querySelectorAll('[data-cal-layout]').forEach(b=>b.onclick=()=>{phoneWrite('calLayout',b.dataset.calLayout);$('phoneCalLayout').value=b.dataset.calLayout;applyCalendarPrefs();drawCalendar();});
+$('playerCalendarCard').onclick=()=>{if(!calendarAllowed||!upcomingDate||$('calendarBtn').hidden)return;const date=upcomingDate;$('calendarBtn').click();calSelectDay(date);};
+setInterval(()=>{if(!document.hidden&&view==='playing')drawUpcomingEvent();},30000);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)drawUpcomingEvent();});
+applyCalendarPrefs();
+
+const mixLimit=12;
+let mixCandidates=[],mixSelected=new Set(),mixRunning=false,mixCancel=false;
+function mixBuild(groups,site='ytm'){
+  const map=new Map();
+  for(const group of groups)for(const r of Array.isArray(group)?group:[]){
+    if(!r||typeof r.title!=='string')continue;
+    const collection=['playlist','album'].includes(r.kind),id=collection?r.playlistId:r.videoId;
+    if(collection?site==='yt'||typeof id!=='string'||!/^[A-Za-z0-9_-]{2,64}$/.test(id):typeof id!=='string'||!/^[A-Za-z0-9_-]{11}$/.test(id))continue;
+    const key=(collection?'c:':'s:')+id;
+    if(!map.has(key))map.set(key,{key,id,collection,title:r.title.slice(0,160),subtitle:String(r.artist||r.subtitle||r.kind||'Song').slice(0,100)});
+  }
+  const rows=[...map.values()],songs=rows.filter(r=>!r.collection),collections=rows.filter(r=>r.collection);
+  return [...songs.slice(0,Math.max(80,120-collections.length)),...collections.slice(0,40)].slice(0,120);
+}
+function mixSources(){
+  const groups=[currentResults,phoneBrowse?.items,...[...browseCache.values()].map(x=>x.items)];
+  for(const section of ['history','home','playlists','albums']){const m=libCache[section]||storedLib(section);if(m){groups.push(m.items);for(const shelf of m.shelves||[])groups.push(shelf.items);}}
+  return mixBuild(groups,last?.site==='yt'?'yt':'ytm');
+}
+function mixVisible(){const source=$('mixSource').value;return mixCandidates.filter(r=>source==='all'||(source==='collections'?r.collection:!r.collection));}
+function mixDraw(){
+  const root=$('mixItems');root.textContent='';
+  $('mixCount').textContent=mixSelected.size+' of '+mixLimit+' selected · '+mixCandidates.length+' available';
+  $('mixAppend').disabled=mixRunning||!mixSelected.size;
+  for(const r of mixVisible()){
+    const row=document.createElement('label'),input=document.createElement('input'),copy=document.createElement('span'),note=document.createElement('small');
+    row.className='mix-row';input.type='checkbox';input.checked=mixSelected.has(r.key);input.disabled=mixRunning||(!input.checked&&mixSelected.size>=mixLimit);
+    copy.textContent=r.title;note.textContent=r.collection?'Whole collection · '+r.subtitle:r.subtitle;copy.append(note);row.append(input,copy);root.append(row);
+    input.onchange=()=>{if(input.checked&&mixSelected.size<mixLimit)mixSelected.add(r.key);else mixSelected.delete(r.key);mixDraw();};
+  }
+  if(!mixCandidates.length){const p=document.createElement('p');p.className='small';p.textContent='Open Library, search for music or browse a playlist first, then come back.';root.append(p);}
+}
+function mixOpen(){
+  if(phonePaused||!token||mixRunning)return;mixCandidates=mixSources();mixSelected.clear();$('mixSource').value='all';$('mixStatus').textContent='';mixDraw();$('mixDlg').showModal();
+}
+$('libMix').onclick=mixOpen;$('playerMix').onclick=mixOpen;
+$('mixSource').onchange=mixDraw;
+$('mixRandom').onclick=()=>{if(mixRunning)return;const items=mixVisible().filter(r=>r.collection||(!isQueued(r.id)&&last?.videoId!==r.id));for(let i=items.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[items[i],items[j]]=[items[j],items[i]];}mixSelected=new Set(items.slice(0,5).map(r=>r.key));mixDraw();};
+$('mixClear').onclick=()=>{if(!mixRunning){mixSelected.clear();mixDraw();}};
+$('mixClose').onclick=()=>$('mixDlg').close();
+$('mixDlg').addEventListener('close',()=>{mixCancel=true;mixSelected.clear();mixCandidates=[];$('mixItems').textContent='';});
+$('mixAppend').onclick=async()=>{
+  if(mixRunning||!ws?.phoneAuthed||$('app').dataset.pc!=='on'||phonePaused){$('mixStatus').textContent='Connect to your PC first.';return;}
+  const sock=ws,identity=calendarIdentity(),site=last?.site,selected=[...mixSelected].map(k=>mixCandidates.find(r=>r.key===k)).filter(Boolean);
+  if(!selected.length)return;
+  mixRunning=true;mixCancel=false;mixDraw();let sent=0,skipped=0;
+  $('mixRandom').disabled=$('mixClear').disabled=$('mixSource').disabled=true;
+  try{
+    for(const r of selected){
+      if(mixCancel||!$('mixDlg').open||ws!==sock||!sock.phoneAuthed||sock.readyState!==1||calendarIdentity()!==identity||phonePaused||$('app').dataset.pc!=='on'||last?.site!==site)break;
+      if(!r.collection&&(isQueued(r.id)||last?.videoId===r.id)){skipped++;continue;}
+      if(r.collection&&site==='yt'){skipped++;continue;}
+      if(!cmd(r.collection?'collection_end':'queue_end',r.id))break;
+      sent++;$('mixStatus').textContent='Sent '+sent+' of '+selected.length+' queue requests…';
+      await new Promise(resolve=>setTimeout(resolve,1000));
+    }
+    if($('mixDlg').open){$('mixStatus').textContent=sent+' requests sent · '+skipped+' duplicates or unsupported items skipped. Check Up next to confirm. '+(sent+skipped<selected.length?'Remaining items were not sent.':'');mixSelected.clear();}
+  }finally{mixRunning=false;$('mixRandom').disabled=$('mixClear').disabled=$('mixSource').disabled=false;mixDraw();}
+};
+function safeLocalBytes(keys){let bytes=0;try{for(const k of keys){const v=localStorage.getItem(k);if(v!=null)bytes+=2*(k.length+v.length);}}catch{}return bytes;}
+function jsonSize(v){try{return 2*JSON.stringify(v).length;}catch{return 0;}}
+function phoneCacheKeys(){try{return Object.keys(localStorage).filter(k=>k.startsWith(LIB_KEY));}catch{return [];}}
+function phoneCacheDraw(){
+  const root=$('phoneCacheRows');root.textContent='';
+  const rows=[['Saved library',safeLocalBytes(phoneCacheKeys()),'Cached library sections on this phone',()=>{for(const k of Object.keys(libCache))delete libCache[k];try{for(const k of phoneCacheKeys())localStorage.removeItem(k);}catch{}phoneLibSnapshot=null;$('libList').textContent='';$('libRecentItems').textContent='';$('libRecent').hidden=true;$('libCount').textContent='';$('libMsg').textContent='Cache cleared. Refresh to reload.';}],
+  ['Browse cache',browseCache.size?jsonSize([...browseCache.values()]):0,'Session-only artist, album and playlist results',()=>{browseCache.clear();browseReset();}],
+  ['Search results',currentResults.length?jsonSize(currentResults):0,'Results from the last search, kept in memory',()=>{currentResults=[];lastQuery='';clearTimeout(searchTimer);$('results').textContent='';$('searchMsg').textContent='';drawSuggest();}],
+  ['Search history',safeLocalBytes(['searchHistory']),'Recent searches stored on this phone',()=>{try{localStorage.removeItem('searchHistory');}catch{}drawSuggest();}],
+  ['Calendar view cache',calendarAllowed&&calendarOwnerToken===calendarIdentity()&&calendarData?jsonSize(calendarData):0,'In-memory snapshot only; not your Neon backup',()=>{forgetSavedCalendar();if($('calendarDlg').open)drawCalendar();}]];
+  for(const [label,size,description,clear] of rows){const row=document.createElement('div'),copy=document.createElement('div'),name=document.createElement('strong'),note=document.createElement('small'),button=document.createElement('button');row.className='cache-row';name.textContent=label;note.textContent=sysBytes(size)+' approx. · '+description;copy.append(name,note);button.type='button';button.className='secondary';button.textContent='Clear';button.disabled=!size;button.onclick=()=>phoneConfirm('Clear '+label.toLowerCase()+'?',description+'. Your account and server data will not be changed.','Clear',()=>{clear();$('phoneCacheNote').textContent=label+' cleared on this phone.';phoneCacheDraw();});row.append(copy,button);root.append(row);}
+  $('phoneCacheNote').textContent=$('phoneCacheNote').textContent||'Sizes are estimates. The offline app shell and credentials are not included.';
+}
+$('phoneCacheRefresh').onclick=phoneCacheDraw;
 resetColour();
 show();
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
