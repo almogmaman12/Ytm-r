@@ -1002,6 +1002,7 @@
   #calendarDlg .cal-event.all-day .cal-time .i{color:var(--event-allday);}
   #calendarDlg .cal-event.active .cal-state{background:var(--event-current);color:#12251e;}
   #calendarDlg .cal-map-block:not(.point){background:var(--event-timed);}
+  #calendarDlg[data-cal-palette="app"]{--cal-panel:var(--phone-panel);--cal-card:color-mix(in srgb,var(--phone-panel) 87%,var(--ink));}
   #calendarDlg[data-cal-palette="ocean"]{--cal-panel:#111c30;--cal-card:#182b43;--event-timed:#84beff;--event-allday:#a6e2e9;--event-current:#73e2b8;}
   #calendarDlg[data-cal-palette="sunset"]{--cal-panel:#271a25;--cal-card:#392437;--event-timed:#ffb078;--event-allday:#f4a1d5;--event-current:#f7d380;}
   #calendarDlg[data-cal-palette="botanical"]{--cal-panel:#13241c;--cal-card:#1c3328;--event-timed:#91d6ab;--event-allday:#d7dca2;--event-current:#7de5c9;}
@@ -1538,6 +1539,7 @@ function setView(name) {
   $('mini').hidden = name === 'playing';
   if(changed)window.scrollTo(0,phoneScroll[name]||0);
   if (name === 'library') loadLibrary(false);
+  if (name === 'playing') drawUpcomingEvent();
   if(name==='search'){$('musicSearchClear').hidden=!$('q').value;if(!phoneBrowse&&!$('q').value&&!$('results').children.length)drawSuggest();}
 }
 document.querySelectorAll('#tabs button').forEach((b) => { b.onclick = () => { buzz(); setView(b.dataset.view); }; });
@@ -2755,6 +2757,7 @@ function calendarAuth(m) {
   calendarEpoch++;calendarConnected=true;calendarAllowed=m.calendar===true&&!!calendarIdentity();calendarKey=getToken()?(m.pushKey||''):'';pushUI();
   $('calendarBtn').hidden=!calendarAllowed;
   if(!calendarAllowed){calendarDisconnect(true);return;}
+  if(calendarOwnerToken!==calendarIdentity())forgetSavedCalendar();
   calendarOwnerToken=calendarIdentity();calendarData=cachedPhoneData()||calendarData;
   drawCalendar();drawUpcomingEvent();rawCmd('calendar_get');syncPush(false).catch(()=>{});
 }
@@ -3379,7 +3382,7 @@ function phoneDrawRecent(section,m){
 }
 function phonePinnedOrder(items){return [...items].sort((a,b)=>Number(phonePins.has(b.playlistId))-Number(phonePins.has(a.playlistId)));}
 function phoneLibraryRow(r){const li=itemRow(r);if(!r.playlistId||!['playlist','album'].includes(r.kind))return li;const pin=actionButton('i-pin','Pin collection on this phone',()=>{if(phonePins.has(r.playlistId))phonePins.delete(r.playlistId);else if(phonePins.size<80)phonePins.add(r.playlistId);phoneWrite('pins',JSON.stringify([...phonePins]));if(phoneLibSnapshot)drawLibrary(phoneLibSnapshot);});pin.classList.add('pin-btn');pin.setAttribute('aria-pressed',String(phonePins.has(r.playlistId)));pin.setAttribute('aria-label',phonePins.has(r.playlistId)?'Unpin collection':'Pin collection');li.append(pin);return li;}
-function phoneClearPins(){browseReset();browseCache.clear();phonePins.clear();phoneWrite('pins','[]');phoneLibSnapshot=null;for(const k of Object.keys(phoneScroll))delete phoneScroll[k];}
+function phoneClearPins(){browseReset();browseCache.clear();phonePins.clear();phoneWrite('pins','[]');phoneLibSnapshot=null;for(const k of Object.keys(phoneScroll))delete phoneScroll[k];for(const k of Object.keys(libCache))delete libCache[k];try{for(const k of phoneCacheKeys())localStorage.removeItem(k);}catch{}currentResults=[];lastQuery='';clearTimeout(searchTimer);clearTimeout(libTimer);$('results').textContent='';$('libList').textContent='';$('libRecentItems').textContent='';$('libRecent').hidden=true;mixCancel=true;mixSelected.clear();mixCandidates=[];if($('mixDlg').open)$('mixDlg').close();}
 $('forget').addEventListener('click',phoneClearPins);
 
 /* Phone-only submenu navigation and confirmations. */
@@ -3642,7 +3645,7 @@ $('systemCheckUpdate').onclick=()=>checkAppUpdate(true);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)checkAppUpdate(false);});
 setInterval(()=>checkAppUpdate(false),180000);
 function systemDisconnected(){
-  clearTimeout(systemTimer);systemId='';$('systemRefresh').disabled=false;$('systemResults').textContent='';$('systemStatus').textContent='Disconnected. Refresh after reconnecting.';
+  clearTimeout(systemTimer);systemId='';opsPendingAction='';opsData=null;opsReport=null;$('systemRefresh').disabled=false;$('systemResults').textContent='';$('systemStatus').textContent='Disconnected. Refresh after reconnecting.';
 }
 const systemTitles={overview:'Notifications',history:'Connection history',analytics:'Connection analytics',usage:'Database usage',optimization:'Neon optimization',logs:'Live relay logs',security:'Security monitor',report:'Diagnostic report',updates:'App updates'};
 function systemShowMenu(restore=false){
@@ -3832,11 +3835,12 @@ function mixBuild(groups,site='ytm'){
   for(const group of groups)for(const r of Array.isArray(group)?group:[]){
     if(!r||typeof r.title!=='string')continue;
     const collection=['playlist','album'].includes(r.kind),id=collection?r.playlistId:r.videoId;
-    if(collection?site==='yt'||typeof id!=='string'||!/^[A-Za-z0-9_-]{1,150}$/.test(id):typeof id!=='string'||!/^[A-Za-z0-9_-]{11}$/.test(id))continue;
+    if(collection?site==='yt'||typeof id!=='string'||!/^[A-Za-z0-9_-]{2,64}$/.test(id):typeof id!=='string'||!/^[A-Za-z0-9_-]{11}$/.test(id))continue;
     const key=(collection?'c:':'s:')+id;
     if(!map.has(key))map.set(key,{key,id,collection,title:r.title.slice(0,160),subtitle:String(r.artist||r.subtitle||r.kind||'Song').slice(0,100)});
   }
-  return [...map.values()].slice(0,120);
+  const rows=[...map.values()],songs=rows.filter(r=>!r.collection),collections=rows.filter(r=>r.collection);
+  return [...songs.slice(0,Math.max(80,120-collections.length)),...collections.slice(0,40)].slice(0,120);
 }
 function mixSources(){
   const groups=[currentResults,phoneBrowse?.items,...[...browseCache.values()].map(x=>x.items)];
@@ -3867,7 +3871,7 @@ $('mixClose').onclick=()=>$('mixDlg').close();
 $('mixDlg').addEventListener('close',()=>{mixCancel=true;mixSelected.clear();mixCandidates=[];$('mixItems').textContent='';});
 $('mixAppend').onclick=async()=>{
   if(mixRunning||!ws?.phoneAuthed||$('app').dataset.pc!=='on'||phonePaused){$('mixStatus').textContent='Connect to your PC first.';return;}
-  const sock=ws,identity=calendarIdentity(),site=last?.site,selected=mixCandidates.filter(r=>mixSelected.has(r.key));
+  const sock=ws,identity=calendarIdentity(),site=last?.site,selected=[...mixSelected].map(k=>mixCandidates.find(r=>r.key===k)).filter(Boolean);
   if(!selected.length)return;
   mixRunning=true;mixCancel=false;mixDraw();let sent=0,skipped=0;
   $('mixRandom').disabled=$('mixClear').disabled=$('mixSource').disabled=true;
@@ -3889,7 +3893,8 @@ function phoneCacheKeys(){try{return Object.keys(localStorage).filter(k=>k.start
 function phoneCacheDraw(){
   const root=$('phoneCacheRows');root.textContent='';
   const rows=[['Saved library',safeLocalBytes(phoneCacheKeys()),'Cached library sections on this phone',()=>{for(const k of Object.keys(libCache))delete libCache[k];try{for(const k of phoneCacheKeys())localStorage.removeItem(k);}catch{}phoneLibSnapshot=null;$('libList').textContent='';$('libRecentItems').textContent='';$('libRecent').hidden=true;$('libCount').textContent='';$('libMsg').textContent='Cache cleared. Refresh to reload.';}],
-  ['Browse cache',jsonSize([...browseCache.values()]),'Session-only artist, album and playlist results',()=>{browseCache.clear();browseReset();}],
+  ['Browse cache',browseCache.size?jsonSize([...browseCache.values()]):0,'Session-only artist, album and playlist results',()=>{browseCache.clear();browseReset();}],
+  ['Search results',currentResults.length?jsonSize(currentResults):0,'Results from the last search, kept in memory',()=>{currentResults=[];lastQuery='';clearTimeout(searchTimer);$('results').textContent='';$('searchMsg').textContent='';drawSuggest();}],
   ['Search history',safeLocalBytes(['searchHistory']),'Recent searches stored on this phone',()=>{try{localStorage.removeItem('searchHistory');}catch{}drawSuggest();}],
   ['Calendar view cache',calendarAllowed&&calendarOwnerToken===calendarIdentity()&&calendarData?jsonSize(calendarData):0,'In-memory snapshot only; not your Neon backup',()=>{forgetSavedCalendar();if($('calendarDlg').open)drawCalendar();}]];
   for(const [label,size,description,clear] of rows){const row=document.createElement('div'),copy=document.createElement('div'),name=document.createElement('strong'),note=document.createElement('small'),button=document.createElement('button');row.className='cache-row';name.textContent=label;note.textContent=sysBytes(size)+' approx. · '+description;copy.append(name,note);button.type='button';button.className='secondary';button.textContent='Clear';button.disabled=!size;button.onclick=()=>phoneConfirm('Clear '+label.toLowerCase()+'?',description+'. Your account and server data will not be changed.','Clear',()=>{clear();$('phoneCacheNote').textContent=label+' cleared on this phone.';phoneCacheDraw();});row.append(copy,button);root.append(row);}
