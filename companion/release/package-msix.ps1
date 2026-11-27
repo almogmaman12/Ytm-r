@@ -63,7 +63,7 @@ try {
  <uap:VisualElements DisplayName="YTM Remote Companion" Description="YTM Remote extension update manager" Square150x150Logo="Assets\Logo150.png" Square44x44Logo="Assets\Logo44.png" BackgroundColor="transparent"/>
  <Extensions><desktop:Extension Category="windows.startupTask" Executable="YtmCompanion.exe" EntryPoint="Windows.FullTrustApplication"><desktop:StartupTask TaskId="YtmCompanionStartup" Enabled="false" DisplayName="YTM Remote Companion"/></desktop:Extension></Extensions>
  </Application></Applications>
- <Capabilities><rescap:Capability Name="runFullTrust"/></Capabilities>
+ <Capabilities><uap7:Capability Name="globalMediaControl"/><rescap:Capability Name="runFullTrust"/></Capabilities>
 </Package>
 "@
   Set-Content -Path (Join-Path $stage 'AppxManifest.xml') -Value $xml -Encoding UTF8
