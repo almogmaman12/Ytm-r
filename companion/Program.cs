@@ -29,6 +29,7 @@ internal sealed class Settings
     public string Salt { get; set; } = "";
     public string PasswordHash { get; set; } = "";
     public string NativeConfig { get; set; } = ""; // DPAPI-protected; empty means disabled
+    public bool NativeControls { get; set; } // Off by default, including existing installs
 }
 
 internal static class Store
@@ -175,7 +176,7 @@ internal sealed class CompanionContext : ApplicationContext
             await CheckAsync(false);
         };
         timer.Start();
-        if (!settingsUnreadable) native.Start(settings.NativeConfig);
+        if (!settingsUnreadable) native.Start(settings.NativeConfig, settings.NativeControls);
     }
 
     private void Status(string message)
@@ -240,15 +241,19 @@ internal sealed class CompanionContext : ApplicationContext
         settingsOpen = true;
         try
         {
-            using var form = new Form { Text = "Windows status connection (test relay)", Width = 565, Height = 400,
+            using var form = new Form { Text = "Windows status connection (test relay)", Width = 565, Height = 490,
                 StartPosition = FormStartPosition.CenterScreen };
             var panel = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, WrapContents = false, AutoScroll = true, Padding = new Padding(12) };
             form.Controls.Add(panel);
             void Label(string text) => panel.Controls.Add(new Label { Text = text, AutoSize = true, MaximumSize = new Size(510, 0) });
             Label("Test relay: " + NativeCredentials.Relay);
-            Label("Read-only Windows status: uptime, memory, power and companion version. Owner phones only. No Windows commands are accepted.");
+            Label("Share Windows status with your authenticated owner phone. Remote controls are optional and limited to audio, media keys and Chrome.");
             var enable = new CheckBox { Text = "Share Windows status with my owner phone", AutoSize = true, Checked = settings.NativeConfig.Length > 0 };
             panel.Controls.Add(enable);
+            var control = new CheckBox { Text = "Allow remote Windows audio, media and Chrome controls", AutoSize = true, Checked = settings.NativeControls && enable.Checked, Enabled = enable.Checked };
+            panel.Controls.Add(control);
+            enable.CheckedChanged += (_, _) => { control.Enabled = enable.Checked; if (!enable.Checked) control.Checked = false; };
+            Label("Chrome closes gracefully; unsaved work or confirmation dialogs may prevent closure. No shell commands are accepted.");
             Label("Test relay token (leave both fields blank to retain saved credentials)");
             var token = new TextBox { Width = 500, UseSystemPasswordChar = true };
             panel.Controls.Add(token);
@@ -269,10 +274,12 @@ internal sealed class CompanionContext : ApplicationContext
                             : new NativeCredentials(token.Text.Trim(), code.Text).Protect();
                     }
                     var old = settings.NativeConfig;
+                    var oldControls = settings.NativeControls;
                     settings.NativeConfig = config;
+                    settings.NativeControls = enable.Checked && control.Checked;
                     try { Store.Save(settings); }
-                    catch { settings.NativeConfig = old; throw; }
-                    native.Start(config);
+                    catch { settings.NativeConfig = old; settings.NativeControls = oldControls; throw; }
+                    native.Start(config, settings.NativeControls);
                     form.Close();
                 }
                 catch { MessageBox.Show("Could not save connection. Enter a valid token and PC code, or disable the connection.", "Windows status"); }
@@ -388,7 +395,7 @@ internal sealed class SettingsForm : Form
         {
             try
             {
-                var next = new Settings { ExtensionFolder = folder.Text.Trim(), PublicKey = pinned ?? key.Text.Trim(), AutomaticUpdates = auto.Checked, StartWithWindows = startup.Checked, Salt = current.Salt, PasswordHash = current.PasswordHash, NativeConfig = current.NativeConfig };
+                var next = new Settings { ExtensionFolder = folder.Text.Trim(), PublicKey = pinned ?? key.Text.Trim(), AutomaticUpdates = auto.Checked, StartWithWindows = startup.Checked, Salt = current.Salt, PasswordHash = current.PasswordHash, NativeConfig = current.NativeConfig, NativeControls = current.NativeControls };
                 if (next.ExtensionFolder.Length > 0 || next.AutomaticUpdates)
                     ExtensionUpdater.ValidateFolder(next.ExtensionFolder);
                 if (next.PublicKey.Length > 0)
