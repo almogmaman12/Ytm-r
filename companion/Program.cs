@@ -11,6 +11,9 @@ internal static class Program
     [STAThread]
     static void Main(string[] args)
     {
+#if SETTINGS_UPGRADE_TEST
+        if (SettingsUpgradeProbe.TryRun(args)) return;
+#endif
         using var mutex = new Mutex(true, @"Local\YtmRemoteCompanion", out var first);
         if (!first) return;
         ApplicationConfiguration.Initialize();
@@ -20,6 +23,7 @@ internal static class Program
 
 internal sealed class Settings
 {
+    public int SchemaVersion { get; set; } // Missing in legacy files (version 0).
     public string ExtensionFolder { get; set; } = "";
     public string PublicKey { get; set; } = "";
     [System.Text.Json.Serialization.JsonIgnore]
@@ -38,24 +42,79 @@ internal static class Store
 {
     public static readonly string Folder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "YTM Remote Companion");
     private static string FilePath => Path.Combine(Folder, "settings.json");
-    public static bool Exists => File.Exists(FilePath);
-    public static Settings Load() => LoadFrom(FilePath);
-    internal static Settings LoadFrom(string path)
+    internal const int CurrentSchema = 1;
+    internal static string MirrorPath(string path) => path + ".bak";
+    internal static string UpdateBackupPath(string path) => path + ".pre-update.bak";
+    public static bool Exists => File.Exists(FilePath) || File.Exists(MirrorPath(FilePath)) || File.Exists(UpdateBackupPath(FilePath));
+    public static bool RecoveredOnLoad { get; private set; }
+    public static Settings Load()
     {
-        if (!File.Exists(path)) return new Settings { PublicKey = PublisherTrust.PublicKey ?? "" };
-        var s = JsonSerializer.Deserialize<Settings>(File.ReadAllText(path)) ?? throw new InvalidDataException("Invalid companion settings.");
-        Validate(s);
-        if (PublisherTrust.PublicKey is string pinned)
+        var value = LoadFrom(FilePath, out bool recovered);
+        RecoveredOnLoad = recovered;
+        return value;
+    }
+    internal static Settings LoadFrom(string path) => LoadFrom(path,out _);
+    internal static Settings LoadFrom(string path, out bool recovered)
+    {
+        recovered = false;
+        var mirror = MirrorPath(path);
+        if (!File.Exists(path) && !File.Exists(mirror))
         {
-            // A changed trust anchor must be explicitly approved in settings.
-            if (!string.Equals(s.PublicKey.Trim(), pinned.Trim(), StringComparison.Ordinal))
-                s.AutomaticUpdates = false;
-            s.PublicKey = pinned;
+            // Never silently start over when only an older recovery snapshot exists.
+            if (File.Exists(UpdateBackupPath(path))) throw new InvalidDataException("Only a pre-update backup remains; manual recovery required.");
+            return new Settings { SchemaVersion = CurrentSchema, PublicKey = PublisherTrust.PublicKey ?? "" };
         }
+        Settings s;
+        bool needsWrite;
+        if (File.Exists(path))
+        {
+            try { s = ReadValidated(path, out needsWrite); }
+            catch (Exception e) when (e is JsonException or InvalidDataException or FormatException)
+            {
+                // Unknown/future schema throws NotSupportedException and must not be rolled back.
+                if (!File.Exists(mirror)) throw;
+                s = ReadValidated(mirror, out _);
+                File.Copy(path, path + ".corrupt-" + Guid.NewGuid().ToString("N"));
+                recovered = needsWrite = true;
+            }
+        }
+        else
+        {
+            s = ReadValidated(mirror, out _);
+            recovered = needsWrite = true;
+        }
+        if (PublisherTrust.PublicKey is string pinned && !string.Equals(s.PublicKey.Trim(), pinned.Trim(), StringComparison.Ordinal))
+        {
+            // A changed trust anchor requires explicit reapproval; save the new safe state.
+            s.AutomaticUpdates = false;
+            s.PublicKey = pinned;
+            needsWrite = true;
+        }
+        if (needsWrite) SaveTo(s,path);
+        else EnsureMirror(s,path);
+        return s;
+    }
+    private static Settings ReadValidated(string path, out bool migrated)
+    {
+        var raw = File.ReadAllText(path);
+        using var doc = JsonDocument.Parse(raw);
+        if (doc.RootElement.ValueKind != JsonValueKind.Object) throw new InvalidDataException("Invalid settings object.");
+        int schema = 0;
+        if (doc.RootElement.TryGetProperty("SchemaVersion",out var field))
+        {
+            if (!field.TryGetInt32(out schema)) throw new InvalidDataException("Invalid settings schema.");
+            if (schema < 0 || schema > CurrentSchema) throw new NotSupportedException("Unsupported settings schema; use a compatible companion version.");
+        }
+        var s = JsonSerializer.Deserialize<Settings>(raw) ?? throw new InvalidDataException("Invalid companion settings.");
+        // Legacy v0 had all current fields except SchemaVersion. Preserve each existing field.
+        migrated = schema != CurrentSchema;
+        s.SchemaVersion = CurrentSchema;
+        Validate(s);
         return s;
     }
     private static void Validate(Settings s)
     {
+        if (s.SchemaVersion != CurrentSchema) throw new NotSupportedException("Unsupported settings schema.");
         if (s.ExtensionFolder == null || s.PublicKey == null || s.Salt == null || s.PasswordHash == null || s.NativeConfig == null)
             throw new InvalidDataException("Invalid companion settings.");
         if (s.PasswordHash.Length == 0 || Convert.FromBase64String(s.Salt).Length != 32 ||
@@ -65,16 +124,55 @@ internal static class Store
     public static void Save(Settings s) => SaveTo(s, FilePath);
     internal static void SaveTo(Settings s, string path)
     {
+        if (s.SchemaVersion == 0) s.SchemaVersion = CurrentSchema;
         Validate(s);
+        var bytes = JsonSerializer.SerializeToUtf8Bytes(s);
+        var mirror = MirrorPath(path);
+        // Write the new complete mirror before committing the primary. An interrupted save
+        // leaves the old primary authoritative; startup refreshes the mirror from it.
+        WriteAtomic(mirror,bytes);
+        try { WriteAtomic(path,bytes); }
+        catch
+        {
+            // If primary replacement fails, restore the mirror to the authoritative primary.
+            // Do not replace an unreadable primary or resurrect a historical snapshot.
+            try
+            {
+                if (File.Exists(path))
+                {
+                    var old = ReadValidated(path,out _);
+                    WriteAtomic(mirror,JsonSerializer.SerializeToUtf8Bytes(old));
+                }
+                else File.Delete(mirror);
+            }
+            catch { }
+            throw;
+        }
+    }
+    private static void EnsureMirror(Settings s,string path)
+    {
+        var bytes = JsonSerializer.SerializeToUtf8Bytes(s);
+        var mirror = MirrorPath(path);
+        if (File.Exists(mirror) && File.ReadAllBytes(mirror).AsSpan().SequenceEqual(bytes)) return;
+        WriteAtomic(mirror,bytes);
+    }
+    public static void BackupBeforeUpdate() => BackupBeforeUpdate(FilePath);
+    internal static void BackupBeforeUpdate(string path)
+    {
+        var s = LoadFrom(path);
+        Validate(s);
+        WriteAtomic(UpdateBackupPath(path),JsonSerializer.SerializeToUtf8Bytes(s));
+    }
+    private static void WriteAtomic(string path,byte[] bytes)
+    {
         var folder = Path.GetDirectoryName(path)!;
         Directory.CreateDirectory(folder);
         var temp = Path.Combine(folder, ".settings-" + Guid.NewGuid().ToString("N") + ".tmp");
         try
         {
-            // Complete and flush the new file before replacing the old one.
             using (var stream = new FileStream(temp, FileMode.CreateNew, FileAccess.Write, FileShare.None, 4096, FileOptions.WriteThrough))
             {
-                JsonSerializer.Serialize(stream, s);
+                stream.Write(bytes);
                 stream.Flush(flushToDisk: true);
             }
             if (File.Exists(path)) File.Replace(temp, path, null);
@@ -147,7 +245,7 @@ internal sealed class CompanionContext : ApplicationContext
         try
         {
             settings = Store.Load();
-            status = string.IsNullOrEmpty(settings.PasswordHash) ? "Setup required" :
+            status = Store.RecoveredOnLoad ? "Recovered saved settings from backup." : string.IsNullOrEmpty(settings.PasswordHash) ? "Setup required" :
                 settings.AutomaticUpdates ? "Automatic extension updates enabled" : "Automatic extension updates off";
         }
         catch
@@ -364,6 +462,8 @@ internal sealed class CompanionContext : ApplicationContext
                 return (false,companionMessage);
             }
             companionReviewUntil=DateTime.MinValue;
+            try { Store.BackupBeforeUpdate(); }
+            catch { companionMessage="Update cancelled: could not create a verified settings backup."; return (false,companionMessage); }
             companionMessage="Windows update requested. Companion may disconnect and restart.";
             queued=true;
             // Give the native relay time to return the acknowledgement before Windows closes the app.
