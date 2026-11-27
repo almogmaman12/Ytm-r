@@ -7,7 +7,13 @@ The optional Windows tray companion is separate from Chrome. It provides a signe
 ## 1. Install the signed Windows package
 
 1. Open the [companion-channel release](https://github.com/almogmaman12/Ytm-r/releases/tag/companion-channel).
-2. Verify the publisher certificate through a trusted source. Windows must trust that certificate; do not bypass signature checks or trust a disposable CI certificate.
+2. **First installation only: trust the verified publisher certificate.** Obtain the public `publisher.cer` from your trusted signing setup, verify its fingerprint against the maintainer's trusted fingerprint, and place it at `$env:USERPROFILE\ytmr-signing\windows\publisher.cer` (or adjust the path below). Open **PowerShell as Administrator** and run:
+
+   ```powershell
+   Import-Certificate -FilePath "$env:USERPROFILE\ytmr-signing\windows\publisher.cer" -CertStoreLocation "Cert:\LocalMachine\TrustedPeople"
+   ```
+
+   This imports the public certificate into the machine's Trusted People store so Windows can validate the signed MSIX. Do not import an unverified certificate, a CI test certificate or the private PFX. This step is normally required only once per PC for the same publisher certificate; repeat verification and trust setup if the certificate changes.
 3. Install using the channel's `YtmCompanion.appinstaller` file, rather than a random standalone executable, to associate the package with the update channel.
 4. Open YTM Remote Companion from Start. Find its tray icon (including the hidden tray overflow), then open Settings.
 5. Create a local password (at least six characters), select the exact unpacked extension folder used by Chrome, and optionally enable automatic signed extension updates. A production publisher-key build includes the verification key.

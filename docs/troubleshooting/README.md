@@ -29,6 +29,7 @@
 | Signed update unavailable | Latest extension release must include all three signed extension assets; companion-channel must not be Latest |
 | Permission review required | Use phone review if enabled and supported, or the password-protected tray review; other capability/identity changes require manual Chrome review |
 | Installed files changed but old worker runs | Use the startup reload opt-in or manually reload in chrome://extensions |
+| First MSIX install fails because the publisher is not trusted | Verify the public publisher certificate and import it into LocalMachine\\TrustedPeople using elevated PowerShell; see [first installation](../../companion/README.md#1-install-the-signed-windows-package) |
 | Companion update unsupported | Use the signed MSIX associated with the exact App Installer feed, not the standalone EXE |
 | Companion disappears during update | Refresh after Windows completes the deployment; launch the companion manually if it does not restart |
 | Build failed | Open GitHub Actions, select the failing job and inspect the exact test/build/signing error. Do not bypass failed checks or publish unsigned replacements. |

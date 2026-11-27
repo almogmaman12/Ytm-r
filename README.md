@@ -19,7 +19,7 @@ The ordinary playback relay and extension can be self-hosted. The experimental W
 1. Fork the repository and deploy the chosen branch's `server/` directory to your HTTPS WebSocket host. Set strong, separate `ACCESS_CODE` and `PC_CODE`. Follow [relay setup](server/README.md).
 2. Load the `extension/` folder in Chrome developer mode. Enable Allow User Scripts, set your local settings password, enter your relay and PC code, generate a room token and save. Follow [extension setup](extension/README.md).
 3. Open YouTube Music on the PC. Open your relay on the phone and connect with the same token and phone access code. Install the web app if desired. Follow [phone setup](docs/phone/README.md).
-4. Optionally configure [Neon](docs/neon/README.md), [calendar and notifications](docs/calendar/README.md) and the [Windows companion](companion/README.md).
+4. Optionally configure [Neon](docs/neon/README.md), [calendar and notifications](docs/calendar/README.md) and the [Windows companion](companion/README.md). First-time MSIX installation requires [trusting the verified publisher certificate](companion/README.md#1-install-the-signed-windows-package) on the PC.
 
 ```
 Phone web app <---- HTTPS / WSS ----> Node relay <---- WSS ----> Chrome extension
