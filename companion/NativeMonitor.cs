@@ -7,7 +7,7 @@ using System.Text.RegularExpressions;
 
 namespace YtmCompanion;
 
-// A narrow, read-only connection. No remote command interpreter or process launch.
+// A narrow authenticated connection. Controls require explicit local opt-in and a fixed action allowlist.
 // The experimental client is deliberately pinned to the test relay, not production.
 internal sealed record NativeCredentials(string Token, string PcCode)
 {
@@ -38,7 +38,7 @@ internal sealed class NativeMonitor : IDisposable
 {
     private CancellationTokenSource? stop;
     private Task? worker;
-    public void Start(string protectedConfig)
+    public void Start(string protectedConfig, bool controlsEnabled)
     {
         Dispose();
         if (string.IsNullOrEmpty(protectedConfig)) return;
@@ -47,7 +47,7 @@ internal sealed class NativeMonitor : IDisposable
         catch { return; } // damaged or other-user credentials fail closed
         var cts = new CancellationTokenSource();
         stop = cts;
-        worker = Task.Run(() => Run(config, cts.Token));
+        worker = Task.Run(() => Run(config, controlsEnabled, cts.Token));
     }
     public void Dispose()
     {
@@ -60,18 +60,18 @@ internal sealed class NativeMonitor : IDisposable
         if (task is null) old.Dispose();
         else _ = task.ContinueWith(_ => old.Dispose(), TaskScheduler.Default);
     }
-    private static async Task Run(NativeCredentials config, CancellationToken ct)
+    private static async Task Run(NativeCredentials config, bool controlsEnabled, CancellationToken ct)
     {
         while (!ct.IsCancellationRequested)
         {
-            try { await Session(config, ct); }
+            try { await Session(config, controlsEnabled, ct); }
             catch (OperationCanceledException) when (ct.IsCancellationRequested) { break; }
             catch { /* No secret or relay URL is logged. Retry conservatively. */ }
             try { await Task.Delay(TimeSpan.FromMinutes(2), ct); }
             catch (OperationCanceledException) { break; }
         }
     }
-    private static async Task Session(NativeCredentials config, CancellationToken ct)
+    private static async Task Session(NativeCredentials config, bool controlsEnabled, CancellationToken ct)
     {
         using var ws = new ClientWebSocket();
         ws.Options.KeepAliveInterval = TimeSpan.FromSeconds(25);
@@ -94,8 +94,9 @@ internal sealed class NativeMonitor : IDisposable
                 !root.TryGetProperty("guarded", out var guarded) || guarded.ValueKind != JsonValueKind.True) return;
         }
         using var session = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        var sender = Snapshots(ws, session.Token);
-        var receiver = Drain(ws, session.Token);
+        using var gate = new SemaphoreSlim(1);
+        var sender = Snapshots(ws, gate, controlsEnabled, session.Token);
+        var receiver = ReceiveControls(ws, gate, controlsEnabled, session.Token);
         try { await Task.WhenAny(sender, receiver); }
         finally
         {
@@ -103,19 +104,46 @@ internal sealed class NativeMonitor : IDisposable
             try { await Task.WhenAll(sender, receiver); } catch { }
         }
     }
-    private static async Task Drain(ClientWebSocket ws, CancellationToken ct)
+    private static async Task ReceiveControls(ClientWebSocket ws, SemaphoreSlim gate, bool enabled, CancellationToken ct)
     {
         while (ws.State == WebSocketState.Open)
         {
-            using var ignored = await Read(ws, ct);
-            // Ignore all incoming messages after authentication: no executable commands.
+            using var frame = await Read(ws, ct);
+            var m = frame.RootElement;
+            if (m.ValueKind != JsonValueKind.Object || !m.TryGetProperty("type",out var type) || type.ValueKind != JsonValueKind.String || type.GetString() != "native_action") continue;
+            if (!m.TryGetProperty("id",out var r) || r.ValueKind != JsonValueKind.String ||
+                !Regex.IsMatch(r.GetString() ?? "", @"\A[0-9a-f]{32}\z")) continue;
+            var id = r.GetString();
+            string? action = m.TryGetProperty("action",out var a) && a.ValueKind == JsonValueKind.String ? a.GetString() : null;
+            m.TryGetProperty("value",out var value);
+            bool ok=false;
+            string message="Windows controls are disabled in the companion.";
+            if (enabled)
+            {
+                ct.ThrowIfCancellationRequested();
+                if (action is null || !WindowsControls.Valid(action,value)) message="Unsupported action or value.";
+                else
+                {
+                    try { message=WindowsControls.Execute(action,value); ok=true; }
+                    catch { message="Windows could not complete this action. Check the device or app locally."; }
+                }
+            }
+            await gate.WaitAsync(ct);
+            try
+            {
+                await Send(ws, Snapshot(enabled), ct);
+                await Send(ws,new { type="native_result", id, ok, message },ct);
+            }
+            finally { gate.Release(); }
         }
     }
-    private static async Task Snapshots(ClientWebSocket ws, CancellationToken ct)
+    private static async Task Snapshots(ClientWebSocket ws, SemaphoreSlim gate, bool enabled, CancellationToken ct)
     {
         while (ws.State == WebSocketState.Open && !ct.IsCancellationRequested)
         {
-            await Send(ws, Snapshot(), ct);
+            await gate.WaitAsync(ct);
+            try { await Send(ws, Snapshot(enabled), ct); }
+            finally { gate.Release(); }
             await Task.Delay(TimeSpan.FromSeconds(60), ct);
         }
     }
@@ -144,7 +172,7 @@ internal sealed class NativeMonitor : IDisposable
     [DllImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool GlobalMemoryStatusEx(ref MemoryStatus buffer);
-    private static object Snapshot()
+    private static object Snapshot(bool controlsEnabled)
     {
         var memory = new MemoryStatus { Length = (uint)Marshal.SizeOf<MemoryStatus>() };
         bool available = GlobalMemoryStatusEx(ref memory);
@@ -155,6 +183,9 @@ internal sealed class NativeMonitor : IDisposable
         return new
         {
             type = "native_snapshot",
+            controls = controlsEnabled,
+            chromeRunning = WindowsControls.ChromeRunning(),
+            audio = controlsEnabled ? WindowsControls.ReadAudio() : null,
             version = typeof(Program).Assembly.GetName().Version?.ToString(4),
             uptime = Math.Max(0L, Environment.TickCount64 / 1000),
             ramTotal = available ? (long?)(memory.TotalPhys / 1048576) : null,
