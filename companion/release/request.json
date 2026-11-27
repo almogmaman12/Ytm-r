@@ -1,4 +1,5 @@
 {
   "source": "dd54daf7c6a4a8c77409eddad13b9c4bfe12576d",
-  "version": "2.4.4"
+  "version": "2.4.4",
+  "retry": 1
 }
