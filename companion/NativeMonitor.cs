@@ -185,6 +185,7 @@ internal sealed class NativeMonitor : IDisposable
             type = "native_snapshot",
             controls = controlsEnabled,
             chromeRunning = WindowsControls.ChromeRunning(),
+            chromeOpen = WindowsControls.ChromeOpen(),
             audio = controlsEnabled ? WindowsControls.ReadAudio() : null,
             version = typeof(Program).Assembly.GetName().Version?.ToString(4),
             uptime = Math.Max(0L, Environment.TickCount64 / 1000),
