@@ -38,6 +38,10 @@ internal sealed class NativeMonitor : IDisposable
 {
     private CancellationTokenSource? stop;
     private Task? worker;
+    private readonly Func<object> updateSnapshot;
+    private readonly Func<string,JsonElement,CancellationToken,Task<(bool ok,string message)>> updateAction;
+    public NativeMonitor(Func<object> snapshot, Func<string,JsonElement,CancellationToken,Task<(bool ok,string message)>> action)
+    { updateSnapshot=snapshot; updateAction=action; }
     public void Start(string protectedConfig, bool controlsEnabled)
     {
         Dispose();
@@ -60,7 +64,7 @@ internal sealed class NativeMonitor : IDisposable
         if (task is null) old.Dispose();
         else _ = task.ContinueWith(_ => old.Dispose(), TaskScheduler.Default);
     }
-    private static async Task Run(NativeCredentials config, bool controlsEnabled, CancellationToken ct)
+    private async Task Run(NativeCredentials config, bool controlsEnabled, CancellationToken ct)
     {
         while (!ct.IsCancellationRequested)
         {
@@ -71,7 +75,7 @@ internal sealed class NativeMonitor : IDisposable
             catch (OperationCanceledException) { break; }
         }
     }
-    private static async Task Session(NativeCredentials config, bool controlsEnabled, CancellationToken ct)
+    private async Task Session(NativeCredentials config, bool controlsEnabled, CancellationToken ct)
     {
         using var ws = new ClientWebSocket();
         ws.Options.KeepAliveInterval = TimeSpan.FromSeconds(25);
@@ -104,7 +108,7 @@ internal sealed class NativeMonitor : IDisposable
             try { await Task.WhenAll(sender, receiver); } catch { }
         }
     }
-    private static async Task ReceiveControls(ClientWebSocket ws, SemaphoreSlim gate, bool enabled, CancellationToken ct)
+    private async Task ReceiveControls(ClientWebSocket ws, SemaphoreSlim gate, bool enabled, CancellationToken ct)
     {
         while (ws.State == WebSocketState.Open)
         {
@@ -121,7 +125,10 @@ internal sealed class NativeMonitor : IDisposable
             if (enabled)
             {
                 ct.ThrowIfCancellationRequested();
-                if (action is null || !WindowsControls.Valid(action,value)) message="Unsupported action or value.";
+                if (action == "extension_check" && value.ValueKind == JsonValueKind.Null ||
+                    action == "extension_update" && value.ValueKind == JsonValueKind.String && Regex.IsMatch(value.GetString() ?? "", @"\A[0-9a-f]{64}\z"))
+                    (ok,message) = await updateAction(action!,value.Clone(),ct);
+                else if (action is null || !WindowsControls.Valid(action,value)) message="Unsupported action or value.";
                 else
                 {
                     try { message=WindowsControls.Execute(action,value); ok=true; if (action is "chrome_open" or "chrome_close") await Task.Delay(1200,ct); }
@@ -137,7 +144,7 @@ internal sealed class NativeMonitor : IDisposable
             finally { gate.Release(); }
         }
     }
-    private static async Task Snapshots(ClientWebSocket ws, SemaphoreSlim gate, bool enabled, CancellationToken ct)
+    private async Task Snapshots(ClientWebSocket ws, SemaphoreSlim gate, bool enabled, CancellationToken ct)
     {
         while (ws.State == WebSocketState.Open && !ct.IsCancellationRequested)
         {
@@ -172,7 +179,7 @@ internal sealed class NativeMonitor : IDisposable
     [DllImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool GlobalMemoryStatusEx(ref MemoryStatus buffer);
-    private static async Task<object> SnapshotAsync(bool controlsEnabled,CancellationToken ct)
+    private async Task<object> SnapshotAsync(bool controlsEnabled,CancellationToken ct)
     {
         var memory = new MemoryStatus { Length = (uint)Marshal.SizeOf<MemoryStatus>() };
         bool available = GlobalMemoryStatusEx(ref memory);
@@ -184,6 +191,7 @@ internal sealed class NativeMonitor : IDisposable
         {
             type = "native_snapshot",
             controls = controlsEnabled,
+            extensionUpdate = updateSnapshot(),
             chromeRunning = WindowsControls.ChromeRunning(),
             chromeOpen = WindowsControls.ChromeOpen(),
             audio = controlsEnabled ? WindowsControls.ReadAudio() : null,

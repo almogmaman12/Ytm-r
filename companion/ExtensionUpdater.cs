@@ -5,7 +5,7 @@ using System.Text.Json;
 
 namespace YtmCompanion;
 
-internal sealed record PermissionReview(string InstalledVersion, string ReleaseVersion, string ArchiveSha256, string Details);
+internal sealed record PermissionReview(string InstalledVersion, string ReleaseVersion, string ArchiveSha256, string Details, string InstalledManifestSha256);
 
 internal sealed class ExtensionUpdater
 {
@@ -14,7 +14,7 @@ internal sealed class ExtensionUpdater
     private const string Release = "https://github.com/almogmaman12/Ytm-r/releases/latest/download/";
     private static readonly HttpClient Http = new(new HttpClientHandler { AllowAutoRedirect = false }) { Timeout = TimeSpan.FromSeconds(60) };
 
-    private static bool ChromeOpen()
+    internal static bool ChromeOpen()
     {
         var processes = Process.GetProcessesByName("chrome");
         try { return processes.Length > 0; }
@@ -161,7 +161,7 @@ internal sealed class ExtensionUpdater
         }
         var details = string.Join(Environment.NewLine,lines);
         if (details.Length > 12000) throw new InvalidDataException("Permission changes too large to review here.");
-        return new(installed.ToString(),next.ToString(),Convert.ToHexString(hash),details);
+        return new(installed.ToString(),next.ToString(),Convert.ToHexString(hash),details,Convert.ToHexString(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(old.GetRawText()))));
     }
 
     private static void Extract(byte[] data, string destination)
@@ -199,14 +199,25 @@ internal sealed class ExtensionUpdater
         }
     }
 
-    public Task<string> CheckAsync(Settings settings, Func<PermissionReview,bool>? review = null) => CheckCoreAsync(settings.ExtensionFolder, settings.EffectivePublicKey, Download, ChromeOpen, review);
+    public static string? InstalledVersion(string folder)
+    {
+        try { return Version.Parse(Manifest(ValidateFolder(folder)).GetProperty("version").GetString()!).ToString(); }
+        catch { return null; }
+    }
+
+    public Task<string> CheckAsync(Settings settings, Func<PermissionReview,bool>? review = null,
+        Action<PermissionReview>? preview = null, Action<string>? latest = null,
+        PermissionReview? expectedReview = null, Func<Task<bool>>? beforeInstall = null) =>
+        CheckCoreAsync(settings.ExtensionFolder, settings.EffectivePublicKey, Download, ChromeOpen, review, preview, latest, expectedReview, beforeInstall);
 
     // Internal test seam: production uses only the built-in release origin and real Chrome process check.
     internal static async Task<string> CheckCoreAsync(string extensionFolder, string publicKey,
-        Func<string,int,Task<byte[]>> download, Func<bool> chromeOpen, Func<PermissionReview,bool>? review = null)
+        Func<string,int,Task<byte[]>> download, Func<bool> chromeOpen, Func<PermissionReview,bool>? review = null,
+        Action<PermissionReview>? preview = null, Action<string>? latest = null,
+        PermissionReview? expectedReview = null, Func<Task<bool>>? beforeInstall = null)
     {
         var folder = ValidateFolder(extensionFolder);
-        if (chromeOpen()) return Waiting;
+        if (preview == null && beforeInstall == null && chromeOpen()) return Waiting;
         using var key = ECDsa.Create();
         key.ImportFromPem(publicKey);
         if (key.ExportParameters(false).Curve.Oid.Value != "1.2.840.10045.3.1.7") throw new InvalidDataException("Invalid publisher key.");
@@ -224,6 +235,7 @@ internal sealed class ExtensionUpdater
         var old = Manifest(folder);
         var installed = Version.Parse(old.GetProperty("version").GetString()!);
         var next = Version.Parse(meta.GetProperty("version").GetString()!);
+        latest?.Invoke(next.ToString());
         if (next <= installed) return "Extension up to date (" + installed + ")";
         var zip = await download("extension.zip", 8 * 1024 * 1024);
         var expected = Convert.FromHexString(meta.GetProperty("sha256").GetString()!);
@@ -241,6 +253,19 @@ internal sealed class ExtensionUpdater
             if (Version.Parse(candidate.GetProperty("version").GetString()!) != next)
                 throw new InvalidDataException("Archive manifest version does not match signed release.");
             var changes = ManifestChanges(old,candidate);
+            if (changes.All(PermissionSets.Contains))
+            {
+                var verified = BuildPermissionReview(old,candidate,changes,installed,next,expected);
+                if (preview != null)
+                {
+                    preview(verified);
+                    return "Signed extension " + next + " available; review before installing.";
+                }
+                if (expectedReview != null && verified != expectedReview)
+                    return "Release or installed manifest changed; check and review again.";
+            }
+            else if (expectedReview != null)
+                return "Manifest capabilities changed. Review in Chrome required.";
             if (changes.Length > 0)
             {
                 // Display only known field names, never manifest contents or arbitrary text.
@@ -257,13 +282,14 @@ internal sealed class ExtensionUpdater
                 if (!review(BuildPermissionReview(old,candidate,changes,installed,next,expected)))
                     return "Update declined. Existing extension retained.";
                 // Approval is only for this verified archive, never a persistent permission override.
-                if (chromeOpen()) return Waiting;
+                if (beforeInstall == null && chromeOpen()) return Waiting;
                 if (ValidateFolder(folder) != folder || Manifest(folder).GetRawText() != old.GetRawText())
                     return "Extension changed during review; retry later.";
                 Directory.Delete(stage,true);
                 Directory.CreateDirectory(stage);
                 Extract(zip,stage);
             }
+            if (beforeInstall != null && !await beforeInstall()) return Waiting;
             if (chromeOpen()) return Waiting;
             if (ValidateFolder(folder) != folder || Manifest(folder).GetRawText() != old.GetRawText())
                 return "Extension changed during check; retry later.";

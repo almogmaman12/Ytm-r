@@ -3611,9 +3611,10 @@ function sysTitle(root,t){root.append(sysEl('h4','system-section-title',t));}
 function nativeAction(action,value=null){
   if(systemTab!=='native'||systemId||!getToken()||!getCode())return;
   if(action==='chrome_close'&&!confirm('Close all visible Chrome windows on your PC? Unsaved work or prompts may prevent closure.'))return;
+  if(action==='extension_update'&&!confirm('Install this exact signed update? Chrome will close gracefully and reopen if it was open. Review the permissions above first.'))return;
   systemId=reqId();$('systemRefresh').disabled=true;$('systemStatus').textContent='Sending Windows action…';
   if(!rawCmd('native_action',{request:systemId,action,value})){systemDisconnected();return;}
-  clearTimeout(systemTimer);systemTimer=setTimeout(()=>{systemId='';$('systemRefresh').disabled=false;$('systemStatus').textContent='No confirmation. Refresh before trying again.';},12000);
+  clearTimeout(systemTimer);systemTimer=setTimeout(()=>{systemId='';$('systemRefresh').disabled=false;$('systemStatus').textContent='No confirmation. Refresh before trying again.';},action.startsWith('extension_')?340000:12000);
 }
 function nativeReceive(m){
   if(pcId&&m.request===pcId){clearTimeout(pcTimer);pcId='';$('pcRefresh').disabled=false;if(view==='pc'&&getToken()&&getCode())drawNative(m,$('pcResults'),$('pcStatusText'),pcAction);return;}
@@ -3634,6 +3635,16 @@ function drawNative(m,root,status,act){
   sysTitle(root,'Chrome');
   const chrome=s.chromeOpen===true?'Open':s.chromeOpen===false?(s.chromeRunning===true?'Closed (background processes running)':'Closed'):'Unknown';
   opsMetric(root,[['Chrome windows',chrome]]);
+  sysTitle(root,'Chrome extension updates');
+  const u=s.extensionUpdate;
+  opsMetric(root,[['Installed extension',u?.current||'Unknown'],['Latest signed release',u?.latest||'Check for updates']]);
+  if(u?.status)root.append(sysEl('p','relay-health-caption',u.status));
+  if(u?.enabled){
+    const updates=sysEl('div','ops-actions');opsButton(updates,'Check / review update',()=>act('extension_check'));root.append(updates);
+    if(u.review){const r=u.review,review=sysEl('div','system-metric');review.append(sysEl('strong','',r.installed+' → '+r.version));
+      const details=sysEl('pre','',r.details||'No permission or capability changes.');details.style.cssText='white-space:pre-wrap;overflow-wrap:anywhere;margin:8px 0';review.append(details);
+      const actions=sysEl('div','ops-actions');opsButton(actions,'Approve & update extension',()=>act('extension_update',r.hash));review.append(actions);root.append(review);}
+  }else root.append(sysEl('p','relay-health-caption','Enable owner phone extension updates in the companion tray Windows status connection settings. Older companion builds need an update.'));
   if(s.controls!==true){
     root.append(sysEl('p','relay-health-caption','Remote controls are disabled. Enable the separate Windows controls option in the companion tray settings.'));
   }else{
@@ -3674,9 +3685,9 @@ function pcRequest(action=null,value=null){
   if(view!=='pc'||pcId||!getToken()||!getCode()||ws?.readyState!==1)return;
   pcId=reqId();$('pcRefresh').disabled=true;$('pcStatusText').textContent=action?'Sending Windows action…':'Loading PC status…';
   if(!rawCmd(action?'native_action':'native_status',{request:pcId,...(action?{action,value}:{})})){pcClear();return;}
-  pcTimer=setTimeout(()=>{pcId='';$('pcRefresh').disabled=false;$('pcStatusText').textContent='No response. Refresh before retrying.';},15000);
+  pcTimer=setTimeout(()=>{pcId='';$('pcRefresh').disabled=false;$('pcStatusText').textContent='No response. Refresh before retrying.';},action?.startsWith('extension_')?340000:15000);
 }
-function pcAction(action,value=null){if(action==='chrome_close'&&!confirm('Close all visible Chrome windows?'))return;pcRequest(action,value);}
+function pcAction(action,value=null){if(action==='chrome_close'&&!confirm('Close all visible Chrome windows?'))return;if(action==='extension_update'&&!confirm('Install this exact signed update? Chrome will close gracefully and reopen if it was open. Review the permissions above first.'))return;pcRequest(action,value);}
 function pcTabsRequest(action='list',tabId=null){
   if(view!=='pc'||pcTabsId||!getToken()||!getCode()||ws?.readyState!==1)return;
   if(action==='close'&&!confirm('Close this Chrome tab? Unsaved work may be lost.'))return;

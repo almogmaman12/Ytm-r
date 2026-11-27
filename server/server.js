@@ -648,7 +648,7 @@ wss.on('connection', async (ws, info) => {
         const pending=room.nativePending;
         if(!pending||msg.id!==pending.id)return;
         room.nativePending=null;clearTimeout(pending.timer);
-        if(pending.phone.readyState===1&&pending.phone.joined&&!pending.phone.dev)send(pending.phone,{type:'native_status',request:pending.request,data:{online:true,state:room.nativeState},actionMessage:msg.ok===true?text(msg.message,160):'Windows could not complete the requested action.',actionOk:msg.ok===true});
+        if(pending.phone.readyState===1&&pending.phone.joined&&!pending.phone.dev)send(pending.phone,{type:'native_status',request:pending.request,data:{online:true,state:room.nativeState},actionMessage:pending.update?text(msg.message,240):msg.ok===true?text(msg.message,160):'Windows could not complete the requested action.',actionOk:msg.ok===true});
         return;
       }
       if(msg.type!=='native_snapshot')return;
@@ -660,7 +660,11 @@ wss.on('connection', async (ws, info) => {
       const devices=controls&&audio&&Array.isArray(audio.devices)?audio.devices.slice(0,12).filter(d=>d&&validId(d.id)&&typeof d.name==='string').map(d=>({id:d.id,name:text(d.name,96)})):[];
       const media=controls&&msg.nowPlaying&&typeof msg.nowPlaying==='object'?{title:text(msg.nowPlaying.title,160),artist:text(msg.nowPlaying.artist,160),app:text(msg.nowPlaying.app,120),status:text(msg.nowPlaying.status,24)}:null;
       const nativeAudio=controls&&audio?{volume:integer(audio.volume,0,100),muted:typeof audio.muted==='boolean'?audio.muted:null,device:validId(audio.device)?audio.device:null,devices}:null;
-      room.nativeState={controls,nowPlaying:media,chromeRunning:typeof msg.chromeRunning==='boolean'?msg.chromeRunning:null,chromeOpen:typeof msg.chromeOpen==='boolean'?msg.chromeOpen:null,audio:nativeAudio,at:Date.now(),version:/^\d{1,5}(\.\d{1,5}){3}$/.test(String(msg.version))?String(msg.version):'',uptime:integer(msg.uptime,0,3155760000),ramTotal,ramAvailable,battery:integer(msg.battery,0,100),power:['ac','battery','unknown'].includes(msg.power)?msg.power:'unknown'};
+      const u=msg.extensionUpdate, version=v=>typeof v==='string'&&/^\d{1,5}(\.\d{1,5}){1,3}$/.test(v)?v:null;
+      const r=u?.review;
+      const extensionUpdate=u&&typeof u==='object'?{enabled:controls&&u.enabled===true,current:version(u.current),latest:version(u.latest),status:text(u.status,240),
+        review:controls&&u.enabled===true&&r&&version(r.installed)&&version(r.version)&&typeof r.hash==='string'&&/^[0-9a-f]{64}$/.test(r.hash)&&typeof r.details==='string'&&r.details.length<=3000?{installed:r.installed,version:r.version,hash:r.hash,details:r.details}:null}:null;
+      room.nativeState={controls,extensionUpdate,nowPlaying:media,chromeRunning:typeof msg.chromeRunning==='boolean'?msg.chromeRunning:null,chromeOpen:typeof msg.chromeOpen==='boolean'?msg.chromeOpen:null,audio:nativeAudio,at:Date.now(),version:/^\d{1,5}(\.\d{1,5}){3}$/.test(String(msg.version))?String(msg.version):'',uptime:integer(msg.uptime,0,3155760000),ramTotal,ramAvailable,battery:integer(msg.battery,0,100),power:['ac','battery','unknown'].includes(msg.power)?msg.power:'unknown'};
       return;
     }
     // The helper only keeps the connection alive; it sends nothing else.
@@ -714,16 +718,20 @@ wss.on('connection', async (ws, info) => {
         const reply=error=>send(ws,{type:'native_status',request,error});
         const state=room.nativeState;
         if(!room.native||!state||Date.now()-state.at>=150000||state.controls!==true)return reply('Windows controls are offline or disabled in the companion.');
-        const valid=action==='volume'?Number.isInteger(value)&&value>=0&&value<=100:
+        const update=action==='extension_check'||action==='extension_update';
+        if(update&&state.extensionUpdate?.enabled!==true)return reply('Remote extension updates are disabled in the companion.');
+        const valid=action==='extension_check'?value===null:
+          action==='extension_update'?typeof value==='string'&&/^[0-9a-f]{64}$/.test(value)&&state.extensionUpdate?.review?.hash===value:
+          action==='volume'?Number.isInteger(value)&&value>=0&&value<=100:
           action==='mute'?typeof value==='boolean':
           action==='output'?typeof value==='string'&&state.audio?.devices.some(d=>d.id===value):
           ['media_toggle','media_next','media_previous','media_stop','chrome_open','chrome_close'].includes(action)&&value===null;
         if(!valid)return reply('Unsupported Windows action or value.');
         if(room.nativePending)return reply('A Windows action is already in progress.');
         const id=crypto.randomBytes(16).toString('hex');
-        const timer=setTimeout(()=>{if(room.nativePending?.id!==id)return;room.nativePending=null;reply('No confirmation from Windows. Refresh status before retrying.');},10000);
+        const timer=setTimeout(()=>{if(room.nativePending?.id!==id)return;room.nativePending=null;reply('No confirmation from Windows. Refresh status before retrying.');},update?330000:10000);
         timer.unref();
-        room.nativePending={id,request,phone:ws,timer};
+        room.nativePending={id,request,phone:ws,timer,update};
         send(room.native,{type:'native_action',id,action,value});
         return;
       }

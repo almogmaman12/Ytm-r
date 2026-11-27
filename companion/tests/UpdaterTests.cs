@@ -67,6 +67,13 @@ internal static class UpdaterTests
             var downloads=0;
             var waiting=await ExtensionUpdater.CheckCoreAsync(folder,pub,(name,limit)=>{downloads++;return Task.FromResult(valid[name]);},()=>true);
             Check(waiting==ExtensionUpdater.Waiting&&downloads==0,"Chrome open: no downloads or changes");
+            PermissionReview? preview=null;
+            var previewResult=await ExtensionUpdater.CheckCoreAsync(folder,pub,(name,limit)=>Task.FromResult(valid[name]),()=>true,preview:r=>preview=r);
+            Check(previewResult.Contains("available")&&preview!=null&&preview.ReleaseVersion=="2.4.4"&&File.ReadAllText(Path.Combine(folder,"background.js"))=="old fixture","Preview works while Chrome is open without installing");
+            // Different signed release must never use an older approval.
+            var other=Release("2.4.5");
+            var changedApproval=await ExtensionUpdater.CheckCoreAsync(folder,pub,(name,limit)=>Task.FromResult(other[name]),()=>false,expectedReview:preview);
+            Check(changedApproval.Contains("check and review again")&&File.ReadAllText(Path.Combine(folder,"background.js"))=="old fixture","Approval cannot install a different signed release");
             var missing=await ExtensionUpdater.CheckCoreAsync(folder,pub,(name,limit)=>
                 Task.FromException<byte[]>(new HttpRequestException("Fixture missing",null,System.Net.HttpStatusCode.NotFound)),()=>false);
             Check(missing==ExtensionUpdater.NoRelease&&File.ReadAllText(Path.Combine(folder,"background.js"))=="old fixture","Unavailable release metadata reports no accessible release");

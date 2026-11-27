@@ -29,6 +29,7 @@ internal sealed class Settings
     public string Salt { get; set; } = "";
     public string PasswordHash { get; set; } = "";
     public string NativeConfig { get; set; } = ""; // DPAPI-protected; empty means disabled
+    public bool NativeRemoteUpdates { get; set; } // Explicit local opt-in for owner-phone signed updates
     public bool NativeControls { get; set; } // Off by default, including existing installs
 }
 
@@ -116,7 +117,11 @@ internal sealed class CompanionContext : ApplicationContext
     private readonly NotifyIcon tray;
     private readonly System.Windows.Forms.Timer timer = new() { Interval = 60000 };
     private readonly ExtensionUpdater updater = new();
-    private readonly NativeMonitor native = new();
+    private readonly NativeMonitor native;
+    private readonly Control dispatcher = new();
+    private volatile PermissionReview? remotePreview;
+    private volatile string? latestVersion;
+    private volatile string remoteMessage = "Check for a signed extension release.";
     private Settings settings;
     private string status = "Not configured";
     private DateTime nextCheck = DateTime.MinValue;
@@ -132,6 +137,8 @@ internal sealed class CompanionContext : ApplicationContext
     public CompanionContext(bool background)
     {
         backgroundLaunch = background;
+        _ = dispatcher.Handle; // Marshal remote updater work onto the same UI thread as the tray updater.
+        native = new NativeMonitor(RemoteSnapshot, DispatchRemoteUpdate);
         try
         {
             settings = Store.Load();
@@ -220,6 +227,7 @@ internal sealed class CompanionContext : ApplicationContext
                 var next = form.Result!;
                 Store.Save(next);
                 settings = next;
+                remotePreview = null; latestVersion = null; remoteMessage = "Check for a signed extension release.";
                 nextCheck = DateTime.MinValue;
                 try
                 {
@@ -252,7 +260,11 @@ internal sealed class CompanionContext : ApplicationContext
             panel.Controls.Add(enable);
             var control = new CheckBox { Text = "Allow remote Windows audio, media and Chrome controls", AutoSize = true, Checked = settings.NativeControls && enable.Checked, Enabled = enable.Checked };
             panel.Controls.Add(control);
+            var updates = new CheckBox { Text = "Allow owner phone to review and install signed extension updates", AutoSize = true, Checked = settings.NativeRemoteUpdates && control.Checked, Enabled = control.Checked && enable.Checked };
+            panel.Controls.Add(updates);
+            control.CheckedChanged += (_, _) => { updates.Enabled = control.Checked && enable.Checked; if (!updates.Enabled) updates.Checked = false; };
             enable.CheckedChanged += (_, _) => { control.Enabled = enable.Checked; if (!enable.Checked) control.Checked = false; };
+            Label("Remote update approval uses your authenticated owner phone; Chrome may still require its own permission confirmation.");
             Label("Chrome closes gracefully; unsaved work or confirmation dialogs may prevent closure. No shell commands are accepted.");
             Label("Test relay token (leave both fields blank to retain saved credentials)");
             var token = new TextBox { Width = 500, UseSystemPasswordChar = true };
@@ -275,10 +287,13 @@ internal sealed class CompanionContext : ApplicationContext
                     }
                     var old = settings.NativeConfig;
                     var oldControls = settings.NativeControls;
+                    var oldUpdates = settings.NativeRemoteUpdates;
                     settings.NativeConfig = config;
                     settings.NativeControls = enable.Checked && control.Checked;
+                    settings.NativeRemoteUpdates = settings.NativeControls && updates.Checked;
                     try { Store.Save(settings); }
-                    catch { settings.NativeConfig = old; settings.NativeControls = oldControls; throw; }
+                    catch { settings.NativeConfig = old; settings.NativeControls = oldControls; settings.NativeRemoteUpdates = oldUpdates; throw; }
+                    remotePreview = null;
                     native.Start(config, settings.NativeControls);
                     form.Close();
                 }
@@ -288,6 +303,99 @@ internal sealed class CompanionContext : ApplicationContext
         }
         finally { settingsOpen = false; }
     }
+    private object RemoteSnapshot()
+    {
+        var s = settings;
+        var r = remotePreview;
+        bool enabled = !settingsUnreadable && s.NativeControls && s.NativeRemoteUpdates && !string.IsNullOrEmpty(s.PasswordHash);
+        return new
+        {
+            enabled,
+            current = ExtensionUpdater.InstalledVersion(s.ExtensionFolder),
+            latest = latestVersion,
+            status = remoteMessage,
+            review = enabled && r != null ? new { installed = r.InstalledVersion, version = r.ReleaseVersion,
+                hash = r.ArchiveSha256.ToLowerInvariant(), details = r.Details } : null
+        };
+    }
+
+    private Task<(bool ok, string message)> DispatchRemoteUpdate(string action, JsonElement value, CancellationToken ct)
+    {
+        var completion = new TaskCompletionSource<(bool ok, string message)>(TaskCreationOptions.RunContinuationsAsynchronously);
+        try
+        {
+            dispatcher.BeginInvoke(new Action(async () =>
+            {
+                try { completion.TrySetResult(await RemoteUpdate(action, value, ct)); }
+                catch (Exception) { completion.TrySetResult((false, "Remote extension update failed.")); }
+            }));
+        }
+        catch { completion.TrySetResult((false, "Companion is unavailable.")); }
+        return completion.Task;
+    }
+
+    private async Task<(bool ok, string message)> RemoteUpdate(string action, JsonElement value, CancellationToken ct)
+    {
+        if (ct.IsCancellationRequested || settingsUnreadable || !settings.NativeControls || !settings.NativeRemoteUpdates ||
+            string.IsNullOrEmpty(settings.PasswordHash) || busy || settingsOpen)
+            return (false, "Remote updates are disabled or the companion is busy.");
+        if (string.IsNullOrWhiteSpace(settings.ExtensionFolder) || string.IsNullOrWhiteSpace(settings.EffectivePublicKey))
+            return (false, "Configure the extension folder and trusted publisher key first.");
+        var approved = remotePreview;
+        if (action == "extension_update" && (approved == null || !string.Equals(approved.ArchiveSha256,value.GetString(),StringComparison.OrdinalIgnoreCase)))
+            return (false, "Check and review the signed update again.");
+        busy = true;
+        bool reopen = false;
+        try
+        {
+            if (action == "extension_check")
+            {
+                remotePreview = null; latestVersion = null;
+                remoteMessage = await updater.CheckAsync(settings, preview:r =>
+                {
+                    // Never truncate permission details. Larger reviews stay local.
+                    if (JsonSerializer.Serialize(r.Details).Length <= 3000) remotePreview = r;
+                }, latest:v=>latestVersion=v);
+                if (remotePreview == null && remoteMessage.Contains("available; review"))
+                    remoteMessage = "Permission review is too large for the phone. Review on the PC.";
+            }
+            else
+            {
+                remotePreview = null; latestVersion = null;
+                remoteMessage = await updater.CheckAsync(settings, review:_=>true, latest:v=>latestVersion=v,
+                    expectedReview:approved, beforeInstall:async () =>
+                    {
+                        if (ct.IsCancellationRequested) return false;
+                        reopen = WindowsControls.ChromeOpen();
+                        if (reopen) WindowsControls.Execute("chrome_close", default);
+                        for (int i=0; i<20 && ExtensionUpdater.ChromeOpen(); i++)
+                            await Task.Delay(1000,ct);
+                        return !ct.IsCancellationRequested && !ExtensionUpdater.ChromeOpen();
+                    });
+                if (remoteMessage == ExtensionUpdater.Waiting)
+                    remoteMessage = "Chrome is still running. Close it fully, then check and retry. No forced close.";
+            }
+            Status(remoteMessage);
+            return (action == "extension_check" || remoteMessage.StartsWith("Extension "), remoteMessage);
+        }
+        catch
+        {
+            remotePreview = null;
+            remoteMessage = "Signed release check or installation failed. Check the PC settings and network.";
+            Status(remoteMessage);
+            return (false,remoteMessage);
+        }
+        finally
+        {
+            if (reopen && !ExtensionUpdater.ChromeOpen())
+            {
+                try { WindowsControls.Execute("chrome_open", default); }
+                catch { remoteMessage += " Chrome could not be relaunched; use Launch Chrome."; Status(remoteMessage); }
+            }
+            busy = false;
+        }
+    }
+
     private bool ReviewPermissions(PermissionReview review)
     {
         using var dialog = new Form { Text = "YTM Remote Companion - Review signed update", Width = 630, Height = 530, MinimumSize = new Size(440, 360), StartPosition = FormStartPosition.CenterScreen };
@@ -323,7 +431,9 @@ internal sealed class CompanionContext : ApplicationContext
             if (manual && reviewPermissions && !Unlock()) return;
             nextCheck = DateTime.UtcNow.AddHours(6);
             Status("Checking signed extension release…");
-            var result = await updater.CheckAsync(settings, manual && reviewPermissions ? ReviewPermissions : null);
+            remotePreview = null;
+            var result = await updater.CheckAsync(settings, manual && reviewPermissions ? ReviewPermissions : null, latest:v=>latestVersion=v);
+            remoteMessage = result;
             Status(result);
             if (result == ExtensionUpdater.Waiting) nextCheck = DateTime.UtcNow.AddMinutes(2);
             else if (result == ExtensionUpdater.NoRelease) nextCheck = DateTime.UtcNow.AddMinutes(30);
@@ -342,6 +452,7 @@ internal sealed class CompanionContext : ApplicationContext
     protected override void ExitThreadCore()
     {
         native.Dispose();
+        dispatcher.Dispose();
         timer.Stop();
         tray.Visible = false;
         tray.Dispose();
@@ -395,7 +506,7 @@ internal sealed class SettingsForm : Form
         {
             try
             {
-                var next = new Settings { ExtensionFolder = folder.Text.Trim(), PublicKey = pinned ?? key.Text.Trim(), AutomaticUpdates = auto.Checked, StartWithWindows = startup.Checked, Salt = current.Salt, PasswordHash = current.PasswordHash, NativeConfig = current.NativeConfig, NativeControls = current.NativeControls };
+                var next = new Settings { ExtensionFolder = folder.Text.Trim(), PublicKey = pinned ?? key.Text.Trim(), AutomaticUpdates = auto.Checked, StartWithWindows = startup.Checked, Salt = current.Salt, PasswordHash = current.PasswordHash, NativeConfig = current.NativeConfig, NativeControls = current.NativeControls, NativeRemoteUpdates = current.NativeRemoteUpdates };
                 if (next.ExtensionFolder.Length > 0 || next.AutomaticUpdates)
                     ExtensionUpdater.ValidateFolder(next.ExtensionFolder);
                 if (next.PublicKey.Length > 0)
