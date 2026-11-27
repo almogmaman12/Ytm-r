@@ -35,10 +35,11 @@ internal static class Store
     public static readonly string Folder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "YTM Remote Companion");
     private static string FilePath => Path.Combine(Folder, "settings.json");
     public static bool Exists => File.Exists(FilePath);
-    public static Settings Load()
+    public static Settings Load() => LoadFrom(FilePath);
+    internal static Settings LoadFrom(string path)
     {
-        if (!File.Exists(FilePath)) return new Settings { PublicKey = PublisherTrust.PublicKey ?? "" };
-        var s = JsonSerializer.Deserialize<Settings>(File.ReadAllText(FilePath)) ?? throw new InvalidDataException("Invalid companion settings.");
+        if (!File.Exists(path)) return new Settings { PublicKey = PublisherTrust.PublicKey ?? "" };
+        var s = JsonSerializer.Deserialize<Settings>(File.ReadAllText(path)) ?? throw new InvalidDataException("Invalid companion settings.");
         Validate(s);
         if (PublisherTrust.PublicKey is string pinned)
         {
