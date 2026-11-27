@@ -32,7 +32,18 @@ jobs:
           JS
           SOURCE=$(node -p "JSON.parse(require('fs').readFileSync('companion/release/request.json')).source")
           VERSION=$(node -p "JSON.parse(require('fs').readFileSync('companion/release/request.json')).version")
-          git merge-base --is-ancestor "$SOURCE" refs/remotes/origin/feature/ota-remote-loader
+          # Only this explicitly reviewed experimental source is exempt from the OTA ancestry rule.
+          if [ "$SOURCE" = "dd54daf7c6a4a8c77409eddad13b9c4bfe12576d" ] && [ "$VERSION" = "2.4.4" ]; then
+            git merge-base --is-ancestor "$SOURCE" refs/remotes/origin/feature/windows-companion
+            git diff --name-only 00daa123049cb7ea8b3fdd36f420fb6fa7e31eb3 "$SOURCE" -- extension/ | LC_ALL=C sort > actual-extension-files
+            printf '%s\n' extension/background.js extension/manifest.json extension/options.html extension/options.js > expected-extension-files
+            diff -u expected-extension-files actual-extension-files
+            git show "00daa123049cb7ea8b3fdd36f420fb6fa7e31eb3:extension/manifest.json" > baseline-manifest.json
+            git show "$SOURCE:extension/manifest.json" > candidate-manifest.json
+            node --input-type=module -e 'import fs from "node:fs";import assert from "node:assert/strict";const a=JSON.parse(fs.readFileSync("baseline-manifest.json")),b=JSON.parse(fs.readFileSync("candidate-manifest.json"));a.version=b.version;assert.deepEqual(a,b)'
+          else
+            git merge-base --is-ancestor "$SOURCE" refs/remotes/origin/feature/ota-remote-loader
+          fi
           git show "$SOURCE:extension/manifest.json" | node -e 'const m=JSON.parse(require("fs").readFileSync(0,"utf8"));if(m.manifest_version!==3||m.name!=="Tab Helper"||m.version!==process.argv[1])process.exit(1)' "$VERSION"
           mkdir -p release-input
           git archive --format=zip --output=release-input/extension.zip "$SOURCE:extension"
@@ -128,4 +139,4 @@ jobs:
             echo 'Release already exists; refusing to overwrite it.'
             exit 1
           fi
-          gh release create "$TAG" signed-release/extension.zip signed-release/extension-release.json signed-release/extension-release.sig --target "$RELEASE_SOURCE" --title "YTM Remote extension $RELEASE_VERSION" --notes "Signed extension release from reviewed OTA commit $RELEASE_SOURCE." --latest
+          gh release create "$TAG" signed-release/extension.zip signed-release/extension-release.json signed-release/extension-release.sig --target "$RELEASE_SOURCE" --title "YTM Remote extension $RELEASE_VERSION" --notes "Signed extension release from reviewed commit $RELEASE_SOURCE." --latest
