@@ -34,6 +34,14 @@ jobs:
           }
           dotnet publish companion/YtmCompanion.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o companion/out @buildArgs
           if ($LASTEXITCODE -ne 0) { throw 'Build failed' }
+      - name: Test settings persistence across process restarts
+        shell: pwsh
+        run: |
+          $settings = Join-Path $env:RUNNER_TEMP ("ytmr-settings-test-" + [Guid]::NewGuid().ToString("N") + "\settings.json")
+          dotnet run --project companion/tests/YtmCompanion.Tests.csproj -c Release -- write "$settings"
+          if ($LASTEXITCODE -ne 0) { throw 'Settings write test failed' }
+          dotnet run --project companion/tests/YtmCompanion.Tests.csproj -c Release --no-build -- read "$settings"
+          if ($LASTEXITCODE -ne 0) { throw 'Settings reload test failed' }
       - uses: actions/upload-artifact@v4
         with:
           name: YtmCompanion-windows-x64-test-build
