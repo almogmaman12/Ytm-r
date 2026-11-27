@@ -145,6 +145,7 @@ internal sealed class CompanionContext : ApplicationContext
         menu.Items.Add(statusItem);
         menu.Items.Add("Settings…", null, (_, _) => OpenSettings());
         menu.Items.Add("Check for extension update", null, async (_, _) => await CheckAsync(true));
+        menu.Items.Add("Review signed update…", null, async (_, _) => await CheckAsync(true, true));
         menu.Items.Add("Open companion data folder", null, (_, _) =>
         {
             Directory.CreateDirectory(Store.Folder);
@@ -226,22 +227,40 @@ internal sealed class CompanionContext : ApplicationContext
         catch { Status("Could not save settings."); }
         finally { settingsOpen = false; }
     }
-    private async Task CheckAsync(bool manual)
+    private bool ReviewPermissions(PermissionReview review)
+    {
+        using var dialog = new Form { Text = "YTM Remote Companion - Review signed update", Width = 630, Height = 530, MinimumSize = new Size(440, 360), StartPosition = FormStartPosition.CenterScreen };
+        var layout = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(15), ColumnCount = 1, RowCount = 4 };
+        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        layout.Controls.Add(new Label { AutoSize = true, MaximumSize = new Size(550,0), Text = $"Verified signed extension: {review.InstalledVersion} to {review.ReleaseVersion}. Review the added and removed browser permissions below." });
+        layout.Controls.Add(new TextBox { Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Both, WordWrap = false, Dock = DockStyle.Fill, Text = review.Details + Environment.NewLine + "SHA-256: " + review.ArchiveSha256 });
+        layout.Controls.Add(new Label { AutoSize = true, MaximumSize = new Size(550,0), Text = "Approval applies only to this signed release. Chrome may require its own permission approval. Review new access carefully. The previous extension folder will be backed up." });
+        var buttons = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, FlowDirection = FlowDirection.RightToLeft };
+        var cancel = new Button { Text = "Cancel", DialogResult = DialogResult.Cancel, AutoSize = true };
+        var approve = new Button { Text = "Approve this update", DialogResult = DialogResult.OK, AutoSize = true };
+        buttons.Controls.Add(cancel); buttons.Controls.Add(approve); layout.Controls.Add(buttons);
+        dialog.Controls.Add(layout); dialog.CancelButton = cancel; dialog.Shown += (_,_) => cancel.Focus();
+        return dialog.ShowDialog() == DialogResult.OK;
+    }
+    private async Task CheckAsync(bool manual, bool reviewPermissions = false)
     {
         if (busy || settingsOpen || settingsUnreadable || string.IsNullOrEmpty(settings.PasswordHash) || (!manual && !settings.AutomaticUpdates)) return;
         if (!manual && DateTime.UtcNow < nextCheck) return;
-        if (manual && !Unlock()) return;
         if (string.IsNullOrWhiteSpace(settings.EffectivePublicKey) || string.IsNullOrWhiteSpace(settings.ExtensionFolder))
         {
             Status("Extension updates not configured; select the extension folder and enable trusted updates in Settings.");
             return;
         }
         busy = true;
-        nextCheck = DateTime.UtcNow.AddHours(6);
         try
         {
+            if (manual && !Unlock()) return;
+            nextCheck = DateTime.UtcNow.AddHours(6);
             Status("Checking signed extension release…");
-            var result = await updater.CheckAsync(settings);
+            var result = await updater.CheckAsync(settings, manual && reviewPermissions ? ReviewPermissions : null);
             Status(result);
             if (result == ExtensionUpdater.Waiting) nextCheck = DateTime.UtcNow.AddMinutes(2);
             else if (result == ExtensionUpdater.NoRelease) nextCheck = DateTime.UtcNow.AddMinutes(30);
