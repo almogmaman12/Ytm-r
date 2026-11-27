@@ -47,3 +47,7 @@ Exit Chrome fully before restoring a trusted extension backup to the original fo
 ## Migrating from the OTA branch
 
 The companion branch now includes the newer OTA phone UI. Keep the same Render service, root directory, build/start commands, access codes, tokens and DATABASE_URL. No new Neon schema or manual migration is needed. Deploy the branch, verify the phone and calendar, then update the companion and extension. On existing companion installs re-enter your trusted HTTPS relay, token and PC code. Re-enable remote tabs after updating to 2.4.6. If deployment fails, switch back to your prior working branch or deploy its last successful commit.
+
+## Companion settings backups
+
+From companion 0.1.0.10, ordinary saves and startup maintain a validated settings mirror. A manually requested phone-side companion update creates a separate pre-update snapshot and refuses to start if that backup cannot be written. OS-scheduled App Installer updates cannot be intercepted, so their protection is the continuously maintained mirror. Corrupt or missing primary settings recover from the current mirror; unsupported schemas or two damaged copies fail closed. See [settings durability](../../companion/README.md#settings-durability-companion-01010-and-later).

@@ -65,3 +65,11 @@ password, and the companion never reads or uploads the extension credentials. Ve
 signed packages before using them on the production PC. The source and workflows are experimental,
 and Windows runtime, package signing, Chrome restart behavior and settings preservation need actual
 Windows integration testing before release.
+
+## Settings durability (companion 0.1.0.10 and later)
+
+The settings file now has a versioned schema. Existing unversioned settings migrate automatically without resetting the password, extension folder, update options, relay credentials or remote-control permissions. The app keeps a validated current mirror (`settings.json.bak`) alongside the primary file. It updates both on a successful settings save and repairs the mirror from the valid primary on startup. A phone-requested MSIX update additionally creates `settings.json.pre-update.bak` before asking Windows to update; if this backup fails, the update is cancelled. Windows' automatic App Installer background/launch updates are controlled by the OS, so the current mirror protects them rather than a guaranteed pre-install callback.
+
+If the primary file is missing or malformed, the current mirror is validated and restored automatically. Corrupt originals are retained as `settings.json.corrupt-...`. If both copies are invalid or a newer unsupported schema is encountered, the app refuses to overwrite settings or enable updates. An older pre-update snapshot is retained for manual recovery, not automatically restored (it could contain previously revoked remote permissions). Inspect and restore manually only with the companion closed, and review all permissions before reconnecting. These files contain password hashes and DPAPI-encrypted credentials; keep them private. Uninstall/reset or disk failure can remove all local copies, and DPAPI credentials are not portable to a different Windows account/PC.
+
+Signed-release CI now requires a real in-place install/upgrade of two disposable MSIX packages, including legacy settings migration, saved password, DPAPI credentials, permissions and recovery. It is a test of the package upgrade path, not a guarantee of every user's Windows configuration or automatic restart behavior.
