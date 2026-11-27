@@ -43,6 +43,11 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Settings write test failed' }
           dotnet run --project companion/tests/YtmCompanion.Tests.csproj -c Release --no-build -- read "$settings"
           if ($LASTEXITCODE -ne 0) { throw 'Settings reload test failed' }
+      - name: Test signed extension updater
+        shell: pwsh
+        run: |
+          dotnet run --project companion/tests/YtmCompanion.Tests.csproj -c Release --no-build -- updater
+          if ($LASTEXITCODE -ne 0) { throw 'Extension updater test failed' }
       - uses: actions/upload-artifact@v4
         with:
           name: YtmCompanion-windows-x64-test-build
