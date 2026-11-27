@@ -257,7 +257,9 @@ internal sealed class CompanionContext : ApplicationContext
         busy = true;
         try
         {
-            if (manual && !Unlock()) return;
+            // Ordinary checks use the existing trusted publisher key. Only an explicit
+            // permission-review action needs the local settings password.
+            if (manual && reviewPermissions && !Unlock()) return;
             nextCheck = DateTime.UtcNow.AddHours(6);
             Status("Checking signed extension release…");
             var result = await updater.CheckAsync(settings, manual && reviewPermissions ? ReviewPermissions : null);
