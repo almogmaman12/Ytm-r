@@ -1,4 +1,4 @@
 {
-  "version": "0.1.0.9",
-  "reason": "Configurable HTTPS relay and unified OTA phone interface"
+  "version": "0.1.0.10",
+  "reason": "Versioned settings backups, corruption recovery and real MSIX upgrade CI gate"
 }

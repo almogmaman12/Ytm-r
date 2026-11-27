@@ -24,8 +24,24 @@ jobs:
           npm install --ignore-scripts
           npm test
           node -e "const fs=require('fs'),vm=require('vm');const s=fs.readFileSync('public/index.html','utf8');for(const m of s.matchAll(/<script(?:\\s[^>]*)?>([\\s\\S]*?)<\\/script>/gi))if(m[1].trim())new vm.Script(m[1]);"
+  msix-upgrade-test:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install and upgrade disposable signed MSIX packages
+        shell: pwsh
+        run: ./companion/release/test-msix-upgrade.ps1
   package:
-    needs: relay-tests
+    needs: [relay-tests, msix-upgrade-test]
     runs-on: windows-latest
     environment: companion-signing
     outputs:
