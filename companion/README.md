@@ -28,7 +28,7 @@ Build from this folder on Windows with .NET 8:
 dotnet publish YtmCompanion.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o out
 ```
 
-A Windows CI workflow is provided in `.github/workflows/companion-build.yml`. Test artifacts are unsigned
+A Windows CI workflow is provided in `.github/workflows/companion-build.yml`. Ordinary commits do not trigger it. When a development batch is complete, commit or update `companion/build-request.json` on `feature/windows-companion` to request a single build of the finished source. A newer explicit build request cancels an older in-progress build for that branch. Manual workflow dispatch also works where GitHub exposes it. Test artifacts are unsigned
 development builds, not production installers. CI also tests password and settings persistence across two separate Windows processes. Do not enable automatic updates until the signer and
 the initial signed release have been verified.
 
