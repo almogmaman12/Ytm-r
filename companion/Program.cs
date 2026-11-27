@@ -120,6 +120,7 @@ internal sealed class CompanionContext : ApplicationContext
     private readonly NativeMonitor native;
     private readonly Control dispatcher = new();
     private volatile PermissionReview? remotePreview;
+    private DateTime remotePreviewUntil; // UI-thread-only expiry; prevents the automatic updater racing a phone review.
     private volatile string? latestVersion;
     private volatile string remoteMessage = "Check for a signed extension release.";
     private Settings settings;
@@ -342,7 +343,7 @@ internal sealed class CompanionContext : ApplicationContext
         if (string.IsNullOrWhiteSpace(settings.ExtensionFolder) || string.IsNullOrWhiteSpace(settings.EffectivePublicKey))
             return (false, "Configure the extension folder and trusted publisher key first.");
         var approved = remotePreview;
-        if (action == "extension_update" && (approved == null || !string.Equals(approved.ArchiveSha256,value.GetString(),StringComparison.OrdinalIgnoreCase)))
+        if (action == "extension_update" && (approved == null || DateTime.UtcNow >= remotePreviewUntil || !string.Equals(approved.ArchiveSha256,value.GetString(),StringComparison.OrdinalIgnoreCase)))
             return (false, "Check and review the signed update again.");
         busy = true;
         bool reopen = false;
@@ -354,7 +355,7 @@ internal sealed class CompanionContext : ApplicationContext
                 remoteMessage = await updater.CheckAsync(settings, preview:r =>
                 {
                     // Never truncate permission details. Larger reviews stay local.
-                    if (JsonSerializer.Serialize(r.Details).Length <= 3000) remotePreview = r;
+                    if (JsonSerializer.Serialize(r.Details).Length <= 3000) { remotePreviewUntil = DateTime.UtcNow.AddMinutes(10); remotePreview = r; }
                 }, latest:v=>latestVersion=v);
                 if (remotePreview == null && remoteMessage.Contains("available; review"))
                     remoteMessage = "Permission review is too large for the phone. Review on the PC.";
@@ -417,7 +418,7 @@ internal sealed class CompanionContext : ApplicationContext
     private async Task CheckAsync(bool manual, bool reviewPermissions = false)
     {
         if (busy || settingsOpen || settingsUnreadable || string.IsNullOrEmpty(settings.PasswordHash) || (!manual && !settings.AutomaticUpdates)) return;
-        if (!manual && DateTime.UtcNow < nextCheck) return;
+        if (!manual && (DateTime.UtcNow < nextCheck || (remotePreview != null && DateTime.UtcNow < remotePreviewUntil))) return;
         if (string.IsNullOrWhiteSpace(settings.EffectivePublicKey) || string.IsNullOrWhiteSpace(settings.ExtensionFolder))
         {
             Status("Extension updates not configured; select the extension folder and enable trusted updates in Settings.");

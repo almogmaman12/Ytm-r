@@ -74,6 +74,15 @@ internal static class UpdaterTests
             var other=Release("2.4.5");
             var changedApproval=await ExtensionUpdater.CheckCoreAsync(folder,pub,(name,limit)=>Task.FromResult(other[name]),()=>false,expectedReview:preview);
             Check(changedApproval.Contains("check and review again")&&File.ReadAllText(Path.Combine(folder,"background.js"))=="old fixture","Approval cannot install a different signed release");
+            var approvedFolder=MakeFolder("remote-approval");
+            var approvalRelease=Release(changed:true);
+            PermissionReview? approval=null;
+            bool browserRunning=true;
+            await ExtensionUpdater.CheckCoreAsync(approvedFolder,pub,(name,limit)=>Task.FromResult(approvalRelease[name]),()=>browserRunning,preview:r=>approval=r);
+            Check(approval!=null&&approval.Details.Contains("ADD \"tabs\""),"Remote preview includes added permissions");
+            var remoteInstalled=await ExtensionUpdater.CheckCoreAsync(approvedFolder,pub,(name,limit)=>Task.FromResult(approvalRelease[name]),
+                ()=>browserRunning,review:_=>true,expectedReview:approval,beforeInstall:()=>{browserRunning=false;return Task.FromResult(true);});
+            Check(remoteInstalled.StartsWith("Extension 2.4.4 installed")&&File.ReadAllText(Path.Combine(approvedFolder,"background.js"))=="new fixture","Approved release installs after graceful browser closure");
             var missing=await ExtensionUpdater.CheckCoreAsync(folder,pub,(name,limit)=>
                 Task.FromException<byte[]>(new HttpRequestException("Fixture missing",null,System.Net.HttpStatusCode.NotFound)),()=>false);
             Check(missing==ExtensionUpdater.NoRelease&&File.ReadAllText(Path.Combine(folder,"background.js"))=="old fixture","Unavailable release metadata reports no accessible release");
