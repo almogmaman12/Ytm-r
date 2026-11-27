@@ -5,6 +5,8 @@ using System.Text.Json;
 
 namespace YtmCompanion;
 
+internal sealed record PermissionReview(string InstalledVersion, string ReleaseVersion, string ArchiveSha256, string Details);
+
 internal sealed class ExtensionUpdater
 {
     public const string Waiting = "Waiting for Chrome to close fully";
@@ -142,6 +144,26 @@ internal sealed class ExtensionUpdater
         return changed.ToArray();
     }
 
+    private static PermissionReview BuildPermissionReview(JsonElement old, JsonElement candidate,
+        string[] changes, Version installed, Version next, byte[] hash)
+    {
+        var a = Properties(old); var b = Properties(candidate);
+        var lines = new List<string>();
+        foreach (var field in changes)
+        {
+            var before = ReadPermissionSet(a,field); var after = ReadPermissionSet(b,field);
+            lines.Add(field + ":");
+            foreach (var value in after.Except(before,StringComparer.Ordinal).OrderBy(x=>x,StringComparer.Ordinal))
+                lines.Add("  ADD " + JsonSerializer.Serialize(value));
+            foreach (var value in before.Except(after,StringComparer.Ordinal).OrderBy(x=>x,StringComparer.Ordinal))
+                lines.Add("  REMOVE " + JsonSerializer.Serialize(value));
+            lines.Add("");
+        }
+        var details = string.Join(Environment.NewLine,lines);
+        if (details.Length > 12000) throw new InvalidDataException("Permission changes too large to review here.");
+        return new(installed.ToString(),next.ToString(),Convert.ToHexString(hash),details);
+    }
+
     private static void Extract(byte[] data, string destination)
     {
         using var zip = new ZipArchive(new MemoryStream(data, false), ZipArchiveMode.Read);
@@ -177,11 +199,11 @@ internal sealed class ExtensionUpdater
         }
     }
 
-    public Task<string> CheckAsync(Settings settings) => CheckCoreAsync(settings.ExtensionFolder, settings.EffectivePublicKey, Download, ChromeOpen);
+    public Task<string> CheckAsync(Settings settings, Func<PermissionReview,bool>? review = null) => CheckCoreAsync(settings.ExtensionFolder, settings.EffectivePublicKey, Download, ChromeOpen, review);
 
     // Internal test seam: production uses only the built-in release origin and real Chrome process check.
     internal static async Task<string> CheckCoreAsync(string extensionFolder, string publicKey,
-        Func<string,int,Task<byte[]>> download, Func<bool> chromeOpen)
+        Func<string,int,Task<byte[]>> download, Func<bool> chromeOpen, Func<PermissionReview,bool>? review = null)
     {
         var folder = ValidateFolder(extensionFolder);
         if (chromeOpen()) return Waiting;
@@ -228,7 +250,19 @@ internal sealed class ExtensionUpdater
                   "minimum_chrome_version","content_security_policy","externally_connectable",
                   "web_accessible_resources","update_url","incognito" };
                 var labels = changes.Select(x=>known.Contains(x)?x:"other manifest field").Distinct().Take(4);
-                return "Manifest capabilities changed: "+string.Join(", ",labels)+". Manual review required.";
+                if (!changes.All(PermissionSets.Contains))
+                    return "Manifest capabilities changed: "+string.Join(", ",labels)+". Review in Chrome required.";
+                if (review == null)
+                    return "Manifest capabilities changed: "+string.Join(", ",labels)+". Choose Review signed update.";
+                if (!review(BuildPermissionReview(old,candidate,changes,installed,next,expected)))
+                    return "Update declined. Existing extension retained.";
+                // Approval is only for this verified archive, never a persistent permission override.
+                if (chromeOpen()) return Waiting;
+                if (ValidateFolder(folder) != folder || Manifest(folder).GetRawText() != old.GetRawText())
+                    return "Extension changed during review; retry later.";
+                Directory.Delete(stage,true);
+                Directory.CreateDirectory(stage);
+                Extract(zip,stage);
             }
             if (chromeOpen()) return Waiting;
             if (ValidateFolder(folder) != folder || Manifest(folder).GetRawText() != old.GetRawText())
