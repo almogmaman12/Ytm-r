@@ -2,10 +2,11 @@ name: Windows companion build
 on:
   push:
     branches: [feature/windows-companion]
-    paths: ['companion/**', '.github/workflows/companion-build.yml']
-  pull_request:
-    paths: ['companion/**', '.github/workflows/companion-build.yml']
+    paths: ['companion/build-request.json']
   workflow_dispatch:
+concurrency:
+  group: companion-build-${{ github.ref }}
+  cancel-in-progress: true
 permissions:
   contents: read
 jobs:
