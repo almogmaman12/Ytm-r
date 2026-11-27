@@ -67,6 +67,18 @@ internal static class UpdaterTests
             var downloads=0;
             var waiting=await ExtensionUpdater.CheckCoreAsync(folder,pub,(name,limit)=>{downloads++;return Task.FromResult(valid[name]);},()=>true);
             Check(waiting==ExtensionUpdater.Waiting&&downloads==0,"Chrome open: no downloads or changes");
+            var missing=await ExtensionUpdater.CheckCoreAsync(folder,pub,(name,limit)=>
+                Task.FromException<byte[]>(new HttpRequestException("Fixture missing",null,System.Net.HttpStatusCode.NotFound)),()=>false);
+            Check(missing==ExtensionUpdater.NoRelease&&File.ReadAllText(Path.Combine(folder,"background.js"))=="old fixture","Unavailable release metadata reports no accessible release");
+            bool missingSignature=false;
+            try
+            {
+                await ExtensionUpdater.CheckCoreAsync(folder,pub,(name,limit)=>name=="extension-release.sig"
+                    ?Task.FromException<byte[]>(new HttpRequestException("Fixture missing",null,System.Net.HttpStatusCode.NotFound))
+                    :Task.FromResult(valid[name]),()=>false);
+            }
+            catch(HttpRequestException){missingSignature=true;}
+            Check(missingSignature&&File.ReadAllText(Path.Combine(folder,"background.js"))=="old fixture","Incomplete release is not treated as a valid update");
             var installed=await Run(folder,valid);
             Check(installed.StartsWith("Extension 2.4.4 installed")&&File.ReadAllText(Path.Combine(folder,"background.js"))=="new fixture","Signed archive replaces same extension directory");
             Check(Directory.GetDirectories(root,"extension.ytmr-backup-*").Length==1,"Previous version backup retained");
