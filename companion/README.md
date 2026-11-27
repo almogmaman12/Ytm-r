@@ -154,8 +154,9 @@ Upload the versioned signed package (e.g. `YtmCompanion-0.1.0.0.msix`) first; pu
 This prevents companion updates from changing the extension's Latest release feed. Install initially
 using the App Installer file only after validating the publisher. The existing unpackaged EXE requires
 one initial migration to the package; do not run both editions or assume settings migrate without testing.
-A trusted Windows signing certificate and package installation/update verification remain prerequisites. Windows checks for later updates on launch and through the
-supported background mechanism; it may defer installation or show required OS prompts. In the MSIX
+A trusted Windows signing certificate and package installation/update verification remain prerequisites. Windows checks for later updates at every launch (zero-hour interval) and through the
+supported background mechanism; it may defer installation or show required OS prompts.
+The tray menu displays the running companion version and whether it is the MSIX or test EXE edition. A Windows update installed in the background may require restarting the app to see the new running version. In the MSIX
 edition, startup is managed in Windows Settings > Apps > Startup. The unpackaged test EXE does not
 self-update.
 
