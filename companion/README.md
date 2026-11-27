@@ -29,7 +29,7 @@ dotnet publish YtmCompanion.csproj -c Release -r win-x64 --self-contained true -
 ```
 
 A Windows CI workflow is provided in `.github/workflows/companion-build.yml`. Ordinary commits do not trigger it. When a development batch is complete, commit or update `companion/build-request.json` on `feature/windows-companion` to request a single build of the finished source. A newer explicit build request cancels an older in-progress build for that branch. Manual workflow dispatch also works where GitHub exposes it. Test artifacts are unsigned
-development builds, not production installers. CI also tests password and settings persistence across two separate Windows processes. Do not enable automatic updates until the signer and
+development builds, not production installers. CI tests password and settings persistence across two separate Windows processes, and tests signed extension archives against isolated temporary fixtures (successful replacement, backup, invalid signature/hash, archive traversal, version checks, permissions, Chrome-open deferral). The tests never access the user's actual Chrome profile or publish releases. Do not enable automatic updates until the signer and
 the initial signed release have been verified.
 
 Open the companion once, create a local password (minimum six characters; a longer unique password is recommended), and choose the exact unpacked extension directory already loaded in Chrome. In a publisher-key build, verification is built in and no public key entry appears. Enable updates and startup only if desired.
@@ -103,7 +103,7 @@ Upload the resulting `extension.zip`, `extension-release.json` and `extension-re
 GitHub Release marked Latest. The companion requires an authentic signature, exact archive hash,
 increasing version, safe archive paths and unchanged manifest capabilities. Changes to the permission
 declarations, host access, identity or other manifest fields require a manual review and update.
-A latest release without those three files will fail safely; include them on companion-only releases too.
+A latest release without those three files will fail safely. Keep the dedicated companion-channel release marked non-latest.
 
 The updater replaces only the selected source directory and retains a timestamped sibling backup.
 To roll back, exit Chrome completely and restore a verified backup to the original directory path.
@@ -121,9 +121,13 @@ legitimate, trusted code-signing certificate already installed, run:
 ```
 
 Use the exact same publisher and package identity for every release. Increment the four-part MSIX
-version each time. Publish both signed files, `YtmCompanion.msix` and `YtmCompanion.appinstaller`,
-to the Latest GitHub Release alongside the extension assets. Install initially using the App Installer
-file only after validating the publisher. Windows checks for later updates on launch and through the
+version each time. Maintain a separate GitHub Release with tag `companion-channel`, marked non-latest.
+Upload the versioned signed package (e.g. `YtmCompanion-0.1.0.0.msix`) first; publish the updated
+`YtmCompanion.appinstaller` only after the package is available. Do not replace older package assets.
+This prevents companion updates from changing the extension's Latest release feed. Install initially
+using the App Installer file only after validating the publisher. The existing unpackaged EXE requires
+one initial migration to the package; do not run both editions or assume settings migrate without testing.
+A trusted Windows signing certificate and package installation/update verification remain prerequisites. Windows checks for later updates on launch and through the
 supported background mechanism; it may defer installation or show required OS prompts. In the MSIX
 edition, startup is managed in Windows Settings > Apps > Startup. The unpackaged test EXE does not
 self-update.
