@@ -9,12 +9,12 @@ namespace YtmCompanion;
 internal static class Program
 {
     [STAThread]
-    static void Main()
+    static void Main(string[] args)
     {
         using var mutex = new Mutex(true, @"Local\YtmRemoteCompanion", out var first);
         if (!first) return;
         ApplicationConfiguration.Initialize();
-        Application.Run(new CompanionContext());
+        Application.Run(new CompanionContext(args.Contains("--background", StringComparer.OrdinalIgnoreCase)));
     }
 }
 
@@ -34,10 +34,12 @@ internal static class Store
 {
     public static readonly string Folder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "YTM Remote Companion");
     private static string FilePath => Path.Combine(Folder, "settings.json");
+    public static bool Exists => File.Exists(FilePath);
     public static Settings Load()
     {
         if (!File.Exists(FilePath)) return new Settings { PublicKey = PublisherTrust.PublicKey ?? "" };
         var s = JsonSerializer.Deserialize<Settings>(File.ReadAllText(FilePath)) ?? throw new InvalidDataException("Invalid companion settings.");
+        Validate(s);
         if (PublisherTrust.PublicKey is string pinned)
         {
             // A changed trust anchor must be explicitly approved in settings.
@@ -47,12 +49,36 @@ internal static class Store
         }
         return s;
     }
-    public static void Save(Settings s)
+    private static void Validate(Settings s)
     {
-        Directory.CreateDirectory(Folder);
-        var temp = FilePath + ".tmp";
-        File.WriteAllText(temp, JsonSerializer.Serialize(s));
-        File.Move(temp, FilePath, true);
+        if (s.ExtensionFolder == null || s.PublicKey == null || s.Salt == null || s.PasswordHash == null)
+            throw new InvalidDataException("Invalid companion settings.");
+        if (s.PasswordHash.Length == 0 || Convert.FromBase64String(s.Salt).Length != 32 ||
+            Convert.FromBase64String(s.PasswordHash).Length != 32)
+            throw new InvalidDataException("Invalid saved password configuration.");
+    }
+    public static void Save(Settings s) => SaveTo(s, FilePath);
+    internal static void SaveTo(Settings s, string path)
+    {
+        Validate(s);
+        var folder = Path.GetDirectoryName(path)!;
+        Directory.CreateDirectory(folder);
+        var temp = Path.Combine(folder, ".settings-" + Guid.NewGuid().ToString("N") + ".tmp");
+        try
+        {
+            // Complete and flush the new file before replacing the old one.
+            using (var stream = new FileStream(temp, FileMode.CreateNew, FileAccess.Write, FileShare.None, 4096, FileOptions.WriteThrough))
+            {
+                JsonSerializer.Serialize(stream, s);
+                stream.Flush(flushToDisk: true);
+            }
+            if (File.Exists(path)) File.Replace(temp, path, null);
+            else File.Move(temp, path);
+        }
+        finally
+        {
+            if (File.Exists(temp)) File.Delete(temp);
+        }
     }
     public static void SetPassword(Settings s, string password)
     {
@@ -92,14 +118,28 @@ internal sealed class CompanionContext : ApplicationContext
     private DateTime nextCheck = DateTime.MinValue;
     private bool busy;
     private bool settingsOpen;
+    private bool settingsUnreadable;
+    private bool firstTick = true;
+    private readonly bool backgroundLaunch;
     private int failedUnlocks;
     private DateTime unlockAfter;
     private readonly ToolStripMenuItem statusItem = new("Not configured") { Enabled = false };
 
-    public CompanionContext()
+    public CompanionContext(bool background)
     {
-        try { settings = Store.Load(); }
-        catch { settings = new Settings(); status = "Settings could not be loaded; automatic updates disabled."; }
+        backgroundLaunch = background;
+        try
+        {
+            settings = Store.Load();
+            status = string.IsNullOrEmpty(settings.PasswordHash) ? "Setup required" :
+                settings.AutomaticUpdates ? "Automatic extension updates enabled" : "Automatic extension updates off";
+        }
+        catch
+        {
+            settings = new Settings();
+            settingsUnreadable = true;
+            status = "Saved settings unreadable; updates disabled. Open Settings for details.";
+        }
         var menu = new ContextMenuStrip();
         menu.Items.Add(statusItem);
         menu.Items.Add("Settings…", null, (_, _) => OpenSettings());
@@ -113,10 +153,20 @@ internal sealed class CompanionContext : ApplicationContext
         tray = new NotifyIcon { Icon = SystemIcons.Application, Text = "YTM Remote Companion", ContextMenuStrip = menu, Visible = true };
         tray.DoubleClick += (_, _) => OpenSettings();
         statusItem.Text = status;
-        timer.Tick += async (_, _) => await CheckAsync(false);
+        // Begin only after the WinForms message loop is running. No modal UI on startup.
+        timer.Interval = 1000;
+        timer.Tick += async (_, _) =>
+        {
+            if (firstTick)
+            {
+                firstTick = false;
+                timer.Interval = 60000;
+                if (!backgroundLaunch && !settingsUnreadable && string.IsNullOrEmpty(settings.PasswordHash))
+                    OpenSettings();
+            }
+            await CheckAsync(false);
+        };
         timer.Start();
-        if (string.IsNullOrEmpty(settings.PasswordHash)) OpenSettings();
-        else if (settings.AutomaticUpdates) _ = CheckAsync(false);
     }
 
     private void Status(string message)
@@ -145,6 +195,11 @@ internal sealed class CompanionContext : ApplicationContext
     private void OpenSettings()
     {
         if (settingsOpen || busy) return;
+        if (settingsUnreadable)
+        {
+            MessageBox.Show("Your saved settings could not be read. Automatic updates are disabled and the saved file has not been overwritten. Restore a known-good settings file or contact the maintainer.", "YTM Remote Companion");
+            return;
+        }
         if (!Unlock()) return;
         settingsOpen = true;
         try
@@ -153,11 +208,18 @@ internal sealed class CompanionContext : ApplicationContext
             if (form.ShowDialog() == DialogResult.OK)
             {
                 var next = form.Result!;
-                Store.SetStartup(next.StartWithWindows);
                 Store.Save(next);
                 settings = next;
                 nextCheck = DateTime.MinValue;
-                Status(next.AutomaticUpdates ? "Automatic extension updates enabled" : "Automatic extension updates off");
+                try
+                {
+                    Store.SetStartup(next.StartWithWindows);
+                    Status(next.AutomaticUpdates ? "Automatic extension updates enabled" : "Automatic extension updates off");
+                }
+                catch
+                {
+                    Status("Settings saved, but Windows startup registration failed. Check Startup Apps.");
+                }
             }
         }
         catch { Status("Could not save settings."); }
@@ -165,7 +227,7 @@ internal sealed class CompanionContext : ApplicationContext
     }
     private async Task CheckAsync(bool manual)
     {
-        if (busy || settingsOpen || string.IsNullOrEmpty(settings.PasswordHash) || (!manual && !settings.AutomaticUpdates)) return;
+        if (busy || settingsOpen || settingsUnreadable || string.IsNullOrEmpty(settings.PasswordHash) || (!manual && !settings.AutomaticUpdates)) return;
         if (!manual && DateTime.UtcNow < nextCheck) return;
         if (manual && !Unlock()) return;
         if (string.IsNullOrWhiteSpace(settings.EffectivePublicKey) || string.IsNullOrWhiteSpace(settings.ExtensionFolder))
@@ -182,7 +244,7 @@ internal sealed class CompanionContext : ApplicationContext
             Status(result);
             if (result == ExtensionUpdater.Waiting) nextCheck = DateTime.UtcNow.AddMinutes(2);
         }
-        catch { Status("Update check failed safely; existing extension retained."); }
+        catch { Status("Update check failed. Check again later."); nextCheck = DateTime.UtcNow.AddMinutes(30); }
         finally { busy = false; }
     }
     protected override void ExitThreadCore()
@@ -233,7 +295,7 @@ internal sealed class SettingsForm : Form
         Label("Confirm new password");
         var confirm = new TextBox { UseSystemPasswordChar = true, Width = 525 };
         panel.Controls.Add(confirm);
-        Label("The password protects the companion settings UI, not against a Windows administrator. The tray icon remains available; routine update checks do not show pop-ups.");
+        Label("Settings are saved immediately and retained after shutdown. Windows startup is quiet: no settings window or routine update notifications. The tray icon remains available. The password protects the settings UI, not against a Windows administrator.");
         var save = new Button { Text = "Save settings", AutoSize = true };
         panel.Controls.Add(save);
         save.Click += (_, _) =>
