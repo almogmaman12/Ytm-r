@@ -80,7 +80,7 @@ try {
 <?xml version="1.0" encoding="utf-8"?>
 <AppInstaller xmlns="http://schemas.microsoft.com/appx/appinstaller/2018" Version="$Version" Uri="$uri/YtmCompanion.appinstaller">
  <MainPackage Name="YtmRemote.Companion" Publisher="$p" Version="$Version" ProcessorArchitecture="x64" Uri="$uri/$packageName"/>
- <UpdateSettings><OnLaunch HoursBetweenUpdateChecks="12" ShowPrompt="false" UpdateBlocksActivation="false"/><AutomaticBackgroundTask/></UpdateSettings>
+ <UpdateSettings><OnLaunch HoursBetweenUpdateChecks="0" ShowPrompt="false" UpdateBlocksActivation="false"/><AutomaticBackgroundTask/></UpdateSettings>
 </AppInstaller>
 "@
   Set-Content -Path (Join-Path $out 'YtmCompanion.appinstaller') -Value $installer -Encoding UTF8
