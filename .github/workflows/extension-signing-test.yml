@@ -1,0 +1,38 @@
+name: Extension signing self-test
+on:
+  push:
+    branches: [feature/windows-companion]
+    paths: ['.github/workflows/extension-signing-test.yml']
+permissions:
+  contents: read
+jobs:
+  verify-key:
+    runs-on: ubuntu-latest
+    environment: extension-signing
+    timeout-minutes: 5
+    steps:
+      - name: Verify configured signing key with a harmless challenge
+        env:
+          YTM_EXTENSION_PRIVATE_KEY_PEM: ${{ secrets.YTM_EXTENSION_PRIVATE_KEY_PEM }}
+          YTM_EXTENSION_PUBLIC_KEY_PEM: ${{ vars.YTM_EXTENSION_PUBLIC_KEY_PEM }}
+        shell: bash
+        run: |
+          node --input-type=module <<'JS'
+          import {createPrivateKey,createPublicKey,sign,verify,timingSafeEqual,randomBytes} from 'node:crypto';
+          try {
+            if (!process.env.YTM_EXTENSION_PRIVATE_KEY_PEM || !process.env.YTM_EXTENSION_PUBLIC_KEY_PEM) throw Error();
+            const priv=createPrivateKey(process.env.YTM_EXTENSION_PRIVATE_KEY_PEM);
+            const pub=createPublicKey(process.env.YTM_EXTENSION_PUBLIC_KEY_PEM);
+            if(priv.asymmetricKeyType!=='ec'||priv.asymmetricKeyDetails.namedCurve!=='prime256v1')throw Error();
+            const a=createPublicKey(priv).export({type:'spki',format:'der'});
+            const b=pub.export({type:'spki',format:'der'});
+            if(a.length!==b.length||!timingSafeEqual(a,b))throw Error();
+            const message=Buffer.concat([Buffer.from('YTM signing self-test only, not a release: '),randomBytes(32)]);
+            const signature=sign('sha256',message,{key:priv,dsaEncoding:'ieee-p1363'});
+            if(!verify('sha256',message,{key:pub,dsaEncoding:'ieee-p1363'},signature))throw Error();
+            console.log('PASS: configured P-256 keys match and signing/verification succeeded. No release created.');
+          } catch {
+            console.error('FAIL: missing, invalid, or mismatched signing configuration.');
+            process.exitCode=1;
+          }
+          JS
