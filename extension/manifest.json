@@ -1,7 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Tab Helper",
-  "version": "2.4.4",
+  "version": "2.4.5",
+  "optional_permissions": ["tabs"],
   "description": "A small helper for browser tabs.",
   "minimum_chrome_version": "135",
   "permissions": [
