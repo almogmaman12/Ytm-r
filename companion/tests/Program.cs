@@ -1,5 +1,6 @@
 using YtmCompanion;
 
+if (args.Length == 1 && args[0] == "updater") { await UpdaterTests.Run(); return; }
 if (args.Length != 2) throw new ArgumentException("Expected mode and isolated settings path.");
 var path = Path.GetFullPath(args[1]);
 if (string.Equals(path, Path.Combine(Store.Folder,"settings.json"), StringComparison.OrdinalIgnoreCase))
