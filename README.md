@@ -2,7 +2,7 @@
 
 Self-hosted remote for YouTube Music, YouTube and Windows. Use a phone web app to control music, browse your library, see Google Calendar events and manage your PC. No Google sign-in is needed on the phone.
 
-**This branch: `feature/windows-companion`** · Chrome shell 2.4.5 in source · Node.js 18+ · optional Neon PostgreSQL
+**This branch: `feature/windows-companion`** · Chrome shell 2.4.6 in source · Node.js 18+ · optional Neon PostgreSQL
 
 ## Choose your setup
 
@@ -12,7 +12,7 @@ Self-hosted remote for YouTube Music, YouTube and Windows. Use a phone web app t
 | Self-hosted remote with OTA updates | [feature/ota-remote-loader](https://github.com/almogmaman12/Ytm-r/tree/feature/ota-remote-loader) |
 | Windows companion, PC controls and signed remote updates | [feature/windows-companion](https://github.com/almogmaman12/Ytm-r/tree/feature/windows-companion) (this branch; experimental native features) |
 
-The ordinary playback relay and extension can be self-hosted. The experimental Windows connection and remote Chrome tab controls are currently pinned in source to `https://ytm-r.onrender.com`. A fork on another relay can use ordinary playback but cannot use those native features unchanged. Do not connect a personal PC to a relay you do not control.
+The playback relay, Windows companion and remote Chrome tab controls support your own HTTPS relay. Configure the same URL, room token and PC code in Chrome and the companion. Remote tab management requires shell 2.4.6 and explicit opt-in for the saved relay. Never connect to a relay you do not control.
 
 ## Quick start
 
@@ -47,9 +47,9 @@ Phone web app <---- HTTPS / WSS ----> Node relay <---- WSS ----> Chrome extensio
 
 ## What you can control
 
-- Music: playback, queue, search, library, playlists, radio, volume boost and sleep timer.
+- Music: playback, queue, search, library, playlists, Quick Mix, radio, volume boost and sleep timer.
 - Phone: installable PWA, appearance, paired phones, diagnostics and notifications.
-- Calendar: optional read-only website sync, cached events and live-data reminders.
+- Calendar: optional read-only website sync, cached events, customizable calendar layouts and colors, upcoming-event preview and live-data reminders.
 - Windows: uptime, memory, power, master volume, mute, output device, media controls, Chrome launch/close and ordinary tab management with explicit permissions.
 - Updates: review signed extension updates and request a companion MSIX update from the owner phone. The two update managers are independent.
 

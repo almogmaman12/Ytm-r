@@ -4,7 +4,7 @@
 
 ## Installation
 
-Use Chrome 135 or newer. Download or clone the same trusted source branch as your relay. The Windows companion branch currently contains shell 2.4.5; the OTA branch can have a different version.
+Use Chrome 135 or newer. Download or clone the same trusted source branch as your relay. The Windows companion branch currently contains shell 2.4.6; the OTA branch can have a different version.
 
 1. Extract or clone the repo to a permanent local folder, not a temporary Downloads archive.
 2. Visit `chrome://extensions`, enable Developer mode and choose Load unpacked. Select the `extension/` folder (the one containing manifest.json).
@@ -22,7 +22,7 @@ Do not uninstall an existing extension merely to update it. Keep its exact unpac
 | Regular YouTube | Control www.youtube.com; optional site access |
 | Calendar | Read events displayed in open Google Calendar tabs; optional site access |
 | Let my phone start sound | Opt-in sound activation using the declared debugger permission |
-| Remote tabs | Owner can list, switch and close ordinary non-incognito HTTP(S) tabs; optional tabs permission and pinned test relay |
+| Remote tabs | Owner can list, switch and close ordinary non-incognito HTTP(S) tabs; optional tabs permission and configured trusted HTTPS relay |
 | Startup shell reload | Attempt one reload if the installed manifest is newer than the running worker; intended for companion users |
 
 Grant only permissions you intend to use. Chrome may still ask for permission confirmation after updates.
@@ -47,3 +47,5 @@ normal extension reload UI. Actual startup behavior must be tested in Chrome.
 The release workflow has narrow exceptions for the reviewed 2.4.4 and 2.4.5 source commits. The release is requested separately, and is not triggered by ordinary commits. The companion can download it without a new Windows build. Keep the original extension folder path and do not uninstall the extension. Once loaded, opt in via the extension settings. Actual Chrome activation still requires testing; a manual reload may remain necessary.
 
 See [updates](../docs/updates/README.md), [calendar](../docs/calendar/README.md) and [security](../docs/security/README.md).
+
+For remote tabs on a custom relay, save its HTTPS address and room token first, then enable Remote tabs and approve Chrome's permission. After upgrading from 2.4.5 or changing relay/token, re-enable the opt-in. The feature does not work over plain HTTP.

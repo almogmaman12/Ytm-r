@@ -22,9 +22,9 @@
 
 | Symptom | What to check |
 |---|---|
-| PC native status offline | Companion running, correct test relay deployment, token and PC code, both relay codes strong, status sharing enabled |
+| PC native status offline | Companion running, correct configured relay deployment, token and PC code, both relay codes strong, status sharing enabled |
 | Controls disabled | Enable the separate Windows controls option in the tray connection settings |
-| Remote tabs unavailable | Shell 2.4.5, tabs opt-in, Chrome optional permission, test relay |
+| Remote tabs unavailable | Shell 2.4.6, tabs opt-in, Chrome optional permission, configured relay |
 | Extension update waiting for Chrome | Close all Chrome windows and check for background Chrome processes; never force-kill unsaved work |
 | Signed update unavailable | Latest extension release must include all three signed extension assets; companion-channel must not be Latest |
 | Permission review required | Use phone review if enabled and supported, or the password-protected tray review; other capability/identity changes require manual Chrome review |

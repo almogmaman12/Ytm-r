@@ -62,3 +62,7 @@ With `DATABASE_URL`, paired phones, pause status and calendar permissions are pe
 Open **Settings → Paired phones → View device activity**, or use the Activity history button on an individual device. The owner can filter access changes and music requests, including records for removed devices. History records pairing, connections, disconnections, renaming, pause/resume, calendar grants/revocations, removals and selected remote command categories. Music requests are grouped over 30 seconds; a request is not proof that the PC executed it. Song titles, search terms, IP addresses and credentials are not stored in this history. Entries begin with the deployment that introduced history; they are not reconstructed from older logs.
 
 For monitoring and phone app updates, see [System Center](../system-center/README.md). For the PC tab, see [Windows companion](../../companion/README.md).
+
+## Recent phone improvements
+
+Quick Mix builds a queue from loaded music without additional searches. Calendar appearance settings include timeline/cards/compact agenda styles, color palettes, custom colors and an optional upcoming-event preview on Now Playing. Cache manager clears selected phone-local data without changing relay credentials or the Neon database.

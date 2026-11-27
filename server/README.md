@@ -7,7 +7,7 @@ The relay serves the phone app and OTA payloads and forwards authenticated messa
 ## Deploy to Render
 
 1. Fork the repo and create a Render Web Service connected to your fork.
-2. Choose your intended branch. Use the OTA branch for ordinary playback, or the Windows companion branch for the experimental test deployment. Native controls are pinned to the existing test relay; ordinary self-hosting does not require it.
+2. Choose your intended branch. Use the OTA branch for ordinary playback, or the Windows companion branch for the Windows companion deployment. Native controls use the HTTPS relay configured on the PC.
 3. Set Root Directory to `server`, Build Command to `npm install`, Start Command to `npm start`. Enable auto-deploy if desired.
 4. Set environment variables below before connecting any client. Open the resulting HTTPS URL; use that same origin on the phone and Chrome.
 

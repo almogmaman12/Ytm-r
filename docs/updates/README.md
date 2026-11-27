@@ -43,3 +43,7 @@ Chrome is not closed by this update. The companion may disconnect while Windows 
 Exit Chrome fully before restoring a trusted extension backup to the original folder path. Preserve the original backup and never delete the Chrome profile. For Windows companion issues, check App Installer/Windows logs and the signed release channel; do not downgrade using an untrusted package. Keep a backup of settings before migration. A release request or successful commit is not a guarantee of a completed CI run or runtime update.
 
 [Install companion](../../companion/README.md) · [Maintainer signing](../../companion/release/README.md).
+
+## Migrating from the OTA branch
+
+The companion branch now includes the newer OTA phone UI. Keep the same Render service, root directory, build/start commands, access codes, tokens and DATABASE_URL. No new Neon schema or manual migration is needed. Deploy the branch, verify the phone and calendar, then update the companion and extension. On existing companion installs re-enter your trusted HTTPS relay, token and PC code. Re-enable remote tabs after updating to 2.4.6. If deployment fails, switch back to your prior working branch or deploy its last successful commit.
