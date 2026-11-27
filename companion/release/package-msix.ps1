@@ -54,7 +54,7 @@ try {
  xmlns:uap7="http://schemas.microsoft.com/appx/manifest/uap/windows10/7"
  xmlns:desktop="http://schemas.microsoft.com/appx/manifest/desktop/windows10"
  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
- IgnorableNamespaces="uap desktop rescap">
+ IgnorableNamespaces="uap uap7 desktop rescap">
  <Identity Name="YtmRemote.Companion" Publisher="$p" Version="$Version" ProcessorArchitecture="x64"/>
  <Properties><DisplayName>YTM Remote Companion</DisplayName><PublisherDisplayName>YTM Remote</PublisherDisplayName><Logo>Assets\Logo50.png</Logo></Properties>
  <Dependencies><TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.17763.0" MaxVersionTested="10.0.26100.0"/></Dependencies>
