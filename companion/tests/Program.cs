@@ -70,10 +70,40 @@ else if (args[0] == "read")
     var updated=Store.LoadFrom(path);
     Check(!updated.AutomaticUpdates && updated.StartWithWindows,"Atomic replacement failed");
     Check(updated.PasswordHash==oldHash && Store.Verify(updated,password),"Password changed unexpectedly");
+    Check(updated.SchemaVersion==Store.CurrentSchema,"Schema missing");
+    var mirror=Store.MirrorPath(path);
+    Check(File.ReadAllBytes(path).SequenceEqual(File.ReadAllBytes(mirror)),"Mirror is not current");
+    Store.BackupBeforeUpdate(path);
+    Check(File.ReadAllBytes(path).SequenceEqual(File.ReadAllBytes(Store.UpdateBackupPath(path))),"Pre-update snapshot mismatch");
+    var config=new NativeCredentials("abcdefghijklmnopqrstuvwx_1234","test-only-pc-code","https://relay.example.com").Protect();
+    updated.NativeConfig=config;
+    updated.NativeControls=true;updated.NativeRemoteUpdates=true;updated.NativeCompanionUpdates=true;
+    Store.SaveTo(updated,path);
+    updated.NativeControls=false;updated.NativeRemoteUpdates=false;updated.NativeCompanionUpdates=false;
+    Store.SaveTo(updated,path);
     File.WriteAllText(path,"{invalid");
+    var recovered=Store.LoadFrom(path,out bool restored);
+    Check(restored&&recovered.NativeConfig==config&&!recovered.NativeControls&&!recovered.NativeRemoteUpdates&&!recovered.NativeCompanionUpdates,"Recovery resurrected disabled permissions or lost credentials");
+    Check(recovered.PasswordHash==oldHash&&Store.Verify(recovered,password),"Recovery changed password");
+    Check(Directory.GetFiles(Path.GetDirectoryName(path)!,"settings.json.corrupt-*").Any(f=>File.ReadAllText(f)=="{invalid"),"Damaged file was not retained");
+    File.Delete(path);
+    Check(Store.LoadFrom(path,out restored).NativeConfig==config&&restored,"Missing primary recovery failed");
+    var legacy=System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(path))!.AsObject();
+    legacy.Remove("SchemaVersion");
+    File.WriteAllText(path,legacy.ToJsonString());
+    Check(Store.LoadFrom(path).SchemaVersion==Store.CurrentSchema,"Legacy schema migration failed");
+    Check(File.ReadAllText(path).Contains("\"SchemaVersion\":1"),"Migration was not persisted");
+    legacy["SchemaVersion"]=Store.CurrentSchema+1;
+    var future=legacy.ToJsonString();
+    File.WriteAllText(path,future);
     bool rejected=false;
+    try { Store.LoadFrom(path); } catch(NotSupportedException) { rejected=true; }
+    Check(rejected&&File.ReadAllText(path)==future,"Future schema was silently overwritten");
+    File.WriteAllText(path,"{invalid");
+    File.WriteAllText(mirror,"{invalid mirror");
+    rejected=false;
     try { Store.LoadFrom(path); } catch { rejected=true; }
-    Check(rejected && File.ReadAllText(path)=="{invalid","Corrupt settings must not be silently overwritten");
-    Console.WriteLine("PASS: settings and password survived process restart; replacement and corruption checks passed");
+    Check(rejected&&File.ReadAllText(path)=="{invalid"&&File.ReadAllText(mirror)=="{invalid mirror","Both damaged files must be preserved; stale backup cannot be auto-restored");
+    Console.WriteLine("PASS: settings persistence, schema migration, current mirror, pre-update backup, corruption recovery and fail-closed handling");
 }
 else throw new ArgumentException("Unknown test mode.");

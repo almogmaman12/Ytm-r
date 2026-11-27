@@ -102,7 +102,7 @@ internal static class Store
         int schema = 0;
         if (doc.RootElement.TryGetProperty("SchemaVersion",out var field))
         {
-            if (!field.TryGetInt32(out schema)) throw new InvalidDataException("Invalid settings schema.");
+            if (field.ValueKind != JsonValueKind.Number || !field.TryGetInt32(out schema)) throw new InvalidDataException("Invalid settings schema.");
             if (schema < 0 || schema > CurrentSchema) throw new NotSupportedException("Unsupported settings schema; use a compatible companion version.");
         }
         var s = JsonSerializer.Deserialize<Settings>(raw) ?? throw new InvalidDataException("Invalid companion settings.");

@@ -5,9 +5,11 @@ param(
   [Parameter(Mandatory=$true)][string]$CertificateThumbprint,
   [Parameter(Mandatory=$true)][string]$Version,
   [Parameter(Mandatory=$true)][string]$OutputDirectory,
-  [Parameter(Mandatory=$true)][string]$ExtensionPublicKeyPath
+  [Parameter(Mandatory=$true)][string]$ExtensionPublicKeyPath,
+  [switch]$SettingsUpgradeTest
 )
 $ErrorActionPreference = 'Stop'
+if ($SettingsUpgradeTest -and $Publisher -ne 'CN=YTM Remote Companion CI Test') { throw 'Settings upgrade probe is permitted only in disposable CI test packages' }
 if ($Version -notmatch '^(0|[1-9][0-9]{0,4})(\.(0|[1-9][0-9]{0,4})){3}$' -or ($Version.Split('.') | Where-Object { [int]$_ -gt 65535 })) { throw 'MSIX version must have four components from 0 to 65535' }
 if ($CertificateThumbprint -notmatch '^[0-9A-Fa-f]{40}$') { throw 'Invalid signing certificate thumbprint' }
 $cert = Get-Item "Cert:\CurrentUser\My\$CertificateThumbprint"
@@ -31,7 +33,9 @@ New-Item -ItemType Directory -Path $out -Force | Out-Null
 $stage = Join-Path ([IO.Path]::GetTempPath()) ('ytmr-msix-' + [Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $stage | Out-Null
 try {
-  dotnet publish (Join-Path $root 'YtmCompanion.csproj') -c Release -r win-x64 --self-contained true "-p:Version=$Version" -p:RequirePublisherKey=true "-p:ExtensionPublicKeyPath=$publicKeyPath" -o $stage
+  $testArgs = @()
+  if ($SettingsUpgradeTest) { $testArgs += '-p:SettingsUpgradeTest=true' }
+  dotnet publish (Join-Path $root 'YtmCompanion.csproj') -c Release -r win-x64 --self-contained true "-p:Version=$Version" -p:RequirePublisherKey=true "-p:ExtensionPublicKeyPath=$publicKeyPath" -o $stage @testArgs
   if ($LASTEXITCODE -ne 0) { throw 'Build failed' }
   Add-Type -AssemblyName System.Drawing
   $assets = Join-Path $stage 'Assets'
