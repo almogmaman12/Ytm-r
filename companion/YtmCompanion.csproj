@@ -9,6 +9,10 @@
     <RootNamespace>YtmCompanion</RootNamespace>
     <Version>0.1.0</Version>
   </PropertyGroup>
+  <ItemGroup>
+    <Compile Remove="tests/**/*.cs" />
+    <InternalsVisibleTo Include="YtmCompanion.Tests" />
+  </ItemGroup>
   <ItemGroup Condition="'$(ExtensionPublicKeyPath)' != ''">
     <EmbeddedResource Include="$(ExtensionPublicKeyPath)" LogicalName="YtmCompanion.ReleasePublicKey.pem" />
   </ItemGroup>
