@@ -7,8 +7,8 @@ Neon database, phone interface and Chrome extension are unchanged by this branch
 
 - Password-protected local configuration (PBKDF2-SHA256, random salt, 600,000 iterations).
 - Identifiable tray icon, normal Exit action and standard Windows startup setting.
-- No routine notifications or update balloons. Setup and explicit settings actions may show dialogs;
-  Windows security and installation prompts remain under Windows control.
+- Quiet startup with Windows at user sign-in, with no settings window or routine notification balloons. Setup on first manual launch and explicit settings actions may show dialogs; Windows security and installation prompts remain under Windows control.
+- Settings persist in the current Windows user's LocalAppData, using an atomic replacement after flushing the file. Existing password hashes and options are retained. Unreadable settings disable updates without overwriting the original file.
 - Periodic release checks directly against the Ytm-r GitHub Releases page. No Render or Neon requests.
 - Automatic signed **extension** updates, only after the owner enables them and when Chrome is fully closed.
 - Same extension directory path and manifest identity, previous directory backed up. Never edits the Chrome
@@ -29,7 +29,7 @@ dotnet publish YtmCompanion.csproj -c Release -r win-x64 --self-contained true -
 ```
 
 A Windows CI workflow is provided in `.github/workflows/companion-build.yml`. Test artifacts are unsigned
-development builds, not production installers. Do not enable automatic updates until the signer and
+development builds, not production installers. CI also tests password and settings persistence across two separate Windows processes. Do not enable automatic updates until the signer and
 the initial signed release have been verified.
 
 Open the companion once, create a local password (minimum six characters; a longer unique password is recommended), and choose the exact unpacked extension directory already loaded in Chrome. In a publisher-key build, verification is built in and no public key entry appears. Enable updates and startup only if desired.
