@@ -326,7 +326,7 @@ function calendarFor(room,token){
 function getRoom(token) {
   let room = rooms.get(token);
   if (!room) {
-    room = { pc: null, native: null, nativeState: null, nativePending: null, agent: null, agentYt: false, lastSite: 0, version: '', lastSeen: 0, lastAgent: 0, lastWake: 0, phones: new Set(), lastState: null, lastYtQueue: null };
+    room = { pc: null, native: null, nativeState: null, nativePending: null, tabsPending: null, agent: null, agentYt: false, lastSite: 0, version: '', lastSeen: 0, lastAgent: 0, lastWake: 0, phones: new Set(), lastState: null, lastYtQueue: null };
     room.calendar=calendarCache.get(token);
     rooms.set(token, room);
   }
@@ -566,7 +566,7 @@ wss.on('connection', async (ws, info) => {
       room.native = ws; room.nativeState = null; room.nativePending = null;
       log(rid, 'Windows companion connected');
     } else if (role === 'agent') {
-      if (room.agent && room.agent !== ws) room.agent.close(4000, 'replaced');
+      if (room.agent && room.agent !== ws) { const p=room.tabsPending;room.tabsPending=null;if(p){clearTimeout(p.timer);send(p.phone,{type:'chrome_tabs',request:p.request,error:'Chrome helper reconnected.'});}room.agent.close(4000, 'replaced'); }
       room.agent = ws;
       system.transition(token,'helper',true);ops.conn(token,'helper',true);
       ws.who = who;
@@ -658,12 +658,22 @@ wss.on('connection', async (ws, info) => {
       const validId=id=>typeof id==='string'&&/^[0-9a-f]{32}$/.test(id);
       const controls=msg.controls===true;
       const devices=controls&&audio&&Array.isArray(audio.devices)?audio.devices.slice(0,12).filter(d=>d&&validId(d.id)&&typeof d.name==='string').map(d=>({id:d.id,name:text(d.name,96)})):[];
+      const media=controls&&msg.nowPlaying&&typeof msg.nowPlaying==='object'?{title:text(msg.nowPlaying.title,160),artist:text(msg.nowPlaying.artist,160),app:text(msg.nowPlaying.app,120),status:text(msg.nowPlaying.status,24)}:null;
       const nativeAudio=controls&&audio?{volume:integer(audio.volume,0,100),muted:typeof audio.muted==='boolean'?audio.muted:null,device:validId(audio.device)?audio.device:null,devices}:null;
-      room.nativeState={controls,chromeRunning:typeof msg.chromeRunning==='boolean'?msg.chromeRunning:null,chromeOpen:typeof msg.chromeOpen==='boolean'?msg.chromeOpen:null,audio:nativeAudio,at:Date.now(),version:/^\d{1,5}(\.\d{1,5}){3}$/.test(String(msg.version))?String(msg.version):'',uptime:integer(msg.uptime,0,3155760000),ramTotal,ramAvailable,battery:integer(msg.battery,0,100),power:['ac','battery','unknown'].includes(msg.power)?msg.power:'unknown'};
+      room.nativeState={controls,nowPlaying:media,chromeRunning:typeof msg.chromeRunning==='boolean'?msg.chromeRunning:null,chromeOpen:typeof msg.chromeOpen==='boolean'?msg.chromeOpen:null,audio:nativeAudio,at:Date.now(),version:/^\d{1,5}(\.\d{1,5}){3}$/.test(String(msg.version))?String(msg.version):'',uptime:integer(msg.uptime,0,3155760000),ramTotal,ramAvailable,battery:integer(msg.battery,0,100),power:['ac','battery','unknown'].includes(msg.power)?msg.power:'unknown'};
       return;
     }
     // The helper only keeps the connection alive; it sends nothing else.
     if (role === 'agent') {
+      if(msg.type==='chrome_tabs_result'){
+        const pending=room.tabsPending;
+        if(room.agent!==ws||!calendarSecure()||!pending||msg.id!==pending.id||raw.length>32768)return;
+        room.tabsPending=null;clearTimeout(pending.timer);
+        if(pending.phone.readyState!==1||!pending.phone.joined||pending.phone.dev)return;
+        if(msg.ok!==true)return send(pending.phone,{type:'chrome_tabs',request:pending.request,error:text(msg.error,160)||'Chrome tab request failed.'});
+        const tabs=(Array.isArray(msg.tabs)?msg.tabs:[]).slice(0,60).filter(t=>t&&Number.isSafeInteger(t.id)&&t.id>=0).map(t=>({id:t.id,title:text(t.title,120),active:t.active===true,audible:t.audible===true,windowId:Number.isSafeInteger(t.windowId)?t.windowId:0}));
+        return send(pending.phone,{type:'chrome_tabs',request:pending.request,tabs,total:Number.isSafeInteger(msg.total)&&msg.total>=tabs.length?Math.min(msg.total,10000):tabs.length});
+      }
       if (msg.type === 'calendar_snapshot' && room.agent === ws && calendarSecure() && !overLimit(5)) {
         const items=(Array.isArray(msg.items)?msg.items:[]).slice(0,80).filter(x=>x&&/^\d{4}-\d{2}-\d{2}$/.test(x.date)).map(x=>({title:text(x.title,160),date:x.date,start:Number.isFinite(x.start)&&Math.abs(x.start-Date.now())<61*86400000?x.start:null,end:Number.isFinite(x.end)&&Number.isFinite(x.start)&&Math.abs(x.start-Date.now())<61*86400000&&x.end>x.start&&x.end-x.start<=7*86400000?x.end:null,time:text(x.time,50),allDay:x.allDay===true,live:x.live!==false&&msg.status==='ok'}));
         const at=Math.min(Date.now(),Number(msg.at)||0);
@@ -683,6 +693,20 @@ wss.on('connection', async (ws, info) => {
     if (role === 'phone') {
       if (raw.length > MAX_PHONE_MSG_BYTES || msg.type !== 'cmd') return;
       if (overLimit(MAX_CMDS_PER_SEC)) return;
+      if(msg.cmd==='chrome_tabs'){
+        if(!calendarOwner())return;
+        const request=msg.value?.request,action=msg.value?.action,tabId=msg.value?.tabId;
+        if(typeof request!=='string'||!/^[a-zA-Z0-9_-]{1,32}$/.test(request))return;
+        const reply=error=>send(ws,{type:'chrome_tabs',request,error});
+        if(!['list','activate','close'].includes(action)||(action!=='list'&&(!Number.isSafeInteger(tabId)||tabId<0)))return reply('Invalid tab request.');
+        if(!room.agent)return reply('Chrome helper is offline.');
+        if(room.tabsPending)return reply('A tab request is already in progress.');
+        const id=crypto.randomBytes(16).toString('hex');
+        const timer=setTimeout(()=>{if(room.tabsPending?.id!==id)return;room.tabsPending=null;reply('Chrome did not respond. Check extension version and permissions.');},10000);timer.unref();
+        room.tabsPending={id,request,phone:ws,timer};
+        send(room.agent,{type:'chrome_tabs_request',id,action,tabId});
+        return;
+      }
       if(msg.cmd==='native_action'){
         if(!calendarOwner())return;
         const request=msg.value?.request,action=msg.value?.action,value=msg.value?.value;
@@ -1027,7 +1051,7 @@ wss.on('connection', async (ws, info) => {
     if (role === 'native') {
       if (room.native === ws) { room.native=null; room.nativeState=null; const p=room.nativePending;room.nativePending=null;if(p){clearTimeout(p.timer);send(p.phone,{type:'native_status',request:p.request,error:'Windows companion disconnected. Refresh before retrying.'});} }
     } else if (role === 'agent') {
-      if (room.agent === ws) { room.calendar=calendarCache.get(token);room.agent=null;room.agentYt=false;room.lastAgent=Date.now();if(!shuttingDown){system.transition(token,'helper',false);ops.conn(token,'helper',false);}tellPhones(room);sendCalendar(room,token); }
+      if (room.agent === ws) { const p=room.tabsPending;room.tabsPending=null;if(p){clearTimeout(p.timer);send(p.phone,{type:'chrome_tabs',request:p.request,error:'Chrome helper disconnected.'});}room.calendar=calendarCache.get(token);room.agent=null;room.agentYt=false;room.lastAgent=Date.now();if(!shuttingDown){system.transition(token,'helper',false);ops.conn(token,'helper',false);}tellPhones(room);sendCalendar(room,token); }
     } else if (role === 'pc') {
       if (room.pc === ws) {
         room.pc = null;
