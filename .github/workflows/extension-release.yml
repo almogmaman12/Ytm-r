@@ -42,6 +42,16 @@ jobs:
             git show "00daa123049cb7ea8b3fdd36f420fb6fa7e31eb3:extension/manifest.json" > baseline-manifest.json
             git show "$SOURCE:extension/manifest.json" > candidate-manifest.json
             node --input-type=module -e 'import fs from "node:fs";import assert from "node:assert/strict";const a=JSON.parse(fs.readFileSync("baseline-manifest.json")),b=JSON.parse(fs.readFileSync("candidate-manifest.json"));a.version=b.version;assert.deepEqual(a,b)'
+          elif [ "$SOURCE" = "3239023ef7b4b2fff0e8ec7cc04d8194edc37749" ] && [ "$VERSION" = "2.4.5" ]; then
+            git merge-base --is-ancestor "$SOURCE" refs/remotes/origin/feature/windows-companion
+            git diff --name-only dd54daf7c6a4a8c77409eddad13b9c4bfe12576d "$SOURCE" -- extension/ | LC_ALL=C sort > actual-extension-files
+            printf '%s\n' extension/background.js extension/manifest.json extension/options.html extension/options.js > expected-extension-files
+            diff -u expected-extension-files actual-extension-files
+            git show "dd54daf7c6a4a8c77409eddad13b9c4bfe12576d:extension/manifest.json" > baseline-manifest.json
+            git show "$SOURCE:extension/manifest.json" > candidate-manifest.json
+            node --input-type=module -e 'import fs from "node:fs";import assert from "node:assert/strict";const a=JSON.parse(fs.readFileSync("baseline-manifest.json")),b=JSON.parse(fs.readFileSync("candidate-manifest.json"));a.version=b.version;a.optional_permissions=["tabs"];assert.deepEqual(a,b)'
+            git show "$SOURCE:extension/background.js" | node --check
+            git show "$SOURCE:extension/options.js" | node --check
           else
             git merge-base --is-ancestor "$SOURCE" refs/remotes/origin/feature/ota-remote-loader
           fi
