@@ -28,6 +28,7 @@ internal sealed class Settings
     public bool StartWithWindows { get; set; }
     public string Salt { get; set; } = "";
     public string PasswordHash { get; set; } = "";
+    public string NativeConfig { get; set; } = ""; // DPAPI-protected; empty means disabled
 }
 
 internal static class Store
@@ -52,7 +53,7 @@ internal static class Store
     }
     private static void Validate(Settings s)
     {
-        if (s.ExtensionFolder == null || s.PublicKey == null || s.Salt == null || s.PasswordHash == null)
+        if (s.ExtensionFolder == null || s.PublicKey == null || s.Salt == null || s.PasswordHash == null || s.NativeConfig == null)
             throw new InvalidDataException("Invalid companion settings.");
         if (s.PasswordHash.Length == 0 || Convert.FromBase64String(s.Salt).Length != 32 ||
             Convert.FromBase64String(s.PasswordHash).Length != 32)
@@ -114,6 +115,7 @@ internal sealed class CompanionContext : ApplicationContext
     private readonly NotifyIcon tray;
     private readonly System.Windows.Forms.Timer timer = new() { Interval = 60000 };
     private readonly ExtensionUpdater updater = new();
+    private readonly NativeMonitor native = new();
     private Settings settings;
     private string status = "Not configured";
     private DateTime nextCheck = DateTime.MinValue;
@@ -147,6 +149,7 @@ internal sealed class CompanionContext : ApplicationContext
         menu.Items.Add(new ToolStripMenuItem($"Companion {version} ({channel})") { Enabled = false });
         menu.Items.Add(statusItem);
         menu.Items.Add("Settings…", null, (_, _) => OpenSettings());
+        menu.Items.Add("Windows status connection…", null, (_, _) => ConfigureNative());
         menu.Items.Add("Check for extension update", null, async (_, _) => await CheckAsync(true));
         menu.Items.Add("Review signed update…", null, async (_, _) => await CheckAsync(true, true));
         menu.Items.Add("Open companion data folder", null, (_, _) =>
@@ -172,6 +175,7 @@ internal sealed class CompanionContext : ApplicationContext
             await CheckAsync(false);
         };
         timer.Start();
+        if (!settingsUnreadable) native.Start(settings.NativeConfig);
     }
 
     private void Status(string message)
@@ -230,6 +234,53 @@ internal sealed class CompanionContext : ApplicationContext
         catch { Status("Could not save settings."); }
         finally { settingsOpen = false; }
     }
+    private void ConfigureNative()
+    {
+        if (busy || settingsOpen || settingsUnreadable || string.IsNullOrEmpty(settings.PasswordHash) || !Unlock()) return;
+        settingsOpen = true;
+        try
+        {
+            using var form = new Form { Text = "Windows status connection (test relay)", Width = 565, Height = 400,
+                StartPosition = FormStartPosition.CenterScreen };
+            var panel = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, WrapContents = false, AutoScroll = true, Padding = new Padding(12) };
+            form.Controls.Add(panel);
+            void Label(string text) => panel.Controls.Add(new Label { Text = text, AutoSize = true, MaximumSize = new Size(510, 0) });
+            Label("Test relay: " + NativeCredentials.Relay);
+            Label("Read-only Windows status: uptime, memory, power and companion version. Owner phones only. No Windows commands are accepted.");
+            var enable = new CheckBox { Text = "Share Windows status with my owner phone", AutoSize = true, Checked = settings.NativeConfig.Length > 0 };
+            panel.Controls.Add(enable);
+            Label("Test relay token (leave both fields blank to retain saved credentials)");
+            var token = new TextBox { Width = 500, UseSystemPasswordChar = true };
+            panel.Controls.Add(token);
+            Label("Test relay PC code");
+            var code = new TextBox { Width = 500, UseSystemPasswordChar = true };
+            panel.Controls.Add(code);
+            var save = new Button { Text = "Save", AutoSize = true };
+            panel.Controls.Add(save);
+            save.Click += (_, _) =>
+            {
+                try
+                {
+                    string config = "";
+                    if (enable.Checked)
+                    {
+                        config = token.Text.Length == 0 && code.Text.Length == 0 && settings.NativeConfig.Length > 0
+                            ? NativeCredentials.Unprotect(settings.NativeConfig).Protect()
+                            : new NativeCredentials(token.Text.Trim(), code.Text).Protect();
+                    }
+                    var old = settings.NativeConfig;
+                    settings.NativeConfig = config;
+                    try { Store.Save(settings); }
+                    catch { settings.NativeConfig = old; throw; }
+                    native.Start(config);
+                    form.Close();
+                }
+                catch { MessageBox.Show("Could not save connection. Enter a valid token and PC code, or disable the connection.", "Windows status"); }
+            };
+            form.ShowDialog();
+        }
+        finally { settingsOpen = false; }
+    }
     private bool ReviewPermissions(PermissionReview review)
     {
         using var dialog = new Form { Text = "YTM Remote Companion - Review signed update", Width = 630, Height = 530, MinimumSize = new Size(440, 360), StartPosition = FormStartPosition.CenterScreen };
@@ -283,6 +334,7 @@ internal sealed class CompanionContext : ApplicationContext
     }
     protected override void ExitThreadCore()
     {
+        native.Dispose();
         timer.Stop();
         tray.Visible = false;
         tray.Dispose();
@@ -336,7 +388,7 @@ internal sealed class SettingsForm : Form
         {
             try
             {
-                var next = new Settings { ExtensionFolder = folder.Text.Trim(), PublicKey = pinned ?? key.Text.Trim(), AutomaticUpdates = auto.Checked, StartWithWindows = startup.Checked, Salt = current.Salt, PasswordHash = current.PasswordHash };
+                var next = new Settings { ExtensionFolder = folder.Text.Trim(), PublicKey = pinned ?? key.Text.Trim(), AutomaticUpdates = auto.Checked, StartWithWindows = startup.Checked, Salt = current.Salt, PasswordHash = current.PasswordHash, NativeConfig = current.NativeConfig };
                 if (next.ExtensionFolder.Length > 0 || next.AutomaticUpdates)
                     ExtensionUpdater.ValidateFolder(next.ExtensionFolder);
                 if (next.PublicKey.Length > 0)
