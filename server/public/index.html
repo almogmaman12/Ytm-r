@@ -3598,6 +3598,13 @@ function sysEvent(root,title,detail,tone=''){
   const row=sysEl('div','system-event'),dot=sysEl('i','relay-health-dot '+tone);row.append(dot,sysEl('span','',title),sysEl('small','',detail));root.append(row);
 }
 function sysTitle(root,t){root.append(sysEl('h4','system-section-title',t));}
+function nativeAction(action,value=null){
+  if(systemTab!=='native'||systemId||!getToken()||!getCode())return;
+  if(action==='chrome_close'&&!confirm('Close all visible Chrome windows on your PC? Unsaved work or prompts may prevent closure.'))return;
+  systemId=reqId();$('systemRefresh').disabled=true;$('systemStatus').textContent='Sending Windows action…';
+  if(!rawCmd('native_action',{request:systemId,action,value})){systemDisconnected();return;}
+  clearTimeout(systemTimer);systemTimer=setTimeout(()=>{systemId='';$('systemRefresh').disabled=false;$('systemStatus').textContent='No confirmation. Refresh before trying again.';},12000);
+}
 function nativeReceive(m){
   if(systemTab!=='native'||!systemId||m.request!==systemId||!getToken()||!getCode())return;
   clearTimeout(systemTimer);systemId='';$('systemRefresh').disabled=false;
@@ -3606,11 +3613,38 @@ function nativeReceive(m){
   const d=m.data||{},s=d.state;
   if(!d.online){status.textContent='Windows companion offline or not enabled.';root.append(sysEl('p','relay-health-caption','Enable Windows status connection in the companion tray menu. Use the test relay token and PC code. Both relay access codes must be at least eight characters.'));return;}
   if(!s){status.textContent='Connected; no fresh status yet. Refresh shortly.';return;}
-  status.textContent='Connected · last snapshot '+dateTime(s.at);
+  status.textContent='Connected · last snapshot '+dateTime(s.at)+(m.actionMessage?' · '+m.actionMessage:'');
   const gib=n=>Number.isFinite(n)?(n/1024).toFixed(1)+' GB':'Unavailable';
   const memory=Number.isFinite(s.ramTotal)&&Number.isFinite(s.ramAvailable)?gib(s.ramTotal-s.ramAvailable)+' / '+gib(s.ramTotal):'Unavailable';
   opsMetric(root,[['Companion version',s.version||'Unknown'],['PC uptime',Number.isFinite(s.uptime)?sysDuration(s.uptime*1000):'Unavailable'],['Memory used',memory],['Battery',Number.isFinite(s.battery)?s.battery+'%':'Not available'],['Power',s.power==='ac'?'Plugged in':s.power==='battery'?'On battery':'Unknown']]);
-  root.append(sysEl('p','relay-health-caption','Read-only status, refreshed by the companion once a minute. No PC data is saved in Neon. Available only to the owner phone.'));
+  sysTitle(root,'Chrome');
+  const chrome=s.chromeOpen===true?'Open':s.chromeOpen===false?(s.chromeRunning===true?'Closed (background processes running)':'Closed'):'Unknown';
+  opsMetric(root,[['Chrome windows',chrome]]);
+  if(s.controls!==true){
+    root.append(sysEl('p','relay-health-caption','Remote controls are disabled. Enable the separate Windows controls option in the companion tray settings.'));
+  }else{
+    const chromeActions=sysEl('div','ops-actions');opsButton(chromeActions,'Launch Chrome',()=>nativeAction('chrome_open'));opsButton(chromeActions,'Close Chrome',()=>nativeAction('chrome_close'));root.append(chromeActions);
+    sysTitle(root,'Windows audio');
+    const a=s.audio;
+    if(a&&Number.isFinite(a.volume)){
+      const card=sysEl('div','system-metric'),label=sysEl('strong','',a.volume+'%'),range=sysEl('input');
+      range.type='range';range.min='0';range.max='100';range.step='1';range.value=String(a.volume);range.style.width='100%';range.setAttribute('aria-label','Windows master volume');
+      range.oninput=()=>label.textContent=range.value+'%';range.onchange=()=>nativeAction('volume',Number(range.value));
+      card.append(sysEl('small','','Master volume'),label,range);root.append(card);
+      const actions=sysEl('div','ops-actions');if(typeof a.muted==='boolean')opsButton(actions,a.muted?'Unmute':'Mute',()=>nativeAction('mute',!a.muted));root.append(actions);
+      if(Array.isArray(a.devices)&&a.devices.length){
+        const output=sysEl('select');output.style.cssText='width:100%;padding:12px;background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:12px';output.setAttribute('aria-label','Default Windows audio output');
+        const placeholder=sysEl('option','','Select audio output');placeholder.value='';placeholder.disabled=true;output.append(placeholder);
+        for(const dev of a.devices){const opt=sysEl('option','',dev.name||'Audio device');opt.value=dev.id;output.append(opt);}output.value=a.devices.some(d=>d.id===a.device)?a.device:'';
+        output.onchange=()=>nativeAction('output',output.value);root.append(sysEl('p','relay-health-caption','Default playback device'),output);
+      }
+    }else root.append(sysEl('p','relay-health-caption','No active audio output detected.'));
+    sysTitle(root,'Windows media controls');
+    const media=sysEl('div','ops-actions');
+    for(const [label,cmd] of [['Previous','media_previous'],['Play / pause','media_toggle'],['Next','media_next'],['Stop','media_stop']])opsButton(media,label,()=>nativeAction(cmd));root.append(media);
+    root.append(sysEl('p','relay-health-caption','Media keys target the app selected by Windows. Apps using a fixed output device may not follow a default-device change.'));
+  }
+  root.append(sysEl('p','relay-health-caption','Status is refreshed once a minute and after actions. No PC data is saved in Neon. Available only to the owner phone.'));
 }
 function systemReceive(m){
   if(m.request!==systemId||m.type!=='system_'+systemTab||!getToken())return;
