@@ -1,6 +1,23 @@
 using YtmCompanion;
 
 if (args.Length == 1 && args[0] == "updater") { await UpdaterTests.Run(); return; }
+if (args.Length == 1 && args[0] == "native")
+{
+    var credentials = new NativeCredentials("abcdefghijklmnopqrstuvwx_1234", "test-only-pc-code");
+    var encrypted = credentials.Protect();
+    if (encrypted.Contains(credentials.Token) || NativeCredentials.Unprotect(encrypted) != credentials)
+        throw new Exception("Native credential round trip failed.");
+    var nonce = "0123456789abcdef0123456789abcdef";
+    var expected = Convert.ToHexString(System.Security.Cryptography.HMACSHA256.HashData(
+        System.Text.Encoding.UTF8.GetBytes(credentials.PcCode),
+        System.Text.Encoding.UTF8.GetBytes(credentials.Token + "|native|" + nonce))).ToLowerInvariant();
+    if (credentials.Proof(nonce) != expected) throw new Exception("Native challenge proof mismatch.");
+    bool rejected = false;
+    try { new NativeCredentials("short","weak").Protect(); } catch (ArgumentException) { rejected = true; }
+    if (!rejected) throw new Exception("Invalid native credentials accepted.");
+    Console.WriteLine("PASS: native DPAPI credentials, validation and authentication proof");
+    return;
+}
 if (args.Length != 2) throw new ArgumentException("Expected mode and isolated settings path.");
 var path = Path.GetFullPath(args[1]);
 if (string.Equals(path, Path.Combine(Store.Folder,"settings.json"), StringComparison.OrdinalIgnoreCase))
