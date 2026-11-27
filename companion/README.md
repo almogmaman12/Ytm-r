@@ -103,8 +103,7 @@ node release/sign-extension.mjs /path/to/input.zip 2.4.4 /secure/private.pem /pa
 
 Upload the resulting `extension.zip`, `extension-release.json` and `extension-release.sig` to a reviewed
 GitHub Release marked Latest. The companion requires an authentic signature, exact archive hash,
-increasing version, safe archive paths and unchanged manifest capabilities. Changes to the permission
-declarations, host access, identity or other manifest fields require a manual review and update.
+increasing version, safe archive paths and unchanged manifest capabilities. Cosmetic metadata, JSON formatting, reordered object properties and reordered permission sets do not prevent automatic installation. Changes to actual permissions, host access, extension identity, executable entry points or unrecognized manifest fields still require manual review. The tray status identifies the affected fields without displaying their contents.
 A latest release without those three files will fail safely. Keep the dedicated companion-channel release marked non-latest.
 
 The updater replaces only the selected source directory and retains a timestamped sibling backup.
