@@ -562,6 +562,17 @@ let port;
   // Verify the relay cache after tab closure, agent disconnect, new phone and disk reload.
   {
     const agent=await connectCoded('agent','pc-secret-456');
+    // Chrome tab requests are forwarded only to the authenticated helper, with a correlated response.
+    phoneOk.w.send(JSON.stringify({type:'cmd',cmd:'chrome_tabs',value:{request:'tabs1',action:'list'}}));await wait(100);
+    const tabReq=agent.w.msgs.find(m=>m.type==='chrome_tabs_request');
+    assert(tabReq&&tabReq.action==='list'&&/^[0-9a-f]{32}$/.test(tabReq.id));
+    agent.w.send(JSON.stringify({type:'chrome_tabs_result',id:'0'.repeat(32),ok:true,tabs:[]}));await wait(100);
+    assert(!phoneOk.w.msgs.some(m=>m.type==='chrome_tabs'&&m.request==='tabs1'),'wrong tab response id rejected');
+    agent.w.send(JSON.stringify({type:'chrome_tabs_result',id:tabReq.id,ok:true,total:1,tabs:[{id:12,title:'Test page',url:'https://private.example/path',active:true,windowId:1}]}));await wait(100);
+    const tabReply=phoneOk.w.msgs.find(m=>m.type==='chrome_tabs'&&m.request==='tabs1');
+    assert(tabReply&&tabReply.tabs[0].title==='Test page'&&!('url' in tabReply.tabs[0]),'tab response is allowlisted');
+    phoneOk.w.send(JSON.stringify({type:'cmd',cmd:'chrome_tabs',value:{request:'tabBad',action:'navigate',tabId:12}}));await wait(100);
+    assert(phoneOk.w.msgs.some(m=>m.type==='chrome_tabs'&&m.request==='tabBad'&&m.error),'arbitrary tab actions denied');
     const at=Date.now(), start=at+3600000,end=start+1800000;
     const event={title:'Server cached event',date:new Date(start).toISOString().slice(0,10),start,end,time:'14:00 עד 14:30',live:true};
     agent.w.send(JSON.stringify({type:'calendar_snapshot',status:'ok',at,items:[event]}));
@@ -683,6 +694,8 @@ let port;
     dev.send(JSON.stringify({type:'cmd',cmd:'native_status',value:{request:'guest_status'}}));
     await wait(100);
     assert(!dev.msgs.some(m=>m.type==='native_status'),'guest cannot request native actions or state');
+    dev.send(JSON.stringify({type:'cmd',cmd:'chrome_tabs',value:{request:'guest_tabs',action:'list'}}));await wait(100);
+    assert(!dev.msgs.some(m=>m.type==='chrome_tabs'),'guest cannot request browser tabs');
     // Wrong key
     const wrongKey = await new Promise((resolve) => {
       const w = new WebSocket(`ws://localhost:${port}/ws?role=phone&device=${key.slice(0, 17)}${'A'.repeat(32)}`);
