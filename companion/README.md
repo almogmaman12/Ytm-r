@@ -112,6 +112,25 @@ Do not delete the only known-good backup. Inspect backup disk usage occasionally
 starting during the directory swap can still require manual recovery. No guarantee of uninterrupted
 updates is made.
 
+## Experimental extension startup activation
+
+The companion branch has an experimental shell 2.4.4 with a loaded worker build identifier
+and an opt-in startup reload setting in the password-protected extension options.
+Chrome's supported runtime.reload() is called only when the owner has enabled the setting
+and Chrome reports a newer manifest version than the running worker. The extension stores
+one attempted reload per target version to avoid reload loops. It does not force Chrome to
+close, change Chrome settings, grant permissions or accept remote reload commands.
+The options page also shows the loaded shell build/API and has a manual Reload extension now button.
+
+This feature requires an initial installation/reload of the experimental shell and explicit
+opt-in. Increment both manifest.version and SHELL_BUILD on every subsequent shell release.
+If Chrome caches both the manifest and the worker, or the reload attempt fails, use Chrome's
+normal extension reload UI. Actual startup behavior must be tested in Chrome.
+The production signed-release workflow continues to package reviewed OTA-branch source only;
+this experimental shell is not published automatically. Installing it manually puts the
+test extension ahead of the current signed baseline, so future signed updates must use a
+higher version. Keep the original folder path and do not uninstall the extension.
+
 ## Companion auto-update (signed package)
 
 On a trusted Windows signing machine, with .NET 8, Node.js, the Windows SDK (makeappx and signtool on PATH) and a
