@@ -71,7 +71,7 @@ async function refresh() {
 }
 
 async function load() {
-  const c = await chrome.storage.local.get(['relayUrl', 'token', 'allowHttp', 'pcCode', 'agent', 'youtube', 'sound', 'calendar', 'reloadShellAtStartup']);
+  const c = await chrome.storage.local.get(['relayUrl', 'token', 'allowHttp', 'pcCode', 'agent', 'youtube', 'sound', 'calendar', 'reloadShellAtStartup', 'remoteTabs']);
   $('agent').checked = c.agent !== false;
   $('shellAutoReload').checked = c.reloadShellAtStartup === true;
   $('calendar').checked = !!c.calendar && await chrome.permissions.contains({ origins: ['https://calendar.google.com/*'] }).catch(() => false);
