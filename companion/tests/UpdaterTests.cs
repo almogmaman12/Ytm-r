@@ -118,6 +118,11 @@ internal static class UpdaterTests
             var tampered=Convert.FromBase64String(encrypted);tampered[^1]^=1;
             bool badCipher=false;try{CloudBackup.Decrypt(Convert.ToBase64String(tampered),"test-recovery-password");}catch(CryptographicException){badCipher=true;}
             Check(badCipher,"Tampered cloud backup rejected");
+            var cstate=new CloudAutoState("https://relay.example.com","abcdefghijklmnopqrstuvwx_1234","test-recovery-password",CloudBackup.Fingerprint(prefs),12345);
+            var cprotected=cstate.Protect();
+            Check(!cprotected.Contains(cstate.RecoveryPassword)&&CloudAutoState.Open(cprotected)==cstate,"Automatic recovery key protected by local DPAPI");
+            Check(cstate.Matches(new NativeCredentials(cstate.Token,"test-pc-code",cstate.Relay))&&!cstate.Matches(new NativeCredentials(cstate.Token,"test-pc-code","https://other.example.com")),"Automatic backup bound to selected room and origin");
+            Check(CloudBackup.Fingerprint(prefs)!=CloudBackup.Fingerprint(prefs with{AutomaticUpdates=false}),"Preference changes invalidate saved backup fingerprint");
             var badSignature=Release();badSignature["extension-release.sig"][0]^=1;
             await Reject("Invalid signature rejected",badSignature);
             var badHash=Release();badHash["extension.zip"][0]^=1;

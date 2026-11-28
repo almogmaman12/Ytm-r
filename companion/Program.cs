@@ -267,6 +267,7 @@ internal sealed class CompanionContext : ApplicationContext
         menu.Items.Add("Settings…", null, (_, _) => OpenSettings());
         menu.Items.Add("Windows status connection…", null, (_, _) => ConfigureNative());
         menu.Items.Add("Encrypted cloud backup…", null, async (_, _) => await CloudBackupDialog());
+        menu.Items.Add("Companion diagnostics…",null,(_,_)=>ShowDiagnostics());
         menu.Items.Add("Check for extension update", null, async (_, _) => await CheckAsync(true));
         menu.Items.Add("Review signed update…", null, async (_, _) => await CheckAsync(true, true));
         menu.Items.Add("Open companion data folder", null, (_, _) =>
@@ -278,6 +279,7 @@ internal sealed class CompanionContext : ApplicationContext
         tray = new NotifyIcon { Icon = SystemIcons.Application, Text = "YTM Remote Companion", ContextMenuStrip = menu, Visible = true };
         tray.DoubleClick += (_, _) => OpenSettings();
         statusItem.Text = status;
+        DiagnosticLog.Add(settingsUnreadable?"Settings unreadable":Store.RecoveredOnLoad?"Settings recovered":"Companion started");
         // Begin only after the WinForms message loop is running. No modal UI on startup.
         timer.Interval = 1000;
         timer.Tick += async (_, _) =>
@@ -353,6 +355,13 @@ internal sealed class CompanionContext : ApplicationContext
         catch { Status("Could not save settings."); }
         finally { settingsOpen = false; }
     }
+    private void ShowDiagnostics()
+    {
+        if(settingsOpen||busy||settingsUnreadable||!Unlock())return;
+        using var form=new Form{Text="Companion diagnostics",Width=650,Height=470,StartPosition=FormStartPosition.CenterScreen};
+        var text=new TextBox{Multiline=true,ReadOnly=true,ScrollBars=ScrollBars.Vertical,Dock=DockStyle.Fill,Text="Version "+CompanionUpdater.CurrentVersion()+Environment.NewLine+"Cloud: "+cloudBackupStatus+Environment.NewLine+"Last restart: "+ReadRestartStatus()+Environment.NewLine+Environment.NewLine+DiagnosticLog.Report()};
+        form.Controls.Add(text);form.ShowDialog();
+    }
     private void ReadCloudState()
     {
         cloudBackupAt=0;cloudBackupStatus="Manual backup only";
@@ -377,9 +386,9 @@ internal sealed class CompanionContext : ApplicationContext
             var result=await CloudBackup.Request(credentials,"put",CloudBackup.Encrypt(prefs,auto.RecoveryPassword));
             var next=JsonSerializer.Deserialize<Settings>(JsonSerializer.Serialize(settings))!;
             long updated=result.GetProperty("updated").GetInt64();next.CloudAutoConfig=(auto with {Fingerprint=fingerprint,Updated=updated}).Protect();
-            Store.Save(next);settings=next;cloudBackupAt=updated;cloudBackupStatus="Automatic backup up to date";cloudRetry=DateTime.MinValue;
+            Store.Save(next);settings=next;cloudBackupAt=updated;cloudBackupStatus="Automatic backup up to date";cloudRetry=DateTime.MinValue;DiagnosticLog.Add("Cloud backup saved");
         }
-        catch {cloudBackupStatus="Automatic backup failed; check relay, Neon or room configuration";throw;}
+        catch {cloudBackupStatus="Automatic backup failed; check relay, Neon or room configuration";DiagnosticLog.Add("Cloud backup failed");throw;}
     }
     private async Task CloudBackupDialog()
     {
@@ -531,7 +540,7 @@ internal sealed class CompanionContext : ApplicationContext
     private object CompanionSnapshot()
     {
         bool supported=CompanionUpdater.Supported();
-        return new { diagnostics=new { settingsMirror=File.Exists(Path.Combine(Store.Folder,"settings.json.bak")),preUpdateBackup=File.Exists(Path.Combine(Store.Folder,"settings.json.pre-update.bak")),schema=settings.SchemaVersion,recovered=Store.RecoveredOnLoad,cloudBackupAt=cloudBackupAt, cloudStatus=cloudBackupStatus, restart=ReadRestartStatus() }, supported, enabled=supported && !settingsUnreadable && settings.NativeControls && settings.NativeCompanionUpdates,
+        return new { diagnostics=new { settingsMirror=File.Exists(Path.Combine(Store.Folder,"settings.json.bak")),preUpdateBackup=File.Exists(Path.Combine(Store.Folder,"settings.json.pre-update.bak")),schema=settings.SchemaVersion,recovered=Store.RecoveredOnLoad,cloudBackupAt=cloudBackupAt, cloudStatus=cloudBackupStatus, restart=ReadRestartStatus(), history=DiagnosticLog.Recent() }, supported, enabled=supported && !settingsUnreadable && settings.NativeControls && settings.NativeCompanionUpdates,
             current=CompanionUpdater.CurrentVersion().ToString(), latest=companionLatest, status=companionMessage };
     }
 
@@ -573,6 +582,7 @@ internal sealed class CompanionContext : ApplicationContext
             catch { companionMessage="Update cancelled: local or enabled cloud backup failed. Check the companion backup settings."; return (false,companionMessage); }
             try { CompanionRestart.Schedule(latest); }
             catch { companionMessage="Update cancelled: Windows could not schedule the automatic restart. Check Task Scheduler permissions."; return (false,companionMessage); }
+            DiagnosticLog.Add("Companion update approved");
             companionMessage="Windows update requested. A separate restart task will reopen the companion.";
             queued=true;
             // Give the native relay time to return the acknowledgement before Windows closes the app.
@@ -596,7 +606,7 @@ internal sealed class CompanionContext : ApplicationContext
             await CompanionUpdater.InstallAsync();
             companionMessage="Windows finished processing the update. Refresh the PC status.";
         }
-        catch { companionMessage="Windows could not complete the companion update. Check App Installer on the PC."; }
+        catch { DiagnosticLog.Add("Companion update failed");companionMessage="Windows could not complete the companion update. Check App Installer on the PC."; }
         finally { busy=false; Status(companionMessage); }
     }
 
@@ -677,12 +687,13 @@ internal sealed class CompanionContext : ApplicationContext
                 if (remoteMessage == ExtensionUpdater.Waiting)
                     remoteMessage = "Chrome is still running. Close it fully, then check and retry. No forced close.";
             }
+            if(action=="extension_rollback"||action=="extension_update")DiagnosticLog.Add(remoteMessage.EndsWith("installed; backup retained.")?(action=="extension_rollback"?"Signed rollback installed":"Signed extension installed"):"Extension installation not completed");
             Status(remoteMessage);
             return ((action == "extension_check" || action=="extension_rollback_check") ? remotePreview!=null||remoteMessage.StartsWith("Extension up to date") : remoteMessage.StartsWith("Extension ")&&remoteMessage.EndsWith("installed; backup retained."), remoteMessage);
         }
         catch
         {
-            remotePreview = null;rollbackVersion=null;
+            DiagnosticLog.Add("Signed extension operation failed");remotePreview = null;rollbackVersion=null;
             remoteMessage = "Signed release check or installation failed. Check the PC settings and network.";
             Status(remoteMessage);
             return (false,remoteMessage);

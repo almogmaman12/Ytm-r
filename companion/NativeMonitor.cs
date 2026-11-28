@@ -83,9 +83,9 @@ internal sealed class NativeMonitor : IDisposable
     {
         while (!ct.IsCancellationRequested)
         {
-            try { await Session(config, controlsEnabled, ct); }
+            try { await Session(config, controlsEnabled, ct); if(!ct.IsCancellationRequested)DiagnosticLog.Add("Relay session ended"); }
             catch (OperationCanceledException) when (ct.IsCancellationRequested) { break; }
-            catch { /* No secret or relay URL is logged. Retry conservatively. */ }
+            catch { DiagnosticLog.Add("Relay connection failed"); }
             try { await Task.Delay(TimeSpan.FromMinutes(2), ct); }
             catch (OperationCanceledException) { break; }
         }
@@ -112,6 +112,7 @@ internal sealed class NativeMonitor : IDisposable
             if (root.GetProperty("type").GetString() != "authed" ||
                 !root.TryGetProperty("guarded", out var guarded) || guarded.ValueKind != JsonValueKind.True) return;
         }
+        DiagnosticLog.Add("Relay authenticated");
         using var session = CancellationTokenSource.CreateLinkedTokenSource(ct);
         using var gate = new SemaphoreSlim(1);
         var sender = Snapshots(ws, gate, controlsEnabled, session.Token);
