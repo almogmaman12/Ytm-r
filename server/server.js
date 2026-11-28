@@ -680,8 +680,16 @@ wss.on('connection', async (ws, info) => {
         room.tabsPending=null;clearTimeout(pending.timer);
         if(pending.phone.readyState!==1||!pending.phone.joined||pending.phone.dev)return;
         if(msg.ok!==true)return send(pending.phone,{type:'chrome_tabs',request:pending.request,error:text(msg.error,160)||'Chrome tab request failed.'});
-        const tabs=(Array.isArray(msg.tabs)?msg.tabs:[]).slice(0,60).filter(t=>t&&Number.isSafeInteger(t.id)&&t.id>=0).map(t=>({id:t.id,title:text(t.title,120),active:t.active===true,audible:t.audible===true,windowId:Number.isSafeInteger(t.windowId)?t.windowId:0}));
-        return send(pending.phone,{type:'chrome_tabs',request:pending.request,tabs,total:Number.isSafeInteger(msg.total)&&msg.total>=tabs.length?Math.min(msg.total,10000):tabs.length});
+        if(pending.action==='extensions'){
+          const extensions=(Array.isArray(msg.extensions)?msg.extensions:[]).slice(0,80).filter(x=>x&&typeof x.name==='string').map(x=>({name:text(x.name,100),version:text(x.version,32),enabled:x.enabled===true}));
+          return send(pending.phone,{type:'chrome_tabs',request:pending.request,extensions,total:Number.isSafeInteger(msg.total)?Math.max(extensions.length,Math.min(msg.total,10000)):extensions.length});
+        }
+        if(['recent','restore'].includes(pending.action)){
+          const recent=(Array.isArray(msg.recent)?msg.recent:[]).slice(0,25).filter(x=>x&&typeof x.sessionId==='string'&&/^[A-Za-z0-9_-]{1,128}$/.test(x.sessionId)).map(x=>({sessionId:x.sessionId,title:text(x.title,120)}));
+          return send(pending.phone,{type:'chrome_tabs',request:pending.request,recent,total:recent.length});
+        }
+        const tabs=(Array.isArray(msg.tabs)?msg.tabs:[]).slice(0,60).filter(t=>t&&Number.isSafeInteger(t.id)&&t.id>=0).map(t=>({id:t.id,title:text(t.title,120),active:t.active===true,audible:t.audible===true,muted:t.muted===true,windowId:Number.isSafeInteger(t.windowId)?t.windowId:0}));
+        return send(pending.phone,{type:'chrome_tabs',request:pending.request,tabs,advanced:msg.advanced===true,total:Number.isSafeInteger(msg.total)&&msg.total>=tabs.length?Math.min(msg.total,10000):tabs.length});
       }
       if (msg.type === 'calendar_snapshot' && room.agent === ws && calendarSecure() && !overLimit(5)) {
         const items=(Array.isArray(msg.items)?msg.items:[]).slice(0,80).filter(x=>x&&/^\d{4}-\d{2}-\d{2}$/.test(x.date)).map(x=>({title:text(x.title,160),date:x.date,start:Number.isFinite(x.start)&&Math.abs(x.start-Date.now())<61*86400000?x.start:null,end:Number.isFinite(x.end)&&Number.isFinite(x.start)&&Math.abs(x.start-Date.now())<61*86400000&&x.end>x.start&&x.end-x.start<=7*86400000?x.end:null,time:text(x.time,50),allDay:x.allDay===true,live:x.live!==false&&msg.status==='ok'}));
@@ -704,16 +712,22 @@ wss.on('connection', async (ws, info) => {
       if (overLimit(MAX_CMDS_PER_SEC)) return;
       if(msg.cmd==='chrome_tabs'){
         if(!calendarOwner())return;
-        const request=msg.value?.request,action=msg.value?.action,tabId=msg.value?.tabId;
+        const request=msg.value?.request,action=msg.value?.action,tabId=msg.value?.tabId,url=msg.value?.url,sessionId=msg.value?.sessionId;
         if(typeof request!=='string'||!/^[a-zA-Z0-9_-]{1,32}$/.test(request))return;
         const reply=error=>send(ws,{type:'chrome_tabs',request,error});
-        if(!['list','activate','close'].includes(action)||(action!=='list'&&(!Number.isSafeInteger(tabId)||tabId<0)))return reply('Invalid tab request.');
+        const tabActions=['activate','close','mute','unmute'];
+        let valid=['list','recent','extensions'].includes(action)||tabActions.includes(action)&&Number.isSafeInteger(tabId)&&tabId>=0;
+        if(action==='navigate'&&typeof url==='string'&&url.length<=512&&/^[\x21-\x7e]+$/.test(url)){
+          try{const u=new URL(url);valid=['http:','https:'].includes(u.protocol)&&!!u.hostname&&!u.username&&!u.password;}catch{}
+        }
+        if(action==='restore')valid=typeof sessionId==='string'&&/^[A-Za-z0-9_-]{1,128}$/.test(sessionId);
+        if(!valid)return reply('Invalid browser request.');
         if(!room.agent)return reply('Chrome helper is offline.');
         if(room.tabsPending)return reply('A tab request is already in progress.');
         const id=crypto.randomBytes(16).toString('hex');
         const timer=setTimeout(()=>{if(room.tabsPending?.id!==id)return;room.tabsPending=null;reply('Chrome did not respond. Check extension version and permissions.');},10000);timer.unref();
-        room.tabsPending={id,request,phone:ws,timer};
-        send(room.agent,{type:'chrome_tabs_request',id,action,tabId});
+        room.tabsPending={id,request,phone:ws,timer,action};
+        send(room.agent,{type:'chrome_tabs_request',id,action,...(tabActions.includes(action)?{tabId}:action==='navigate'?{url}:action==='restore'?{sessionId}:{})});
         return;
       }
       if(msg.cmd==='native_action'){

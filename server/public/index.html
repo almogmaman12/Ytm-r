@@ -1233,7 +1233,7 @@
     <div class="pc-hero"><div class="pc-hero-top"><span class="pc-hero-icon"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="3" width="18" height="14" rx="2"/><path d="M8 21h8m-4-4v4"/></svg></span><div><span class="pc-state" id="pcOnline">Not connected</span><h2>Windows PC</h2></div><button id="pcRefresh" class="pill" type="button">Refresh</button></div><p id="pcStatusText" class="hint" role="status">Connect to your PC.</p></div>
     <div class="pc-switch" role="tablist" aria-label="PC control sections"><button role="tab" aria-selected="true" data-pc-section="overview">Overview</button><button role="tab" aria-selected="false" data-pc-section="browser">Browser</button><button role="tab" aria-selected="false" data-pc-section="updates">Updates</button><button role="tab" aria-selected="false" data-pc-section="health">Health</button></div>
     <div id="pcResults"></div>
-    <section id="pcBrowserTabs" class="pc-card" hidden><h3 class="system-section-title">Chrome tabs</h3><button id="pcTabRefresh" type="button" class="secondary">Load tabs</button><p id="pcTabsStatus" class="hint" role="status">Tab access requires opt-in in Chrome.</p><div id="pcTabsList"></div></section>
+    <section id="pcBrowserTabs" class="pc-card" hidden><h3 class="system-section-title">Chrome browser tools</h3><div class="ops-actions"><button id="pcTabRefresh" type="button" class="secondary">Open tabs</button><button id="pcRecent" type="button" class="secondary">Recently closed</button><button id="pcExtensions" type="button" class="secondary">Extensions</button></div><div class="ops-actions"><input id="pcNavigateUrl" class="pc-version-input" type="url" placeholder="https://example.com" aria-label="Open web address on PC" maxlength="512"><button id="pcNavigate" type="button" class="secondary">Open on PC</button></div><p id="pcTabsStatus" class="hint" role="status">Enable Advanced browser tools in Chrome for the new controls.</p><div id="pcTabsList"></div></section>
   </section>
   <nav id="tabs" aria-label="Sections">
     <button data-view="playing" aria-selected="true"><svg class="i"><use href="#i-bars"/></svg>Playing</button>
@@ -3828,7 +3828,7 @@ function drawPcDashboard(m){
 }
 function pcClear(){
   clearTimeout(pcTimer);clearTimeout(pcTabsTimer);pcId='';pcTabsId='';
-  $('pcRefresh').disabled=false;$('pcTabRefresh').disabled=false;$('pcResults').textContent='';$('pcTabsList').textContent='';
+  $('pcRefresh').disabled=false;pcBrowserBusy(false);$('pcResults').textContent='';$('pcTabsList').textContent='';
   $('pcOnline').dataset.online='false';$('pcOnline').textContent='Not connected';$('pcStatusText').textContent='Refresh to connect.';$('pcTabsStatus').textContent='Load tabs to view ordinary web tabs.';
 }
 function pcRequest(action=null,value=null){
@@ -3838,22 +3838,38 @@ function pcRequest(action=null,value=null){
   pcTimer=setTimeout(()=>{pcId='';$('pcRefresh').disabled=false;$('pcStatusText').textContent='No response. Refresh before retrying.';},/^(extension|companion)_/.test(action||'')?340000:15000);
 }
 function pcAction(action,value=null){if(action==='extension_rollback'&&!confirm('Restore this older signed extension? Automatic extension updates will be paused. Chrome will close and reopen if possible.'))return;if(action==='companion_update'&&!confirm('Update the Windows companion? It will temporarily disconnect. Chrome will stay open.'))return;if(action==='chrome_close'&&!confirm('Close all visible Chrome windows?'))return;if(action==='extension_update'&&!confirm('Install this exact signed update? Chrome will close gracefully and reopen if it was open. Review the permissions above first.'))return;pcRequest(action,value);}
-function pcTabsRequest(action='list',tabId=null){
+function pcBrowserBusy(busy){for(const id of ['pcTabRefresh','pcRecent','pcExtensions','pcNavigate'])$(id).disabled=busy;}
+function pcTabsRequest(action='list',value=null){
   if(view!=='pc'||pcTabsId||!getToken()||!getCode()||ws?.readyState!==1)return;
   if(action==='close'&&!confirm('Close this Chrome tab? Unsaved work may be lost.'))return;
-  pcTabsId=reqId();$('pcTabRefresh').disabled=true;$('pcTabsStatus').textContent='Requesting Chrome tabs…';
-  if(!rawCmd('chrome_tabs',{request:pcTabsId,action,tabId})){pcClear();return;}
-  pcTabsTimer=setTimeout(()=>{pcTabsId='';$('pcTabRefresh').disabled=false;$('pcTabsStatus').textContent='Chrome did not respond. Check extension settings.';},12000);
+  if(action==='navigate'){
+    try{const u=new URL(value);if(!['http:','https:'].includes(u.protocol)||u.username||u.password||u.href.length>512)throw Error('invalid');value=u.href;}
+    catch{$('pcTabsStatus').textContent='Enter a normal HTTP or HTTPS web address.';return;}
+  }
+  pcTabsId=reqId();pcBrowserBusy(true);$('pcTabsStatus').textContent='Requesting Chrome…';
+  const payload=action==='navigate'?{url:value}:action==='restore'?{sessionId:value}:['activate','close','mute','unmute'].includes(action)?{tabId:value}:{};
+  if(!rawCmd('chrome_tabs',{request:pcTabsId,action,...payload})){pcClear();return;}
+  pcTabsTimer=setTimeout(()=>{pcTabsId='';pcBrowserBusy(false);$('pcTabsStatus').textContent='Chrome did not respond. Check extension settings.';},12000);
 }
 function pcTabsReceive(m){
   if(!pcTabsId||m.request!==pcTabsId||view!=='pc'||!getToken()||!getCode())return;
-  clearTimeout(pcTabsTimer);pcTabsId='';$('pcTabRefresh').disabled=false;
-  const list=$('pcTabsList');list.textContent='';
+  clearTimeout(pcTabsTimer);pcTabsId='';pcBrowserBusy(false);
   if(m.error){$('pcTabsStatus').textContent=m.error;return;}
-  const tabs=Array.isArray(m.tabs)?m.tabs:[];$('pcTabsStatus').textContent=tabs.length+' of '+(m.total??tabs.length)+' web tabs · private tabs excluded';
-  for(const t of tabs){const row=sysEl('div','system-metric');row.append(sysEl('strong','',t.title||'Web tab'),sysEl('small','',(t.active?'Active · ':'')+(t.audible?'Playing audio':'Window '+t.windowId)));const actions=sysEl('div','ops-actions');opsButton(actions,'Switch to',()=>pcTabsRequest('activate',t.id));opsButton(actions,'Close',()=>pcTabsRequest('close',t.id));row.append(actions);list.append(row);}
+  const list=$('pcTabsList');list.textContent='';
+  if(Array.isArray(m.extensions)){
+    $('pcTabsStatus').textContent=m.extensions.length+' of '+(m.total??m.extensions.length)+' installed extensions · read only';
+    for(const e of m.extensions){const row=sysEl('div','system-metric');row.append(sysEl('strong','',e.name||'Extension'),sysEl('small','','v'+(e.version||'?')+' · '+(e.enabled?'Enabled':'Disabled')));list.append(row);}
+    return;
+  }
+  if(Array.isArray(m.recent)){
+    $('pcTabsStatus').textContent=m.recent.length+' recently closed ordinary tabs';
+    for(const t of m.recent){const row=sysEl('div','system-metric');row.append(sysEl('strong','',t.title||'Web tab'));const actions=sysEl('div','ops-actions');opsButton(actions,'Reopen',()=>pcTabsRequest('restore',t.sessionId));row.append(actions);list.append(row);}
+    return;
+  }
+  const tabs=Array.isArray(m.tabs)?m.tabs:[];$('pcTabsStatus').textContent=tabs.length+' of '+(m.total??tabs.length)+' web tabs · private tabs excluded'+(m.advanced?'':' · Advanced tools not enabled');
+  for(const t of tabs){const row=sysEl('div','system-metric');row.append(sysEl('strong','',t.title||'Web tab'),sysEl('small','',(t.active?'Active · ':'')+(t.muted?'Muted':t.audible?'Playing audio':'Window '+t.windowId)));const actions=sysEl('div','ops-actions');opsButton(actions,'Switch to',()=>pcTabsRequest('activate',t.id));if(m.advanced)opsButton(actions,t.muted?'Unmute':'Mute',()=>pcTabsRequest(t.muted?'unmute':'mute',t.id));opsButton(actions,'Close',()=>pcTabsRequest('close',t.id));row.append(actions);list.append(row);}
 }
-$('pcRefresh').onclick=()=>pcRequest();$('pcTabRefresh').onclick=()=>pcTabsRequest();
+$('pcRefresh').onclick=()=>pcRequest();$('pcTabRefresh').onclick=()=>pcTabsRequest();$('pcRecent').onclick=()=>pcTabsRequest('recent');$('pcExtensions').onclick=()=>pcTabsRequest('extensions');$('pcNavigate').onclick=()=>pcTabsRequest('navigate',$('pcNavigateUrl').value.trim());
 setInterval(()=>{if(view==='pc'&&!document.hidden&&!pcId&&getToken()&&getCode()&&!document.activeElement?.matches('#pcResults input,#pcResults select'))pcRequest();},60000);
 function systemReceive(m){
   if(m.request!==systemId||m.type!=='system_'+systemTab||!getToken())return;

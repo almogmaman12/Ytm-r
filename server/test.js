@@ -617,6 +617,28 @@ let port;
     assert(tabReply&&tabReply.tabs[0].title==='Test page'&&!('url' in tabReply.tabs[0]),'tab response is allowlisted');
     phoneOk.w.send(JSON.stringify({type:'cmd',cmd:'chrome_tabs',value:{request:'tabBad',action:'navigate',tabId:12}}));await wait(100);
     assert(phoneOk.w.msgs.some(m=>m.type==='chrome_tabs'&&m.request==='tabBad'&&m.error),'arbitrary tab actions denied');
+    const browserRequest=async(action,value={})=>{
+      const request='browser_'+action;
+      phoneOk.w.send(JSON.stringify({type:'cmd',cmd:'chrome_tabs',value:{request,action,...value}}));await wait(100);
+      return {request,forward:agent.w.msgs.filter(m=>m.type==='chrome_tabs_request').pop()};
+    };
+    const mute=await browserRequest('mute',{tabId:12});assert(mute.forward.action==='mute'&&mute.forward.tabId===12);
+    agent.w.send(JSON.stringify({type:'chrome_tabs_result',id:mute.forward.id,ok:true,tabs:[{id:12,title:'Test',muted:true}],advanced:true}));await wait(100);
+    assert(phoneOk.w.msgs.some(m=>m.request===mute.request&&m.tabs?.[0]?.muted&&m.advanced));
+    const recent=await browserRequest('recent');assert(recent.forward.action==='recent');
+    agent.w.send(JSON.stringify({type:'chrome_tabs_result',id:recent.forward.id,ok:true,recent:[{sessionId:'123',title:'Closed page',url:'https://private.example'}]}));await wait(100);
+    const rec=phoneOk.w.msgs.find(m=>m.request===recent.request);assert.deepStrictEqual(rec.recent,[{sessionId:'123',title:'Closed page'}]);
+    const restore=await browserRequest('restore',{sessionId:'123'});assert(restore.forward.action==='restore'&&restore.forward.sessionId==='123');
+    agent.w.send(JSON.stringify({type:'chrome_tabs_result',id:restore.forward.id,ok:true,recent:[]}));await wait(100);
+    const ext=await browserRequest('extensions');assert(ext.forward.action==='extensions');
+    agent.w.send(JSON.stringify({type:'chrome_tabs_result',id:ext.forward.id,ok:true,extensions:[{name:'Tab Helper',version:'2.4.7',enabled:true,id:'private-id',permissions:['tabs']}]}));await wait(100);
+    assert.deepStrictEqual(phoneOk.w.msgs.find(m=>m.request===ext.request).extensions,[{name:'Tab Helper',version:'2.4.7',enabled:true}]);
+    const nav=await browserRequest('navigate',{url:'https://example.org/'});assert(nav.forward.action==='navigate'&&nav.forward.url==='https://example.org/');
+    agent.w.send(JSON.stringify({type:'chrome_tabs_result',id:nav.forward.id,ok:true,tabs:[]}));await wait(100);
+    for(const [i,url] of ['javascript:alert(1)','file:///C:/test','chrome://settings','https://user:pass@example.org'].entries()){
+      phoneOk.w.send(JSON.stringify({type:'cmd',cmd:'chrome_tabs',value:{request:'unsafe'+i,action:'navigate',url}}));await wait(100);
+      assert(phoneOk.w.msgs.some(m=>m.request==='unsafe'+i&&m.error),'unsafe navigation rejected');
+    }
     const at=Date.now(), start=at+3600000,end=start+1800000;
     const event={title:'Server cached event',date:new Date(start).toISOString().slice(0,10),start,end,time:'14:00 עד 14:30',live:true};
     agent.w.send(JSON.stringify({type:'calendar_snapshot',status:'ok',at,items:[event]}));
