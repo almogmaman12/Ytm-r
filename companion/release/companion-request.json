@@ -1,4 +1,4 @@
 {
-  "version": "0.1.0.12",
-  "reason": "Encrypted Neon backup and restore, signed extension rollback, diagnostic history and redesigned PC dashboard"
+  "version": "0.1.0.13",
+  "reason": "Replace visible PowerShell restart task with windowless Windows GUI helper"
 }

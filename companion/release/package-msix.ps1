@@ -37,6 +37,17 @@ try {
   if ($SettingsUpgradeTest) { $testArgs += '-p:SettingsUpgradeTest=true' }
   dotnet publish (Join-Path $root 'YtmCompanion.csproj') -c Release -r win-x64 --self-contained true "-p:Version=$Version" -p:RequirePublisherKey=true "-p:ExtensionPublicKeyPath=$publicKeyPath" -o $stage @testArgs
   if ($LASTEXITCODE -ne 0) { throw 'Build failed' }
+  $helperOut = Join-Path $stage 'restart-helper-build'
+  dotnet publish (Join-Path $root 'restart-helper/YtmRestartHelper.csproj') -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o $helperOut @testArgs
+  if ($LASTEXITCODE -ne 0) { throw 'Restart helper build failed' }
+  $helper = Join-Path $helperOut 'YtmRestartHelper.exe'
+  if (!(Test-Path -LiteralPath $helper)) { throw 'Windowless restart helper missing' }
+  # PE subsystem 2 = Windows GUI, not console (3). Fail packaging if this regresses.
+  $bytes = [IO.File]::ReadAllBytes($helper)
+  $pe = [BitConverter]::ToInt32($bytes,60)
+  if ([BitConverter]::ToUInt16($bytes,$pe+24+68) -ne 2) { throw 'Restart helper must be a Windows GUI executable' }
+  Move-Item -LiteralPath $helper -Destination (Join-Path $stage 'YtmRestartHelper.exe')
+  Remove-Item -LiteralPath $helperOut -Recurse -Force
   Add-Type -AssemblyName System.Drawing
   $assets = Join-Path $stage 'Assets'
   New-Item -ItemType Directory -Path $assets | Out-Null

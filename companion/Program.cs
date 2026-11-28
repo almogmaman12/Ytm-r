@@ -535,7 +535,7 @@ internal sealed class CompanionContext : ApplicationContext
     }
     private static string ReadRestartStatus()
     {
-        try { var path=Path.Combine(Store.Folder,"restart.log");if(!File.Exists(path)||new FileInfo(path).Length>4096)return "";var value=File.ReadAllText(path).Trim();return value.Length>200?value[..200]:value; }catch{return "";}
+        try { var path=Store.Packaged?Path.Combine(Windows.Storage.ApplicationData.Current.LocalFolder.Path,"restart.log"):Path.Combine(Store.Folder,"restart.log");if(!File.Exists(path))path=Path.Combine(Store.Folder,"restart.log");if(!File.Exists(path)||new FileInfo(path).Length>4096)return "";var value=File.ReadAllText(path).Trim();return value.Length>200?value[..200]:value; }catch{return "";}
     }
     private object CompanionSnapshot()
     {

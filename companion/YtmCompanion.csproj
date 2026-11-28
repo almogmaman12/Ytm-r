@@ -14,7 +14,7 @@
     <DefineConstants>$(DefineConstants);SETTINGS_UPGRADE_TEST</DefineConstants>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Remove="tests/**/*.cs" />
+    <Compile Remove="tests/**/*.cs;restart-helper/**/*.cs" />
     <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />
     <PackageReference Include="NAudio.Wasapi" Version="2.2.1" />
     <InternalsVisibleTo Include="YtmCompanion.Tests" />
