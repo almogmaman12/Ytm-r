@@ -143,6 +143,8 @@ internal sealed class NativeMonitor : IDisposable
                 if (action == "companion_check" && value.ValueKind == JsonValueKind.Null ||
                     action == "companion_update" && value.ValueKind == JsonValueKind.String && CompanionUpdater.ParseVersion(value.GetString(),out _) ||
                     action == "extension_check" && value.ValueKind == JsonValueKind.Null ||
+                    action == "extension_rollback_check" && value.ValueKind == JsonValueKind.String && Regex.IsMatch(value.GetString() ?? "", @"\A\d{1,5}(\.\d{1,5}){1,3}\z") ||
+                    action == "extension_rollback" && value.ValueKind == JsonValueKind.String && Regex.IsMatch(value.GetString() ?? "", @"\A[0-9a-f]{64}\z") ||
                     action == "extension_update" && value.ValueKind == JsonValueKind.String && Regex.IsMatch(value.GetString() ?? "", @"\A[0-9a-f]{64}\z"))
                     (ok,message) = await updateAction(action!,value.Clone(),ct);
                 else if (action is null || !WindowsControls.Valid(action,value)) message="Unsupported action or value.";

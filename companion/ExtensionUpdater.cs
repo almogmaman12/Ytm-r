@@ -49,9 +49,10 @@ internal sealed class ExtensionUpdater
          u.Host.Equals("release-assets.githubusercontent.com", StringComparison.OrdinalIgnoreCase) ||
          u.Host.Equals("objects.githubusercontent.com", StringComparison.OrdinalIgnoreCase));
 
-    private static async Task<byte[]> Download(string file, int limit)
+    private static Task<byte[]> Download(string file,int limit)=>DownloadAt(Release,file,limit);
+    private static async Task<byte[]> DownloadAt(string release,string file, int limit)
     {
-        var uri = new Uri(Release + file);
+        var uri = new Uri(release + file);
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(90));
         for (int i = 0; i < 5; i++)
         {
@@ -211,10 +212,19 @@ internal sealed class ExtensionUpdater
         CheckCoreAsync(settings.ExtensionFolder, settings.EffectivePublicKey, Download, ChromeOpen, review, preview, latest, expectedReview, beforeInstall);
 
     // Internal test seam: production uses only the built-in release origin and real Chrome process check.
+    internal Task<string> RollbackAsync(Settings settings,string version,Action<PermissionReview>? preview=null,PermissionReview? expectedReview=null,Func<Task<bool>>? beforeInstall=null)
+    {
+        if(!System.Text.RegularExpressions.Regex.IsMatch(version,@"\A\d{1,5}(\.\d{1,5}){1,3}\z")||!Version.TryParse(version,out var target)||target.ToString()!=version)
+            throw new ArgumentException("Invalid rollback version.");
+        var url="https://github.com/almogmaman12/Ytm-r/releases/download/extension-v"+version+"/";
+        return CheckCoreAsync(settings.ExtensionFolder,settings.EffectivePublicKey,(file,limit)=>DownloadAt(url,file,limit),
+            ChromeOpen,expectedReview==null?null:_=>true,preview,null,expectedReview,beforeInstall,target);
+    }
+
     internal static async Task<string> CheckCoreAsync(string extensionFolder, string publicKey,
         Func<string,int,Task<byte[]>> download, Func<bool> chromeOpen, Func<PermissionReview,bool>? review = null,
         Action<PermissionReview>? preview = null, Action<string>? latest = null,
-        PermissionReview? expectedReview = null, Func<Task<bool>>? beforeInstall = null)
+        PermissionReview? expectedReview = null, Func<Task<bool>>? beforeInstall = null, Version? rollbackTarget = null)
     {
         var folder = ValidateFolder(extensionFolder);
         if (preview == null && beforeInstall == null && chromeOpen()) return Waiting;
@@ -236,7 +246,11 @@ internal sealed class ExtensionUpdater
         var installed = Version.Parse(old.GetProperty("version").GetString()!);
         var next = Version.Parse(meta.GetProperty("version").GetString()!);
         latest?.Invoke(next.ToString());
-        if (next <= installed) return "Extension up to date (" + installed + ")";
+        if(rollbackTarget!=null)
+        {
+            if(next!=rollbackTarget||next>=installed)throw new InvalidDataException("Rollback requires the exact older signed release.");
+        }
+        else if (next <= installed) return "Extension up to date (" + installed + ")";
         var zip = await download("extension.zip", 8 * 1024 * 1024);
         var expected = Convert.FromHexString(meta.GetProperty("sha256").GetString()!);
         if (!CryptographicOperations.FixedTimeEquals(SHA256.HashData(zip), expected))

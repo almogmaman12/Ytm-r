@@ -219,6 +219,7 @@ internal sealed class CompanionContext : ApplicationContext
     private readonly NativeMonitor native;
     private readonly Control dispatcher = new();
     private volatile PermissionReview? remotePreview;
+    private string? rollbackVersion;
     private volatile string? companionLatest;
     private volatile string companionMessage = "Check the signed MSIX channel.";
     private DateTime companionReviewUntil;
@@ -483,10 +484,14 @@ internal sealed class CompanionContext : ApplicationContext
         }
         finally { settingsOpen = false; }
     }
+    private static string ReadRestartStatus()
+    {
+        try { var path=Path.Combine(Store.Folder,"restart.log");if(!File.Exists(path)||new FileInfo(path).Length>4096)return "";var value=File.ReadAllText(path).Trim();return value.Length>200?value[..200]:value; }catch{return "";}
+    }
     private object CompanionSnapshot()
     {
         bool supported=CompanionUpdater.Supported();
-        return new { supported, enabled=supported && !settingsUnreadable && settings.NativeControls && settings.NativeCompanionUpdates,
+        return new { diagnostics=new { settingsMirror=File.Exists(Path.Combine(Store.Folder,"settings.json.bak")),preUpdateBackup=File.Exists(Path.Combine(Store.Folder,"settings.json.pre-update.bak")),schema=settings.SchemaVersion,recovered=Store.RecoveredOnLoad,cloudBackupAt=cloudBackupAt, restart=ReadRestartStatus() }, supported, enabled=supported && !settingsUnreadable && settings.NativeControls && settings.NativeCompanionUpdates,
             current=CompanionUpdater.CurrentVersion().ToString(), latest=companionLatest, status=companionMessage };
     }
 
@@ -564,10 +569,11 @@ internal sealed class CompanionContext : ApplicationContext
         {
             enabled,
             current = ExtensionUpdater.InstalledVersion(s.ExtensionFolder),
+            automatic = s.AutomaticUpdates,
             latest = latestVersion,
             status = remoteMessage,
             review = enabled && r != null ? new { installed = r.InstalledVersion, version = r.ReleaseVersion,
-                hash = r.ArchiveSha256.ToLowerInvariant(), details = r.Details } : null
+                hash = r.ArchiveSha256.ToLowerInvariant(), details = r.Details, rollback = rollbackVersion!=null } : null
         };
     }
 
@@ -594,45 +600,49 @@ internal sealed class CompanionContext : ApplicationContext
         if (string.IsNullOrWhiteSpace(settings.ExtensionFolder) || string.IsNullOrWhiteSpace(settings.EffectivePublicKey))
             return (false, "Configure the extension folder and trusted publisher key first.");
         var approved = remotePreview;
-        if (action == "extension_update" && (approved == null || DateTime.UtcNow >= remotePreviewUntil || !string.Equals(approved.ArchiveSha256,value.GetString(),StringComparison.OrdinalIgnoreCase)))
+        if ((action == "extension_update" || action == "extension_rollback") && (approved == null || DateTime.UtcNow >= remotePreviewUntil || (action=="extension_rollback")!=(rollbackVersion!=null) || !string.Equals(approved.ArchiveSha256,value.GetString(),StringComparison.OrdinalIgnoreCase)))
             return (false, "Check and review the signed update again.");
         busy = true;
         bool reopen = false;
         try
         {
-            if (action == "extension_check")
+            if (action == "extension_check" || action=="extension_rollback_check")
             {
-                remotePreview = null; latestVersion = null;
-                remoteMessage = await updater.CheckAsync(settings, preview:r =>
+                remotePreview = null; latestVersion = null; rollbackVersion=null;
+                Action<PermissionReview> capture=r =>
                 {
                     // Never truncate permission details. Larger reviews stay local.
                     if (JsonSerializer.Serialize(r.Details).Length <= 3000) { remotePreviewUntil = DateTime.UtcNow.AddMinutes(10); remotePreview = r; }
-                }, latest:v=>latestVersion=v);
+                };
+                if(action=="extension_rollback_check") { var target=value.GetString()!;remoteMessage=await updater.RollbackAsync(settings,target,preview:capture);if(remotePreview!=null)rollbackVersion=target; }
+                else remoteMessage=await updater.CheckAsync(settings,preview:capture,latest:v=>latestVersion=v);
                 if (remotePreview == null && remoteMessage.Contains("available; review"))
                     remoteMessage = "Permission review is too large for the phone. Review on the PC.";
             }
             else
             {
-                remotePreview = null; latestVersion = null;
-                remoteMessage = await updater.CheckAsync(settings, review:_=>true, latest:v=>latestVersion=v,
-                    expectedReview:approved, beforeInstall:async () =>
+                var target=rollbackVersion;remotePreview = null; latestVersion = null;rollbackVersion=null;
+                Func<Task<bool>> prepare=async () =>
                     {
                         if (ct.IsCancellationRequested) return false;
                         reopen = WindowsControls.ChromeOpen();
                         if (reopen) WindowsControls.Execute("chrome_close", default);
                         for (int i=0; i<20 && ExtensionUpdater.ChromeOpen(); i++)
                             await Task.Delay(1000,ct);
-                        return !ct.IsCancellationRequested && !ExtensionUpdater.ChromeOpen();
-                    });
+                        if(ct.IsCancellationRequested||ExtensionUpdater.ChromeOpen())return false;
+                        if(target!=null){var next=JsonSerializer.Deserialize<Settings>(JsonSerializer.Serialize(settings))!;next.AutomaticUpdates=false;Store.Save(next);settings=next;}
+                        return true;
+                    };
+                remoteMessage=target!=null?await updater.RollbackAsync(settings,target,expectedReview:approved,beforeInstall:prepare):await updater.CheckAsync(settings,review:_=>true,latest:v=>latestVersion=v,expectedReview:approved,beforeInstall:prepare);
                 if (remoteMessage == ExtensionUpdater.Waiting)
                     remoteMessage = "Chrome is still running. Close it fully, then check and retry. No forced close.";
             }
             Status(remoteMessage);
-            return (action == "extension_check" || remoteMessage.StartsWith("Extension "), remoteMessage);
+            return ((action == "extension_check" || action=="extension_rollback_check") ? remotePreview!=null||remoteMessage.StartsWith("Extension up to date") : remoteMessage.StartsWith("Extension ")&&remoteMessage.EndsWith("installed; backup retained."), remoteMessage);
         }
         catch
         {
-            remotePreview = null;
+            remotePreview = null;rollbackVersion=null;
             remoteMessage = "Signed release check or installation failed. Check the PC settings and network.";
             Status(remoteMessage);
             return (false,remoteMessage);
