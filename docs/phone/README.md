@@ -66,3 +66,7 @@ For monitoring and phone app updates, see [System Center](../system-center/READM
 ## Recent phone improvements
 
 Quick Mix builds a queue from loaded music without additional searches. Calendar appearance settings include timeline/cards/compact agenda styles, color palettes, custom colors and an optional upcoming-event preview on Now Playing. Cache manager clears selected phone-local data without changing relay credentials or the Neon database.
+
+## PC dashboard
+
+The owner PC page has Overview (Windows audio, media and at-a-glance status), Browser (Chrome launch/close and tabs), Updates (companion and extension update managers plus signed rollback), and Health (memory, power, settings mirror, schema, restart and cloud backup diagnostics). The companion and relay must be current to expose the new fields. The tray menu is required for local encrypted backup and restore.

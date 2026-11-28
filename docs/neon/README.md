@@ -24,3 +24,5 @@ Neon PostgreSQL is optional but recommended for hosts with an ephemeral filesyst
 Without Neon, devices and calendar use private local files, and activity/history use process memory. Free Render storage may disappear on restart. Never commit `DATABASE_URL`, private keys, access codes or room tokens. The database contains private calendar titles and times and device authentication records. Treat it accordingly. Consult the provider's actual quota dashboard; this app's metrics are not a billing guarantee.
 
 For setup of the relay itself, see [server](../../server/README.md). For usage and diagnostic metrics, see [System Center](../system-center/README.md).
+
+The companion encrypted preferences backup adds `ytmr_companion_backup_v1` automatically at relay startup. Existing DATABASE_URL is sufficient. One encrypted envelope per room is stored; backup requests are authenticated with timestamped, replay-limited HMAC using PC_CODE and room token. The recovery password and plaintext preferences never reach the relay. No periodic database queries are needed. See [companion guide](../../companion/README.md).

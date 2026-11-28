@@ -100,6 +100,24 @@ internal static class UpdaterTests
             Check(Directory.GetDirectories(root,"extension.ytmr-backup-*").Length==1,"Previous version backup retained");
             Check((await Run(folder,valid)).StartsWith("Extension up to date"),"Equal version ignored");
             Check((await Run(folder,Release("2.4.2"))).StartsWith("Extension up to date"),"Older version ignored");
+            var rollbackFolder=MakeFolder("rollback");
+            var older=Release("2.4.2");
+            PermissionReview? rollbackReview=null;
+            await ExtensionUpdater.CheckCoreAsync(rollbackFolder,pub,(name,limit)=>Task.FromResult(older[name]),()=>true,preview:r=>rollbackReview=r,rollbackTarget:new Version(2,4,2));
+            Check(rollbackReview?.ReleaseVersion=="2.4.2","Older signed release preview available");
+            var rollbackResult=await ExtensionUpdater.CheckCoreAsync(rollbackFolder,pub,(name,limit)=>Task.FromResult(older[name]),()=>false,review:_=>true,expectedReview:rollbackReview,beforeInstall:()=>Task.FromResult(true),rollbackTarget:new Version(2,4,2));
+            Check(rollbackResult.StartsWith("Extension 2.4.2 installed"),"Explicit signed rollback preserves extension path");
+            bool wrongTarget=false;
+            try{await ExtensionUpdater.CheckCoreAsync(rollbackFolder,pub,(name,limit)=>Task.FromResult(older[name]),()=>false,rollbackTarget:new Version(2,4,1));}catch(InvalidDataException){wrongTarget=true;}
+            Check(wrongTarget,"Rollback rejects a different signed version");
+            var prefs=new CloudPreferences(1,@"C:\Example\Extension",true,true);
+            var encrypted=CloudBackup.Encrypt(prefs,"test-recovery-password");
+            Check(CloudBackup.Decrypt(encrypted,"test-recovery-password")==prefs&&!encrypted.Contains("Example"),"Cloud preferences encrypted and restored");
+            bool badPassword=false;try{CloudBackup.Decrypt(encrypted,"wrong-recovery-password");}catch(CryptographicException){badPassword=true;}
+            Check(badPassword,"Incorrect cloud recovery password rejected");
+            var tampered=Convert.FromBase64String(encrypted);tampered[^1]^=1;
+            bool badCipher=false;try{CloudBackup.Decrypt(Convert.ToBase64String(tampered),"test-recovery-password");}catch(CryptographicException){badCipher=true;}
+            Check(badCipher,"Tampered cloud backup rejected");
             var badSignature=Release();badSignature["extension-release.sig"][0]^=1;
             await Reject("Invalid signature rejected",badSignature);
             var badHash=Release();badHash["extension.zip"][0]^=1;

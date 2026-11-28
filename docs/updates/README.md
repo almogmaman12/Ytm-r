@@ -51,3 +51,7 @@ The companion branch now includes the newer OTA phone UI. Keep the same Render s
 ## Companion settings backups
 
 From companion 0.1.0.10, ordinary saves and startup maintain a validated settings mirror. A manually requested phone-side companion update creates a separate pre-update snapshot and refuses to start if that backup cannot be written. OS-scheduled App Installer updates cannot be intercepted, so their protection is the continuously maintained mirror. Corrupt or missing primary settings recover from the current mirror; unsupported schemas or two damaged copies fail closed. See [settings durability](../../companion/README.md#settings-durability-companion-01010-and-later).
+
+## Signed extension rollback
+
+In the phone PC tab, open Updates, enter an older published signed version (for example 2.4.5), and review the signed archive and permission changes. Approve the exact verified rollback within ten minutes. The companion downloads from the fixed versioned GitHub release, verifies the signature and hash, closes Chrome gracefully, retains the current extension folder as a backup and installs at the same path. Automatic extension shell updates are disabled before rollback so the older version is not immediately replaced. Re-enable them locally when ready. Rollback requires the existing remote extension update opt-in; unsupported manifest capability changes are rejected. It does not roll back the Render relay or OTA payload. Only signed historical releases are eligible, not arbitrary local backup directories.
