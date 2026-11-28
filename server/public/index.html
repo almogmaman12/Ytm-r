@@ -3710,7 +3710,7 @@ function nativeAction(action,value=null){
   clearTimeout(systemTimer);systemTimer=setTimeout(()=>{systemId='';$('systemRefresh').disabled=false;$('systemStatus').textContent='No confirmation. Refresh before trying again.';},/^(extension|companion)_/.test(action)?340000:12000);
 }
 function nativeReceive(m){
-  if(pcId&&m.request===pcId){clearTimeout(pcTimer);pcId='';$('pcRefresh').disabled=false;if(view==='pc'&&getToken()&&getCode())drawPcDashboard(m);return;}
+  if(pcId&&m.request===pcId){clearTimeout(pcTimer);pcId='';$('pcRefresh').disabled=false;pcNextPollAt=Date.now()+(m.data?.online&&m.data?.state?60000:5000);if(view==='pc'&&getToken()&&getCode())drawPcDashboard(m);return;}
   if(systemTab!=='native'||!systemId||m.request!==systemId||!getToken()||!getCode())return;
   clearTimeout(systemTimer);systemId='';$('systemRefresh').disabled=false;
   drawNative(m,$('systemResults'),$('systemStatus'),nativeAction);
@@ -3781,7 +3781,7 @@ function drawNative(m,root,status,act){
   }
   root.append(sysEl('p','relay-health-caption','Live status refreshes every minute and after actions. Only the owner phone can see it. Encrypted preferences backups are optional.'));
 }
-let pcId='',pcTimer=null,pcTabsId='',pcTabsTimer=null,pcSection='overview';
+let pcId='',pcTimer=null,pcTabsId='',pcTabsTimer=null,pcSection='overview',pcNextPollAt=0;
 function selectPcSection(section){
   pcSection=section;
   document.querySelectorAll('[data-pc-section]').forEach(b=>b.setAttribute('aria-selected',String(b.dataset.pcSection===section)));
@@ -3827,15 +3827,15 @@ function drawPcDashboard(m){
   selectPcSection(pcSection);
 }
 function pcClear(){
-  clearTimeout(pcTimer);clearTimeout(pcTabsTimer);pcId='';pcTabsId='';
+  clearTimeout(pcTimer);clearTimeout(pcTabsTimer);pcId='';pcTabsId='';pcNextPollAt=0;
   $('pcRefresh').disabled=false;pcBrowserBusy(false);$('pcResults').textContent='';$('pcTabsList').textContent='';
   $('pcOnline').dataset.online='false';$('pcOnline').textContent='Not connected';$('pcStatusText').textContent='Refresh to connect.';$('pcTabsStatus').textContent='Load tabs to view ordinary web tabs.';
 }
 function pcRequest(action=null,value=null){
   if(view!=='pc'||pcId||!getToken()||!getCode()||ws?.readyState!==1)return;
-  pcId=reqId();$('pcRefresh').disabled=true;$('pcStatusText').textContent=action?'Sending Windows action…':'Loading PC status…';
+  pcNextPollAt=Date.now()+5000;pcId=reqId();$('pcRefresh').disabled=true;$('pcStatusText').textContent=action?'Sending Windows action…':'Loading PC status…';
   if(!rawCmd(action?'native_action':'native_status',{request:pcId,...(action?{action,value}:{})})){pcClear();return;}
-  pcTimer=setTimeout(()=>{pcId='';$('pcRefresh').disabled=false;$('pcStatusText').textContent='No response. Refresh before retrying.';},/^(extension|companion)_/.test(action||'')?340000:15000);
+  pcTimer=setTimeout(()=>{pcId='';pcNextPollAt=Date.now()+5000;$('pcRefresh').disabled=false;$('pcStatusText').textContent='No response. Checking connection again…';},/^(extension|companion)_/.test(action||'')?340000:15000);
 }
 function pcAction(action,value=null){if(action==='extension_rollback'&&!confirm('Restore this older signed extension? Automatic extension updates will be paused. Chrome will close and reopen if possible.'))return;if(action==='companion_update'&&!confirm('Update the Windows companion? It will temporarily disconnect. Chrome will stay open.'))return;if(action==='chrome_close'&&!confirm('Close all visible Chrome windows?'))return;if(action==='extension_update'&&!confirm('Install this exact signed update? Chrome will close gracefully and reopen if it was open. Review the permissions above first.'))return;pcRequest(action,value);}
 function pcBrowserBusy(busy){for(const id of ['pcTabRefresh','pcRecent','pcExtensions','pcNavigate'])$(id).disabled=busy;}
@@ -3870,7 +3870,7 @@ function pcTabsReceive(m){
   for(const t of tabs){const row=sysEl('div','system-metric');row.append(sysEl('strong','',t.title||'Web tab'),sysEl('small','',(t.active?'Active · ':'')+(t.muted?'Muted':t.audible?'Playing audio':'Window '+t.windowId)));const actions=sysEl('div','ops-actions');opsButton(actions,'Switch to',()=>pcTabsRequest('activate',t.id));if(m.advanced)opsButton(actions,t.muted?'Unmute':'Mute',()=>pcTabsRequest(t.muted?'unmute':'mute',t.id));opsButton(actions,'Close',()=>pcTabsRequest('close',t.id));row.append(actions);list.append(row);}
 }
 $('pcRefresh').onclick=()=>pcRequest();$('pcTabRefresh').onclick=()=>pcTabsRequest();$('pcRecent').onclick=()=>pcTabsRequest('recent');$('pcExtensions').onclick=()=>pcTabsRequest('extensions');$('pcNavigate').onclick=()=>pcTabsRequest('navigate',$('pcNavigateUrl').value.trim());
-setInterval(()=>{if(view==='pc'&&!document.hidden&&!pcId&&getToken()&&getCode()&&!document.activeElement?.matches('#pcResults input,#pcResults select'))pcRequest();},60000);
+setInterval(()=>{if(view==='pc'&&!document.hidden&&!pcId&&Date.now()>=pcNextPollAt&&getToken()&&getCode()&&!document.activeElement?.matches('#pcResults input,#pcResults select,#pcBrowserTabs input'))pcRequest();},5000);
 function systemReceive(m){
   if(m.request!==systemId||m.type!=='system_'+systemTab||!getToken())return;
   clearTimeout(systemTimer);systemId='';$('systemRefresh').disabled=false;

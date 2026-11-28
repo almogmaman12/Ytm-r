@@ -81,3 +81,7 @@ From companion 0.1.0.12, use the password-protected tray menu **Encrypted cloud 
 ## Diagnostics
 
 Open **Companion diagnostics** in the tray menu or Health on the phone PC page. The companion stores a bounded local history of fixed connection, update and recovery events (up to 60), and sends only the six latest events and safe backup/restart summaries to the authenticated owner. No tokens, URLs, file paths, raw exception messages or media history are logged by this feature. The relay keeps these status fields in memory only. Restart information reflects the latest independent restart task and may be unavailable on some packaged storage configurations.
+
+### Connection recovery (0.1.0.14)
+
+The native relay session sends an application-level ping every 15 seconds and reconnects when responses stop. Failed attempts start at three seconds, back off to two minutes, and wait 15 minutes following explicit authentication rejection. Existing room credentials and one-companion-per-room enforcement are unchanged. No remote actions are automatically replayed.

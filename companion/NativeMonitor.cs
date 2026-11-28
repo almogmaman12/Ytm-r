@@ -79,18 +79,28 @@ internal sealed class NativeMonitor : IDisposable
         if (task is null) old.Dispose();
         else _ = task.ContinueWith(_ => old.Dispose(), TaskScheduler.Default);
     }
+    private sealed class RelayClosedException(int code):Exception { public int Code {get;}=code; }
+    internal static int RetrySeconds(int failures,int closeCode=0)
+    {
+        if(closeCode==4003||closeCode==4008)return 900; // Authentication or explicit suspension.
+        return failures switch { <=1=>3,2=>6,3=>12,4=>24,5=>48,_=>120 };
+    }
     private async Task Run(NativeCredentials config, bool controlsEnabled, CancellationToken ct)
     {
+        int failures=0;
         while (!ct.IsCancellationRequested)
         {
-            try { await Session(config, controlsEnabled, ct); if(!ct.IsCancellationRequested)DiagnosticLog.Add("Relay session ended"); }
-            catch (OperationCanceledException) when (ct.IsCancellationRequested) { break; }
+            int code=0;
+            try { await Session(config,controlsEnabled,ct,()=>failures=0); if(!ct.IsCancellationRequested)DiagnosticLog.Add("Relay session ended"); }
+            catch(OperationCanceledException) when(ct.IsCancellationRequested){break;}
+            catch(RelayClosedException e){code=e.Code;DiagnosticLog.Add(code==4003?"Relay authentication rejected":code==4000?"Waiting for previous connection":"Relay disconnected");}
             catch { DiagnosticLog.Add("Relay connection failed"); }
-            try { await Task.Delay(TimeSpan.FromMinutes(2), ct); }
-            catch (OperationCanceledException) { break; }
+            failures=Math.Min(6,failures+1);
+            try{await Task.Delay(TimeSpan.FromSeconds(RetrySeconds(failures,code))+TimeSpan.FromMilliseconds(Random.Shared.Next(0,750)),ct);}
+            catch(OperationCanceledException){break;}
         }
     }
-    private async Task Session(NativeCredentials config, bool controlsEnabled, CancellationToken ct)
+    private async Task Session(NativeCredentials config, bool controlsEnabled, CancellationToken ct, Action authenticated)
     {
         using var ws = new ClientWebSocket();
         ws.Options.KeepAliveInterval = TimeSpan.FromSeconds(25);
@@ -112,12 +122,12 @@ internal sealed class NativeMonitor : IDisposable
             if (root.GetProperty("type").GetString() != "authed" ||
                 !root.TryGetProperty("guarded", out var guarded) || guarded.ValueKind != JsonValueKind.True) return;
         }
-        DiagnosticLog.Add("Relay authenticated");
+        authenticated();DiagnosticLog.Add("Relay authenticated");
         using var session = CancellationTokenSource.CreateLinkedTokenSource(ct);
         using var gate = new SemaphoreSlim(1);
         var sender = Snapshots(ws, gate, controlsEnabled, session.Token);
         var receiver = ReceiveControls(ws, gate, controlsEnabled, session.Token);
-        try { await Task.WhenAny(sender, receiver); }
+        try { await await Task.WhenAny(sender, receiver); }
         finally
         {
             session.Cancel();
@@ -128,7 +138,9 @@ internal sealed class NativeMonitor : IDisposable
     {
         while (ws.State == WebSocketState.Open)
         {
-            using var frame = await Read(ws, ct);
+            using var readTimeout=CancellationTokenSource.CreateLinkedTokenSource(ct);
+            readTimeout.CancelAfter(TimeSpan.FromSeconds(55));
+            using var frame = await Read(ws, readTimeout.Token);
             var m = frame.RootElement;
             if (m.ValueKind != JsonValueKind.Object || !m.TryGetProperty("type",out var type) || type.ValueKind != JsonValueKind.String || type.GetString() != "native_action") continue;
             if (!m.TryGetProperty("id",out var r) || r.ValueKind != JsonValueKind.String ||
@@ -166,12 +178,17 @@ internal sealed class NativeMonitor : IDisposable
     }
     private async Task Snapshots(ClientWebSocket ws, SemaphoreSlim gate, bool enabled, CancellationToken ct)
     {
+        int tick=0;
         while (ws.State == WebSocketState.Open && !ct.IsCancellationRequested)
         {
             await gate.WaitAsync(ct);
-            try { await Send(ws, await SnapshotAsync(enabled,ct), ct); }
+            try
+            {
+                if(tick++%4==0)await Send(ws,await SnapshotAsync(enabled,ct),ct);
+                await Send(ws,new {type="ping"},ct);
+            }
             finally { gate.Release(); }
-            await Task.Delay(TimeSpan.FromSeconds(60), ct);
+            await Task.Delay(TimeSpan.FromSeconds(15),ct);
         }
     }
     private static async Task<JsonDocument> Read(ClientWebSocket ws, CancellationToken ct)
@@ -182,6 +199,7 @@ internal sealed class NativeMonitor : IDisposable
         do
         {
             result = await ws.ReceiveAsync(new ArraySegment<byte>(buf), ct);
+            if(result.MessageType==WebSocketMessageType.Close)throw new RelayClosedException((int)(result.CloseStatus??WebSocketCloseStatus.Empty));
             if (result.MessageType != WebSocketMessageType.Text || output.Length + result.Count > 4096)
                 throw new InvalidDataException("Unexpected native frame.");
             output.Write(buf, 0, result.Count);

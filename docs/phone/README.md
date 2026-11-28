@@ -70,3 +70,7 @@ Quick Mix builds a queue from loaded music without additional searches. Calendar
 ## PC dashboard
 
 The owner PC page has Overview (Windows audio, media and at-a-glance status), Browser (Chrome launch/close and tabs), Updates (companion and extension update managers plus signed rollback), and Health (memory, power, settings mirror, schema, restart and cloud backup diagnostics). The companion and relay must be current to expose the new fields. The tray menu is required to configure encrypted cloud backup, optional automatic backup and restore. Health also shows the six latest sanitized diagnostic events.
+
+### Browser tools and connection recovery
+
+Extension shell 2.4.7 adds tab mute/unmute, opening a normal web address, recently closed regular tabs, and a read-only extension inventory under PC > Browser. Enable Advanced browser tools in the local Chrome extension options and approve optional permissions first. The companion reconnects with short retries, bounded exponential backoff and a long authentication cooldown. The visible PC page checks offline status every five seconds, returning to minute updates when connected. No actions are automatically repeated.

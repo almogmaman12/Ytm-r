@@ -3,6 +3,7 @@ using YtmCompanion;
 if (args.Length == 1 && args[0] == "updater") { await UpdaterTests.Run(); return; }
 if (args.Length == 1 && args[0] == "native")
 {
+    if(NativeMonitor.RetrySeconds(1)!=3||NativeMonitor.RetrySeconds(2)!=6||NativeMonitor.RetrySeconds(6)!=120||NativeMonitor.RetrySeconds(1,4003)!=900)throw new Exception("Reconnect backoff or auth cooldown incorrect.");
     var credentials = new NativeCredentials("abcdefghijklmnopqrstuvwx_1234", "test-only-pc-code", "https://relay.example.com:8443");
     var encrypted = credentials.Protect();
     if (encrypted.Contains(credentials.Token) || NativeCredentials.Unprotect(encrypted) != credentials)
