@@ -34,6 +34,7 @@ internal static class SettingsUpgradeProbe
                 legacy.Remove("SchemaVersion");
                 File.WriteAllText(path,legacy.ToJsonString());
                 File.Delete(Store.MirrorPath(path));
+                CompanionRestart.ScheduleTest(new Version(0,1,0,2),Path.Combine(Path.GetDirectoryName(result)!,"verify-result.txt"));
                 File.WriteAllText(result,"PASS seed "+version);
             }
             else if(args[1]=="verify")

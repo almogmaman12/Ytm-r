@@ -93,9 +93,8 @@ internal static class CompanionUpdater
     internal static async Task InstallAsync()
     {
         if(!Supported())throw new InvalidOperationException("App Installer association required.");
-        // Register only this companion for restart. Windows verifies the MSIX signature and publisher.
-        if(RegisterApplicationRestart("--background",3)!=0)
-            throw new InvalidOperationException("Could not register for restart.");
+        // Best-effort native restart as an additional path. The independent task is already registered.
+        _ = RegisterApplicationRestart("--background",3);
         var manager=new PackageManager();
         var result=await manager.AddPackageByAppInstallerFileAsync(new Uri(Feed),AddPackageByAppInstallerOptions.ForceTargetAppShutdown,manager.GetDefaultPackageVolume());
         if(result.ExtendedErrorCode!=null)throw result.ExtendedErrorCode;

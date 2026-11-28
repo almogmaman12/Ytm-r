@@ -464,7 +464,9 @@ internal sealed class CompanionContext : ApplicationContext
             companionReviewUntil=DateTime.MinValue;
             try { Store.BackupBeforeUpdate(); }
             catch { companionMessage="Update cancelled: could not create a verified settings backup."; return (false,companionMessage); }
-            companionMessage="Windows update requested. Companion may disconnect and restart.";
+            try { CompanionRestart.Schedule(latest); }
+            catch { companionMessage="Update cancelled: Windows could not schedule the automatic restart. Check Task Scheduler permissions."; return (false,companionMessage); }
+            companionMessage="Windows update requested. A separate restart task will reopen the companion.";
             queued=true;
             // Give the native relay time to return the acknowledgement before Windows closes the app.
             _=ApplyCompanionUpdate(ct);

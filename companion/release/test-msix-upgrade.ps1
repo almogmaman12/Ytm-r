@@ -66,8 +66,15 @@ try {
   Add-AppxPackage -Path (Join-Path $work 'YtmCompanion-0.1.0.2.msix')
   $second = Get-TestPackage
   if ($first.PackageFamilyName -ne $second.PackageFamilyName -or $first.PackageFullName -eq $second.PackageFullName) { throw 'Package identity/version did not upgrade' }
-  Run-Probe 'verify' '0.1.0.2'
-  Write-Host 'PASS: real signed MSIX in-place upgrade retained settings and DPAPI credentials; migration and recovery succeeded'
+  # Do not activate the second package from the test harness: only the independent restart task may do so.
+  $result = Join-Path $work 'verify-result.txt'
+  $deadline = (Get-Date).AddSeconds(120)
+  while (!(Test-Path -LiteralPath $result) -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 250 }
+  if (!(Test-Path -LiteralPath $result)) { throw 'Independent restart task did not activate upgraded package' }
+  $message = Get-Content -LiteralPath $result -Raw
+  Write-Host $message
+  if ($message -ne 'PASS verify 0.1.0.2') { throw 'Automatic restart or settings verification failed' }
+  Write-Host 'PASS: independent task activated the upgraded signed MSIX; settings, credentials and recovery succeeded'
 } finally {
   Get-TestPackage | ForEach-Object { Remove-AppxPackage -Package $_.PackageFullName -ErrorAction SilentlyContinue }
   if ($cert) {
