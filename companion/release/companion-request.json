@@ -1,4 +1,4 @@
 {
-  "version": "0.1.0.11",
-  "reason": "Independent bounded restart task after phone-requested MSIX updates; CI verifies automatic activation"
+  "version": "0.1.0.12",
+  "reason": "Encrypted Neon backup and restore, signed extension rollback, diagnostic history and redesigned PC dashboard"
 }

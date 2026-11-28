@@ -69,4 +69,4 @@ Quick Mix builds a queue from loaded music without additional searches. Calendar
 
 ## PC dashboard
 
-The owner PC page has Overview (Windows audio, media and at-a-glance status), Browser (Chrome launch/close and tabs), Updates (companion and extension update managers plus signed rollback), and Health (memory, power, settings mirror, schema, restart and cloud backup diagnostics). The companion and relay must be current to expose the new fields. The tray menu is required for local encrypted backup and restore.
+The owner PC page has Overview (Windows audio, media and at-a-glance status), Browser (Chrome launch/close and tabs), Updates (companion and extension update managers plus signed rollback), and Health (memory, power, settings mirror, schema, restart and cloud backup diagnostics). The companion and relay must be current to expose the new fields. The tray menu is required to configure encrypted cloud backup, optional automatic backup and restore. Health also shows the six latest sanitized diagnostic events.

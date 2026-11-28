@@ -27,6 +27,7 @@ internal static class SettingsUpgradeProbe
                 var s=new Settings { ExtensionFolder=@"C:\CI\Extension",PublicKey=PublisherTrust.PublicKey ?? "",
                     AutomaticUpdates=true,StartWithWindows=true,NativeConfig=Credentials.Protect(),
                     NativeControls=true,NativeRemoteUpdates=true,NativeCompanionUpdates=true };
+                s.CloudAutoConfig=new CloudAutoState(Credentials.RelayUrl,Credentials.Token,"test-only-cloud-recovery",CloudBackup.Fingerprint(CloudBackup.Preferences(s)),12345).Protect();
                 Store.SetPassword(s,Password);
                 Store.Save(s);
                 // Recreate an actual pre-schema settings file with no backup, as shipped before this change.
@@ -43,7 +44,8 @@ internal static class SettingsUpgradeProbe
                 var s=Store.Load();
                 if(s.SchemaVersion!=Store.CurrentSchema||s.ExtensionFolder!=@"C:\CI\Extension"||
                     !s.AutomaticUpdates||!s.StartWithWindows||!s.NativeControls||!s.NativeRemoteUpdates||
-                    !s.NativeCompanionUpdates||!Store.Verify(s,Password)||NativeCredentials.Unprotect(s.NativeConfig)!=Credentials)
+                    !s.NativeCompanionUpdates||!Store.Verify(s,Password)||NativeCredentials.Unprotect(s.NativeConfig)!=Credentials||
+                    CloudAutoState.Open(s.CloudAutoConfig).RecoveryPassword!="test-only-cloud-recovery")
                     throw new InvalidDataException("Settings did not survive the actual package upgrade.");
                 if(!File.Exists(Store.MirrorPath(path)))throw new InvalidDataException("Mirror missing after migration.");
                 Store.BackupBeforeUpdate();
