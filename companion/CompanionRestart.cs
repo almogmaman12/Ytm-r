@@ -1,7 +1,7 @@
 using System.Security.Principal;
 using System.Text;
 using Windows.ApplicationModel;
-using Windows.Storage;
+using ApplicationData = Windows.Storage.ApplicationData;
 
 namespace YtmCompanion;
 

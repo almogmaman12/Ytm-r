@@ -1,4 +1,4 @@
 {
   "version": "0.1.0.13",
-  "reason": "Replace visible PowerShell restart task with windowless Windows GUI helper"
+  "reason": "Windowless native restart helper; resolve Windows.Storage FileAttributes compilation conflict"
 }
