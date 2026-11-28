@@ -32,6 +32,7 @@ internal sealed class Settings
     public bool StartWithWindows { get; set; }
     public string Salt { get; set; } = "";
     public string PasswordHash { get; set; } = "";
+    public string CloudAutoConfig { get; set; } = ""; // DPAPI-protected recovery password and room binding
     public string NativeConfig { get; set; } = ""; // DPAPI-protected; empty means disabled
     public bool NativeCompanionUpdates { get; set; } // Separate opt-in for updating the native app
     public bool NativeRemoteUpdates { get; set; } // Explicit local opt-in for owner-phone signed updates
@@ -115,7 +116,7 @@ internal static class Store
     private static void Validate(Settings s)
     {
         if (s.SchemaVersion != CurrentSchema) throw new NotSupportedException("Unsupported settings schema.");
-        if (s.ExtensionFolder == null || s.PublicKey == null || s.Salt == null || s.PasswordHash == null || s.NativeConfig == null)
+        if (s.ExtensionFolder == null || s.PublicKey == null || s.Salt == null || s.PasswordHash == null || s.NativeConfig == null || s.CloudAutoConfig == null)
             throw new InvalidDataException("Invalid companion settings.");
         if (s.PasswordHash.Length == 0 || Convert.FromBase64String(s.Salt).Length != 32 ||
             Convert.FromBase64String(s.PasswordHash).Length != 32)
@@ -231,6 +232,8 @@ internal sealed class CompanionContext : ApplicationContext
     private DateTime nextCheck = DateTime.MinValue;
     private bool busy;
     private long cloudBackupAt;
+    private string cloudBackupStatus="Not configured";
+    private DateTime cloudRetry=DateTime.MinValue;
     private bool settingsOpen;
     private bool settingsUnreadable;
     private bool firstTick = true;
@@ -286,10 +289,11 @@ internal sealed class CompanionContext : ApplicationContext
                 if (!backgroundLaunch && !settingsUnreadable && string.IsNullOrEmpty(settings.PasswordHash))
                     OpenSettings();
             }
+            await AutoBackupTick();
             await CheckAsync(false);
         };
         timer.Start();
-        if (!settingsUnreadable) native.Start(settings.NativeConfig, settings.NativeControls);
+        if (!settingsUnreadable) { native.Start(settings.NativeConfig, settings.NativeControls); ReadCloudState(); }
     }
 
     private void Status(string message)
@@ -349,6 +353,34 @@ internal sealed class CompanionContext : ApplicationContext
         catch { Status("Could not save settings."); }
         finally { settingsOpen = false; }
     }
+    private void ReadCloudState()
+    {
+        cloudBackupAt=0;cloudBackupStatus="Manual backup only";
+        if(string.IsNullOrEmpty(settings.CloudAutoConfig))return;
+        try { var c=CloudAutoState.Open(settings.CloudAutoConfig);var nativeConfig=NativeCredentials.Unprotect(settings.NativeConfig);if(!c.Matches(nativeConfig)){cloudBackupStatus="Auto backup paused: relay or room changed";return;}cloudBackupAt=c.Updated;cloudBackupStatus="Automatic backup enabled"; }
+        catch { cloudBackupStatus="Auto backup unavailable: local key or credentials invalid"; }
+    }
+    private async Task AutoBackupTick()
+    {
+        if(busy||settingsOpen||settingsUnreadable||string.IsNullOrEmpty(settings.CloudAutoConfig)||DateTime.UtcNow<cloudRetry)return;
+        busy=true;try{await SyncCloud(false);}catch{cloudRetry=DateTime.UtcNow.AddMinutes(5);}finally{busy=false;}
+    }
+    private async Task SyncCloud(bool force)
+    {
+        if(string.IsNullOrEmpty(settings.CloudAutoConfig))return;
+        try
+        {
+            var auto=CloudAutoState.Open(settings.CloudAutoConfig);var credentials=NativeCredentials.Unprotect(settings.NativeConfig);
+            if(!auto.Matches(credentials))throw new InvalidOperationException("Cloud backup room changed.");
+            var prefs=CloudBackup.Preferences(settings);var fingerprint=CloudBackup.Fingerprint(prefs);
+            if(!force&&fingerprint==auto.Fingerprint)return;
+            var result=await CloudBackup.Request(credentials,"put",CloudBackup.Encrypt(prefs,auto.RecoveryPassword));
+            var next=JsonSerializer.Deserialize<Settings>(JsonSerializer.Serialize(settings))!;
+            long updated=result.GetProperty("updated").GetInt64();next.CloudAutoConfig=(auto with {Fingerprint=fingerprint,Updated=updated}).Protect();
+            Store.Save(next);settings=next;cloudBackupAt=updated;cloudBackupStatus="Automatic backup up to date";cloudRetry=DateTime.MinValue;
+        }
+        catch {cloudBackupStatus="Automatic backup failed; check relay, Neon or room configuration";throw;}
+    }
     private async Task CloudBackupDialog()
     {
         if(busy||settingsOpen||settingsUnreadable||!Unlock())return;
@@ -366,9 +398,11 @@ internal sealed class CompanionContext : ApplicationContext
             var token=Field("Room token",saved?.Token??"",true);
             var code=Field("PC code",saved?.PcCode??"",true);
             var password=Field("Recovery password (at least 12 characters)","",true);
-            var info=new Label{Text="Ready",AutoSize=true,MaximumSize=new Size(510,0)};
+            var autoBackup=new CheckBox{Text="Automatically back up changes and before phone-requested updates",AutoSize=true,Checked=!string.IsNullOrEmpty(settings.CloudAutoConfig)};panel.Controls.Add(autoBackup);
+            Label("Automatic mode stores the recovery password locally using Windows DPAPI, never in Neon. It requires the same configured native relay and room.");
+            var info=new Label{Text=cloudBackupStatus,AutoSize=true,MaximumSize=new Size(510,0)};
             var buttons=new FlowLayoutPanel{AutoSize=true};
-            foreach(var pair in new[]{("Backup now","put"),("Restore preferences","get"),("Delete cloud backup","delete")})
+            foreach(var pair in new[]{("Backup now","put"),("Restore preferences","get"),("Delete cloud backup","delete"),("Disable automatic backup","disable")})
             {
                 var btn=new Button{Text=pair.Item1,AutoSize=true};buttons.Controls.Add(btn);
                 btn.Click+=async (_,_)=>{
@@ -376,19 +410,25 @@ internal sealed class CompanionContext : ApplicationContext
                     busy=true;buttons.Enabled=false;form.ControlBox=false;
                     try
                     {
+                        if(pair.Item2=="disable"){var local=JsonSerializer.Deserialize<Settings>(JsonSerializer.Serialize(settings))!;local.CloudAutoConfig="";Store.Save(local);settings=local;autoBackup.Checked=false;cloudBackupStatus="Manual backup only";info.Text="Automatic backup disabled. Cloud copy retained.";return;}
                         var credentials=new NativeCredentials(token.Text.Trim(),code.Text,NativeCredentials.NormalizeRelay(relay.Text));
                         credentials.Validate();
                         if(pair.Item2=="put")
                         {
                             if(string.IsNullOrEmpty(settings.PasswordHash))throw new InvalidOperationException("Finish local setup first.");
                             if(MessageBox.Show("Replace this room's encrypted cloud backup?","Backup",MessageBoxButtons.YesNo,MessageBoxIcon.Question)!=DialogResult.Yes)return;
-                            var envelope=CloudBackup.Encrypt(new CloudPreferences(1,settings.ExtensionFolder,settings.AutomaticUpdates,settings.StartWithWindows),password.Text);
-                            var result=await CloudBackup.Request(credentials,"put",envelope);cloudBackupAt=result.GetProperty("updated").GetInt64();info.Text="Encrypted backup saved.";
+                            if(autoBackup.Checked&&(saved==null||NativeCredentials.NormalizeRelay(saved.RelayUrl)!=credentials.RelayUrl||saved.Token!=credentials.Token||saved.PcCode!=credentials.PcCode)){info.Text="Automatic backup requires your existing native relay connection.";return;}
+                            var prefs=CloudBackup.Preferences(settings);var envelope=CloudBackup.Encrypt(prefs,password.Text);
+                            var result=await CloudBackup.Request(credentials,"put",envelope);cloudBackupAt=result.GetProperty("updated").GetInt64();
+                            var next=JsonSerializer.Deserialize<Settings>(JsonSerializer.Serialize(settings))!;
+                            next.CloudAutoConfig=autoBackup.Checked?new CloudAutoState(credentials.RelayUrl,credentials.Token,password.Text,CloudBackup.Fingerprint(prefs),cloudBackupAt).Protect():"";
+                            Store.Save(next);settings=next;cloudBackupStatus=autoBackup.Checked?"Automatic backup enabled":"Manual backup saved";info.Text="Encrypted backup saved.";
                         }
                         else if(pair.Item2=="delete")
                         {
                             if(MessageBox.Show("Permanently delete this room's cloud backup?","Backup",MessageBoxButtons.YesNo,MessageBoxIcon.Warning)!=DialogResult.Yes)return;
-                            await CloudBackup.Request(credentials,"delete");cloudBackupAt=0;info.Text="Cloud backup deleted.";
+                            var next=JsonSerializer.Deserialize<Settings>(JsonSerializer.Serialize(settings))!;next.CloudAutoConfig="";Store.Save(next);settings=next;autoBackup.Checked=false;
+                            await CloudBackup.Request(credentials,"delete");cloudBackupAt=0;cloudBackupStatus="Cloud backup deleted";info.Text=cloudBackupStatus;
                         }
                         else
                         {
@@ -397,8 +437,8 @@ internal sealed class CompanionContext : ApplicationContext
                             if(MessageBox.Show("Restore extension folder: "+prefs.ExtensionFolder+"\nAutomatic extension updates will be disabled until you enable them locally. Connection credentials and remote-control permissions remain unchanged.","Restore preferences",MessageBoxButtons.YesNo,MessageBoxIcon.Warning)!=DialogResult.Yes)return;
                             var folder=string.IsNullOrWhiteSpace(prefs.ExtensionFolder)?"":ExtensionUpdater.ValidateFolder(prefs.ExtensionFolder);
                             var next=JsonSerializer.Deserialize<Settings>(JsonSerializer.Serialize(settings))!;
-                            next.ExtensionFolder=folder;next.AutomaticUpdates=false;next.StartWithWindows=prefs.StartWithWindows;
-                            Store.Save(next);settings=next;Store.SetStartup(next.StartWithWindows);cloudBackupAt=result.GetProperty("updated").GetInt64();info.Text="Preferences restored. Review Settings before enabling automatic updates.";
+                            next.ExtensionFolder=folder;next.AutomaticUpdates=false;next.StartWithWindows=prefs.StartWithWindows;next.CloudAutoConfig="";autoBackup.Checked=false;
+                            Store.Save(next);settings=next;Store.SetStartup(next.StartWithWindows);cloudBackupAt=result.GetProperty("updated").GetInt64();cloudBackupStatus="Preferences restored; auto backup off";info.Text="Preferences restored. Review Settings before enabling automatic updates.";
                         }
                     }catch {info.Text="Backup operation failed. Check relay, room, PC code, recovery password, Neon and extension folder.";}
                     finally{busy=false;buttons.Enabled=true;form.ControlBox=true;}
@@ -475,7 +515,7 @@ internal sealed class CompanionContext : ApplicationContext
                     try { Store.Save(settings); }
                     catch { settings.NativeConfig = old; settings.NativeControls = oldControls; settings.NativeRemoteUpdates = oldUpdates; settings.NativeCompanionUpdates = oldCompanionUpdates; throw; }
                     remotePreview = null; companionLatest = null; companionReviewUntil = DateTime.MinValue;
-                    native.Start(config, settings.NativeControls);
+                    native.Start(config, settings.NativeControls); ReadCloudState();
                     form.Close();
                 }
                 catch { MessageBox.Show("Could not save connection. Enter a trusted HTTPS relay origin, valid token and PC code, or disable the connection.", "Windows status"); }
@@ -491,7 +531,7 @@ internal sealed class CompanionContext : ApplicationContext
     private object CompanionSnapshot()
     {
         bool supported=CompanionUpdater.Supported();
-        return new { diagnostics=new { settingsMirror=File.Exists(Path.Combine(Store.Folder,"settings.json.bak")),preUpdateBackup=File.Exists(Path.Combine(Store.Folder,"settings.json.pre-update.bak")),schema=settings.SchemaVersion,recovered=Store.RecoveredOnLoad,cloudBackupAt=cloudBackupAt, restart=ReadRestartStatus() }, supported, enabled=supported && !settingsUnreadable && settings.NativeControls && settings.NativeCompanionUpdates,
+        return new { diagnostics=new { settingsMirror=File.Exists(Path.Combine(Store.Folder,"settings.json.bak")),preUpdateBackup=File.Exists(Path.Combine(Store.Folder,"settings.json.pre-update.bak")),schema=settings.SchemaVersion,recovered=Store.RecoveredOnLoad,cloudBackupAt=cloudBackupAt, cloudStatus=cloudBackupStatus, restart=ReadRestartStatus() }, supported, enabled=supported && !settingsUnreadable && settings.NativeControls && settings.NativeCompanionUpdates,
             current=CompanionUpdater.CurrentVersion().ToString(), latest=companionLatest, status=companionMessage };
     }
 
@@ -529,8 +569,8 @@ internal sealed class CompanionContext : ApplicationContext
                 return (false,companionMessage);
             }
             companionReviewUntil=DateTime.MinValue;
-            try { Store.BackupBeforeUpdate(); }
-            catch { companionMessage="Update cancelled: could not create a verified settings backup."; return (false,companionMessage); }
+            try { await SyncCloud(true); Store.BackupBeforeUpdate(); }
+            catch { companionMessage="Update cancelled: local or enabled cloud backup failed. Check the companion backup settings."; return (false,companionMessage); }
             try { CompanionRestart.Schedule(latest); }
             catch { companionMessage="Update cancelled: Windows could not schedule the automatic restart. Check Task Scheduler permissions."; return (false,companionMessage); }
             companionMessage="Windows update requested. A separate restart task will reopen the companion.";
@@ -768,7 +808,7 @@ internal sealed class SettingsForm : Form
         {
             try
             {
-                var next = new Settings { ExtensionFolder = folder.Text.Trim(), PublicKey = pinned ?? key.Text.Trim(), AutomaticUpdates = auto.Checked, StartWithWindows = startup.Checked, Salt = current.Salt, PasswordHash = current.PasswordHash, NativeConfig = current.NativeConfig, NativeControls = current.NativeControls, NativeRemoteUpdates = current.NativeRemoteUpdates, NativeCompanionUpdates = current.NativeCompanionUpdates };
+                var next = new Settings { ExtensionFolder = folder.Text.Trim(), PublicKey = pinned ?? key.Text.Trim(), AutomaticUpdates = auto.Checked, StartWithWindows = startup.Checked, Salt = current.Salt, PasswordHash = current.PasswordHash, NativeConfig = current.NativeConfig, CloudAutoConfig = current.CloudAutoConfig, NativeControls = current.NativeControls, NativeRemoteUpdates = current.NativeRemoteUpdates, NativeCompanionUpdates = current.NativeCompanionUpdates };
                 if (next.ExtensionFolder.Length > 0 || next.AutomaticUpdates)
                     ExtensionUpdater.ValidateFolder(next.ExtensionFolder);
                 if (next.PublicKey.Length > 0)

@@ -8,8 +8,16 @@ namespace YtmCompanion;
 // The relay receives only an authenticated encrypted envelope. Never send DPAPI blobs,
 // local password hashes, or the recovery password. One latest backup per room.
 internal sealed record CloudPreferences(int Schema,string ExtensionFolder,bool AutomaticUpdates,bool StartWithWindows);
+internal sealed record CloudAutoState(string Relay,string Token,string RecoveryPassword,string Fingerprint,long Updated)
+{
+    internal string Protect()=>Convert.ToBase64String(ProtectedData.Protect(JsonSerializer.SerializeToUtf8Bytes(this),null,DataProtectionScope.CurrentUser));
+    internal static CloudAutoState Open(string data)=>JsonSerializer.Deserialize<CloudAutoState>(ProtectedData.Unprotect(Convert.FromBase64String(data),null,DataProtectionScope.CurrentUser))??throw new InvalidDataException("Invalid cloud preferences.");
+    internal bool Matches(NativeCredentials credentials)=>Relay==NativeCredentials.NormalizeRelay(credentials.RelayUrl)&&Token==credentials.Token;
+}
 internal static class CloudBackup
 {
+    internal static CloudPreferences Preferences(Settings s)=>new(1,s.ExtensionFolder,s.AutomaticUpdates,s.StartWithWindows);
+    internal static string Fingerprint(CloudPreferences p)=>Convert.ToHexString(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(p)));
     private static readonly HttpClient Http=new(new HttpClientHandler { AllowAutoRedirect=false }) { Timeout=TimeSpan.FromSeconds(30) };
     private static readonly byte[] Context=Encoding.UTF8.GetBytes("ytmr-companion-backup-v1");
     internal static string Encrypt(CloudPreferences prefs,string password)

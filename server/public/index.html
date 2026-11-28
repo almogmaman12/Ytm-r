@@ -3821,9 +3821,9 @@ function drawPcDashboard(m){
   else rollback.append(sysEl('p','relay-health-caption','Enable remote extension updates locally first.'));
   if(u)rollback.append(sysEl('p','relay-health-caption','Automatic updates: '+(u.automatic?'On':'Paused or off')));
   const health=card('health','Companion diagnostics'),d=s.companionUpdate?.diagnostics;
-  if(d){opsMetric(health,[['Settings mirror',d.settingsMirror?'Present':'Missing'],['Pre-update backup',d.preUpdateBackup?'Present':'Not yet created'],['Settings schema',d.schema??'Unknown'],['Recovered this session',d.recovered?'Yes':'No'],['Cloud backup this session',d.cloudBackupAt?dateTime(d.cloudBackupAt):'Not checked']]);if(d.restart)health.append(sysEl('p','relay-health-caption','Last restart: '+d.restart));}
+  if(d){opsMetric(health,[['Settings mirror',d.settingsMirror?'Present':'Missing'],['Pre-update backup',d.preUpdateBackup?'Present':'Not yet created'],['Settings schema',d.schema??'Unknown'],['Recovered this session',d.recovered?'Yes':'No'],['Last cloud backup',d.cloudBackupAt?dateTime(d.cloudBackupAt):'Not checked']]);if(d.cloudStatus)health.append(sysEl('p','relay-health-caption','Cloud backup: '+d.cloudStatus));if(d.restart)health.append(sysEl('p','relay-health-caption','Last restart: '+d.restart));}
   else health.append(sysEl('p','relay-health-caption','Update the companion to view diagnostics.'));
-  const cloud=card('health','Encrypted Neon backup');cloud.append(sysEl('p','relay-health-caption','Open Encrypted cloud backup in the Windows tray menu to save, restore or delete preferences. Passwords, credentials and remote permissions stay local.'));
+  const cloud=card('health','Encrypted Neon backup');cloud.append(sysEl('p','relay-health-caption','Open Encrypted cloud backup in the Windows tray menu to save, restore, delete or enable automatic backups. Passwords, credentials and remote permissions stay local.'));
   selectPcSection(pcSection);
 }
 function pcClear(){
