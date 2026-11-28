@@ -70,13 +70,14 @@ async function refresh() {
   try { render(await chrome.runtime.sendMessage({ type: 'ota-status' })); } catch { /* worker is starting */ }
 }
 
-let savedTabRelay = '', savedTabCode = '';
+let savedTabRelay = '', savedTabCode = '', savedTabToken = '';
 async function load() {
-  const c = await chrome.storage.local.get(['relayUrl', 'token', 'allowHttp', 'pcCode', 'agent', 'youtube', 'sound', 'calendar', 'reloadShellAtStartup', 'remoteTabs', 'remoteTabsOrigin']);
-  savedTabRelay=c.relayUrl||'';savedTabCode=c.pcCode||'';
+  const c = await chrome.storage.local.get(['relayUrl', 'token', 'allowHttp', 'pcCode', 'agent', 'youtube', 'sound', 'calendar', 'reloadShellAtStartup', 'remoteTabs', 'remoteTabsOrigin','remoteBrowserTools','remoteBrowserScope']);
+  savedTabRelay=c.relayUrl||'';savedTabCode=c.pcCode||'';savedTabToken=c.token||'';
   $('agent').checked = c.agent !== false;
   $('shellAutoReload').checked = c.reloadShellAtStartup === true;
   $('remoteTabs').checked = c.remoteTabs === true && c.remoteTabsOrigin === c.relayUrl && await chrome.permissions.contains({permissions:['tabs']}).catch(()=>false);
+  $('remoteBrowserTools').checked = $('remoteTabs').checked && c.remoteBrowserTools===true && c.remoteBrowserScope===savedTabRelay+'|'+savedTabToken && await chrome.permissions.contains({permissions:['sessions','management']}).catch(()=>false);
   $('calendar').checked = !!c.calendar && await chrome.permissions.contains({ origins: ['https://calendar.google.com/*'] }).catch(() => false);
   const soundAvailable = await chrome.permissions.contains({ permissions: ['debugger'] }).catch(() => false);
   $('sound').checked = !!c.sound && soundAvailable;
@@ -98,7 +99,22 @@ $('remoteTabs').onchange = async () => {
     if(!confirm('Allow authenticated owner phones on '+savedTabRelay+' to list, switch and close ordinary tabs?')){$('remoteTabs').checked=false;return;}
     const ok=await chrome.permissions.request({permissions:['tabs']}).catch(()=>false);
     $('remoteTabs').checked=ok;await chrome.storage.local.set({remoteTabs:ok,remoteTabsOrigin:ok?savedTabRelay:''});say(ok?'Remote tabs enabled for your configured relay.':'Tab permission denied.',ok?'ok':'warn');
-  }else{await chrome.storage.local.set({remoteTabs:false,remoteTabsOrigin:''});await chrome.permissions.remove({permissions:['tabs']}).catch(()=>{});say('Remote tabs disabled.','ok');}
+  }else{await chrome.storage.local.set({remoteTabs:false,remoteTabsOrigin:'',remoteBrowserTools:false,remoteBrowserScope:''});$('remoteBrowserTools').checked=false;await chrome.permissions.remove({permissions:['tabs','sessions','management']}).catch(()=>{});say('Remote tabs disabled.','ok');}
+};
+$('remoteBrowserTools').onchange=async()=>{
+  if(!unlocked)return;
+  if($('remoteBrowserTools').checked){
+    if(!$('remoteTabs').checked||!savedTabRelay.startsWith('https://')||!savedTabToken||savedTabCode.length<8){$('remoteBrowserTools').checked=false;return say('Save your HTTPS relay and enable remote tabs first.','warn');}
+    if(!confirm('Allow your authenticated owner phone to mute tabs, open web URLs, view and restore recently closed ordinary tabs, and list extensions? Chrome will request sessions and management permissions. Extensions cannot be changed remotely.')){$('remoteBrowserTools').checked=false;return;}
+    const ok=await chrome.permissions.request({permissions:['sessions','management']}).catch(()=>false);
+    $('remoteBrowserTools').checked=ok;
+    await chrome.storage.local.set({remoteBrowserTools:ok,remoteBrowserScope:ok?savedTabRelay+'|'+savedTabToken:''});
+    say(ok?'Advanced browser tools enabled.':'Browser permissions declined.',ok?'ok':'warn');
+  }else{
+    await chrome.storage.local.set({remoteBrowserTools:false,remoteBrowserScope:''});
+    await chrome.permissions.remove({permissions:['sessions','management']}).catch(()=>{});
+    say('Advanced browser tools disabled.','ok');
+  }
 };
 $('shellAutoReload').onchange = async () => {
   if (!unlocked) return;
@@ -183,9 +199,9 @@ $('save').onclick = async () => {
   if (pcCode && !/^\S{6,100}$/.test(pcCode)) { $('save').disabled = false; return say('The PC code needs 6 or more characters and no spaces (or leave it empty).', 'bad'); }
   const previous=await chrome.storage.local.get(['relayUrl','token']);
   const changed=previous.relayUrl!==relayUrl||previous.token!==token;
-  await chrome.storage.local.set({ relayUrl, token, allowHttp, pcCode, agent: $('agent').checked, ...(changed?{remoteTabs:false,remoteTabsOrigin:''}:{}) });
-  savedTabRelay=relayUrl;savedTabCode=pcCode;
-  if(changed){$('remoteTabs').checked=false;await chrome.permissions.remove({permissions:['tabs']}).catch(()=>{});}
+  await chrome.storage.local.set({ relayUrl, token, allowHttp, pcCode, agent: $('agent').checked, ...(changed?{remoteTabs:false,remoteTabsOrigin:'',remoteBrowserTools:false,remoteBrowserScope:''}:{}) });
+  savedTabRelay=relayUrl;savedTabCode=pcCode;savedTabToken=token;
+  if(changed){$('remoteTabs').checked=false;$('remoteBrowserTools').checked=false;await chrome.permissions.remove({permissions:['tabs','sessions','management']}).catch(()=>{});}
   const r = await chrome.runtime.sendMessage({ type: 'ota-check', force: true }).catch(() => null);
   $('save').disabled = false;
   render(r);

@@ -49,3 +49,7 @@ The release workflow has narrow exceptions for the reviewed 2.4.4 and 2.4.5 sour
 See [updates](../docs/updates/README.md), [calendar](../docs/calendar/README.md) and [security](../docs/security/README.md).
 
 For remote tabs on a custom relay, save its HTTPS address and room token first, then enable Remote tabs and approve Chrome's permission. After upgrading from 2.4.5 or changing relay/token, re-enable the opt-in. The feature does not work over plain HTTP.
+
+## Advanced browser tools (2.4.7+)
+
+Enable remote tabs, then opt into Advanced browser tools locally in extension settings. Chrome requests optional sessions and management permissions. The owner phone can mute/unmute ordinary tabs, open an HTTP(S) URL in a regular window, list and restore recently closed individual non-private web tabs, and view installed extension names, versions and enabled status. No remote extension enable/disable/install/uninstall, private tabs, browser-internal URLs or URL credentials are supported. The opt-in is bound to the saved HTTPS relay and room; changing either revokes it. Recent session information depends on what Chrome exposes; no browser history database is uploaded.

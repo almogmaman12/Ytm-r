@@ -16,7 +16,7 @@
 //   - a bad or unreachable download never replaces the copy that already works.
 
 const SHELL_API = 2;            // payloads that need a newer shell are not installed
-const SHELL_BUILD = '2.4.6';    // Must match manifest.version in every new shell release.
+const SHELL_BUILD = '2.4.7';    // Must match manifest.version in every new shell release.
 const SCRIPT_PREFIX = 'ytmr-';
 const YTM = 'https://music.youtube.com/*';
 const YT = 'https://www.youtube.com/*';          // optional: regular YouTube, off unless enabled in the settings
@@ -396,28 +396,63 @@ function ordinaryRemoteTab(t) {
   if (!t || t.incognito || !Number.isInteger(t.id) || typeof t.url !== 'string') return false;
   try { const u=new URL(t.url);return ['https:','http:'].includes(u.protocol); } catch { return false; }
 }
+// Normal web navigation only: no browser/internal/file URLs, credentials, or injected script.
+function remoteWebUrl(value) {
+  if(typeof value!=='string'||value.length>512||!/^[\x21-\x7e]+$/.test(value))return null;
+  try{const u=new URL(value);return ['http:','https:'].includes(u.protocol)&&u.hostname&&!u.username&&!u.password?u.href:null;}catch{return null;}
+}
+function ordinaryClosedTab(t){
+  return !!t&&t.incognito===false&&typeof t.sessionId==='string'&&/^[A-Za-z0-9_-]{1,128}$/.test(t.sessionId)&&!!remoteWebUrl(t.url);
+}
 async function remoteTabsRequest(ws,m,origin,guarded) {
   if (!guarded || !origin.startsWith('https://') || ws !== agentWs || !agentAuthed || !/^[0-9a-f]{32}$/.test(m.id || '')) return;
   const respond=(data)=>{if(ws===agentWs&&agentAuthed&&ws.readyState===1)ws.send(JSON.stringify({type:'chrome_tabs_result',id:m.id,...data}));};
-  const allowed=async()=>{
-    const c=await chrome.storage.local.get(['remoteTabs','remoteTabsOrigin','relayUrl','token','allowHttp']);
+  const allowed=async(extra=false)=>{
+    const c=await chrome.storage.local.get(['remoteTabs','remoteTabsOrigin','remoteBrowserTools','remoteBrowserScope','relayUrl','token','allowHttp']);
     let current;try{current=relayOrigin(c.relayUrl,c.allowHttp);}catch{return false;}
-    return ws===agentWs&&agentAuthed&&c.remoteTabs===true&&c.remoteTabsOrigin===origin&&current===origin&&agentScope===origin+'|'+c.token&&await chrome.permissions.contains({permissions:['tabs']});
+    return ws===agentWs&&agentAuthed&&c.remoteTabs===true&&c.remoteTabsOrigin===origin&&current===origin&&agentScope===origin+'|'+c.token&&await chrome.permissions.contains({permissions:['tabs']})&&
+      (!extra||(c.remoteBrowserTools===true&&c.remoteBrowserScope===agentScope&&await chrome.permissions.contains({permissions:['sessions','management']})));
   };
+  const recent=async()=> (await chrome.sessions.getRecentlyClosed({maxResults:25})).map(s=>s.tab).filter(ordinaryClosedTab);
+  const advanced=['mute','unmute','navigate','recent','restore','extensions'].includes(m.action);
   try {
-    if(!await allowed())return respond({ok:false,error:'Enable remote tabs in the extension settings and approve Chrome tab access.'});
-    if(!['list','activate','close'].includes(m.action))return respond({ok:false,error:'Unsupported tab action.'});
-    if(m.action!=='list'){
+    if(!await allowed(advanced))return respond({ok:false,error:advanced?'Enable Advanced browser tools locally in extension settings.':'Enable remote tabs in the extension settings and approve Chrome tab access.'});
+    if(!['list','activate','close','mute','unmute','navigate','recent','restore','extensions'].includes(m.action))return respond({ok:false,error:'Unsupported tab action.'});
+    if(m.action==='extensions'){
+      const items=(await chrome.management.getAll()).filter(x=>x.type==='extension');
+      if(!await allowed(true))return respond({ok:false,error:'Advanced browser tools disabled.'});
+      return respond({ok:true,extensions:items.slice(0,80).map(x=>({name:String(x.name||'Extension').slice(0,100),version:String(x.version||'').slice(0,32),enabled:x.enabled===true})),total:items.length});
+    }
+    if(m.action==='recent'||m.action==='restore'){
+      let items=await recent();
+      if(m.action==='restore'){
+        if(typeof m.sessionId!=='string'||!items.some(t=>t.sessionId===m.sessionId)||!await allowed(true))return respond({ok:false,error:'Recently closed tab no longer available.'});
+        await chrome.sessions.restore(m.sessionId);items=await recent();
+      }
+      if(!await allowed(true))return respond({ok:false,error:'Advanced browser tools disabled.'});
+      return respond({ok:true,recent:items.map(t=>({sessionId:t.sessionId,title:String(t.title||'Web tab').slice(0,120)})),total:items.length});
+    }
+    if(m.action==='navigate'){
+      const url=remoteWebUrl(m.url);
+      if(!url)return respond({ok:false,error:'Enter a normal HTTP or HTTPS URL without credentials.'});
+      const windows=(await chrome.windows.getAll({windowTypes:['normal']})).filter(w=>!w.incognito&&Number.isInteger(w.id));
+      const target=windows.find(w=>w.focused)||windows[0];
+      if(!await allowed(true))return respond({ok:false,error:'Advanced browser tools disabled.'});
+      if(target)await chrome.tabs.create({windowId:target.id,url,active:true});
+      else await chrome.windows.create({url,incognito:false,type:'normal'});
+    }else if(m.action!=='list'){
       if(!Number.isSafeInteger(m.tabId)||m.tabId<0)return respond({ok:false,error:'Invalid tab.'});
       const t=await chrome.tabs.get(m.tabId);
-      if(!ordinaryRemoteTab(t)||!await allowed())return respond({ok:false,error:'This tab is not available for remote control.'});
+      if(!ordinaryRemoteTab(t)||!await allowed(advanced))return respond({ok:false,error:'This tab is not available for remote control.'});
       if(m.action==='activate'){await chrome.tabs.update(t.id,{active:true});await chrome.windows.update(t.windowId,{focused:true});}
+      else if(m.action==='mute'||m.action==='unmute')await chrome.tabs.update(t.id,{muted:m.action==='mute'});
       else await chrome.tabs.remove(t.id);
     }
     const tabs=(await chrome.tabs.query({})).filter(ordinaryRemoteTab);
-    if(!await allowed())return respond({ok:false,error:'Remote tabs disabled.'});
-    respond({ok:true,total:tabs.length,tabs:tabs.slice(0,60).map(t=>({id:t.id,title:String(t.title||'Web tab').slice(0,120),active:!!t.active,audible:!!t.audible,windowId:t.windowId}))});
-  }catch{respond({ok:false,error:'Chrome could not complete the tab request. Refresh the list.'});}
+    const tools=await allowed(true);
+    if(!await allowed(advanced))return respond({ok:false,error:'Remote tabs disabled.'});
+    respond({ok:true,advanced:tools,total:tabs.length,tabs:tabs.slice(0,60).map(t=>({id:t.id,title:String(t.title||'Web tab').slice(0,120),active:!!t.active,audible:!!t.audible,muted:t.mutedInfo?.muted===true,windowId:t.windowId}))});
+  }catch{respond({ok:false,error:'Chrome could not complete the browser request. Refresh the list.'});}
 }
 async function ensureAgent() {
   const { agent } = await chrome.storage.local.get('agent');
