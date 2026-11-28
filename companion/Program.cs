@@ -229,6 +229,7 @@ internal sealed class CompanionContext : ApplicationContext
     private string status = "Not configured";
     private DateTime nextCheck = DateTime.MinValue;
     private bool busy;
+    private long cloudBackupAt;
     private bool settingsOpen;
     private bool settingsUnreadable;
     private bool firstTick = true;
@@ -261,6 +262,7 @@ internal sealed class CompanionContext : ApplicationContext
         menu.Items.Add(statusItem);
         menu.Items.Add("Settings…", null, (_, _) => OpenSettings());
         menu.Items.Add("Windows status connection…", null, (_, _) => ConfigureNative());
+        menu.Items.Add("Encrypted cloud backup…", null, async (_, _) => await CloudBackupDialog());
         menu.Items.Add("Check for extension update", null, async (_, _) => await CheckAsync(true));
         menu.Items.Add("Review signed update…", null, async (_, _) => await CheckAsync(true, true));
         menu.Items.Add("Open companion data folder", null, (_, _) =>
@@ -346,6 +348,66 @@ internal sealed class CompanionContext : ApplicationContext
         catch { Status("Could not save settings."); }
         finally { settingsOpen = false; }
     }
+    private async Task CloudBackupDialog()
+    {
+        if(busy||settingsOpen||settingsUnreadable||!Unlock())return;
+        settingsOpen=true;
+        try
+        {
+            using var form=new Form {Text="Encrypted Neon backup",Width=575,Height=465,StartPosition=FormStartPosition.CenterScreen};
+            var panel=new FlowLayoutPanel {Dock=DockStyle.Fill,FlowDirection=FlowDirection.TopDown,WrapContents=false,AutoScroll=true,Padding=new Padding(12)};
+            form.Controls.Add(panel);
+            void Label(string value)=>panel.Controls.Add(new Label{Text=value,AutoSize=true,MaximumSize=new Size(510,0)});
+            TextBox Field(string label,string value="",bool secret=false){Label(label);var f=new TextBox{Width=500,Text=value,UseSystemPasswordChar=secret};panel.Controls.Add(f);return f;}
+            NativeCredentials? saved=null;try{saved=NativeCredentials.Unprotect(settings.NativeConfig);}catch{}
+            Label("One encrypted preferences backup per room. Save your recovery password separately. Connection credentials, local password and remote permissions are NOT backed up.");
+            var relay=Field("Trusted HTTPS relay",saved?.RelayUrl??"");
+            var token=Field("Room token",saved?.Token??"",true);
+            var code=Field("PC code",saved?.PcCode??"",true);
+            var password=Field("Recovery password (at least 12 characters)","",true);
+            var info=new Label{Text="Ready",AutoSize=true,MaximumSize=new Size(510,0)};
+            var buttons=new FlowLayoutPanel{AutoSize=true};
+            foreach(var pair in new[]{("Backup now","put"),("Restore preferences","get"),("Delete cloud backup","delete")})
+            {
+                var btn=new Button{Text=pair.Item1,AutoSize=true};buttons.Controls.Add(btn);
+                btn.Click+=async (_,_)=>{
+                    if(busy)return;
+                    busy=true;buttons.Enabled=false;form.ControlBox=false;
+                    try
+                    {
+                        var credentials=new NativeCredentials(token.Text.Trim(),code.Text,NativeCredentials.NormalizeRelay(relay.Text));
+                        credentials.Validate();
+                        if(pair.Item2=="put")
+                        {
+                            if(string.IsNullOrEmpty(settings.PasswordHash))throw new InvalidOperationException("Finish local setup first.");
+                            if(MessageBox.Show("Replace this room's encrypted cloud backup?","Backup",MessageBoxButtons.YesNo,MessageBoxIcon.Question)!=DialogResult.Yes)return;
+                            var envelope=CloudBackup.Encrypt(new CloudPreferences(1,settings.ExtensionFolder,settings.AutomaticUpdates,settings.StartWithWindows),password.Text);
+                            var result=await CloudBackup.Request(credentials,"put",envelope);cloudBackupAt=result.GetProperty("updated").GetInt64();info.Text="Encrypted backup saved.";
+                        }
+                        else if(pair.Item2=="delete")
+                        {
+                            if(MessageBox.Show("Permanently delete this room's cloud backup?","Backup",MessageBoxButtons.YesNo,MessageBoxIcon.Warning)!=DialogResult.Yes)return;
+                            await CloudBackup.Request(credentials,"delete");cloudBackupAt=0;info.Text="Cloud backup deleted.";
+                        }
+                        else
+                        {
+                            if(string.IsNullOrEmpty(settings.PasswordHash)){info.Text="Create your local companion password in Settings first, then restore.";return;}
+                            var result=await CloudBackup.Request(credentials,"get");var prefs=CloudBackup.Decrypt(result.GetProperty("envelope").GetString()!,password.Text);
+                            if(MessageBox.Show("Restore extension folder: "+prefs.ExtensionFolder+"\nAutomatic extension updates will be disabled until you enable them locally. Connection credentials and remote-control permissions remain unchanged.","Restore preferences",MessageBoxButtons.YesNo,MessageBoxIcon.Warning)!=DialogResult.Yes)return;
+                            var folder=string.IsNullOrWhiteSpace(prefs.ExtensionFolder)?"":ExtensionUpdater.ValidateFolder(prefs.ExtensionFolder);
+                            var next=JsonSerializer.Deserialize<Settings>(JsonSerializer.Serialize(settings))!;
+                            next.ExtensionFolder=folder;next.AutomaticUpdates=false;next.StartWithWindows=prefs.StartWithWindows;
+                            Store.Save(next);settings=next;Store.SetStartup(next.StartWithWindows);cloudBackupAt=result.GetProperty("updated").GetInt64();info.Text="Preferences restored. Review Settings before enabling automatic updates.";
+                        }
+                    }catch {info.Text="Backup operation failed. Check relay, room, PC code, recovery password, Neon and extension folder.";}
+                    finally{busy=false;buttons.Enabled=true;form.ControlBox=true;}
+                };
+            }
+            panel.Controls.Add(buttons);panel.Controls.Add(info);form.ShowDialog();
+        }
+        finally{settingsOpen=false;}
+    }
+
     private void ConfigureNative()
     {
         if (busy || settingsOpen || settingsUnreadable || string.IsNullOrEmpty(settings.PasswordHash) || !Unlock()) return;
