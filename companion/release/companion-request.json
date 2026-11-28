@@ -1,4 +1,4 @@
 {
-  "version": "0.1.0.13",
-  "reason": "Windowless native restart helper; resolve Windows.Storage FileAttributes compilation conflict"
+  "version": "0.1.0.14",
+  "reason": "Adaptive native reconnection, heartbeat watchdog and faster phone offline recovery"
 }

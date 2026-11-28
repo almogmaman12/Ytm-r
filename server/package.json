@@ -5,7 +5,7 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "test": "node test.js && node calendar.test.js && node companion-backup.test.js"
+    "test": "node test.js && node calendar.test.js && node companion-backup.test.js && node browser-tools.test.js"
   },
   "dependencies": {
     "ws": "^8.18.0"
