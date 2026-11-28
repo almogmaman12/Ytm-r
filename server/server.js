@@ -15,6 +15,7 @@ const {createCalendarCloud,roomKey,hashKey}=require('./calendar-neon');
 const {createActivity}=require('./device-activity');
 const {createSystem}=require('./system-center');
 const {createOps}=require('./system-ops');
+const {createCompanionBackup}=require('./companion-backup');
 
 const PORT = process.env.PORT || 3000;
 const PUBLIC_DIR = path.resolve(__dirname, 'public');
@@ -218,6 +219,7 @@ const cloudQuery=system.query?async(q,p)=>{const at=Date.now();let ok=false;try{
 const cloudDevices=cloudQuery?createDeviceStore(cloudQuery):null;
 const cloudCalendar=cloudQuery?createCalendarCloud(cloudQuery):null;
 const activity=createActivity(cloudQuery);
+const companionBackup=createCompanionBackup(cloudQuery,pcCode,calendarSecure);
 const relayStarted=Date.now();
 const pendingPairs=new Map();
 const deviceAccessPending=new Set();
@@ -437,6 +439,7 @@ function handleHttp(req, res) {
 
 const server = http.createServer((req, res) => {
   try {
+    if(req.url==='/companion-backup/v1'){void companionBackup.handle(req,res);return;}
     handleHttp(req, res);
   } catch {
     try { plain(res, 500, 'Server error'); } catch { /* already sent */ }
@@ -1165,6 +1168,7 @@ if (require.main === module) {
       }
       console.log('Neon calendar cache and notification persistence ready ('+calendarSubscriptions.size+' subscriptions).');
     }
+    await companionBackup.init();
     await activity.init();
     await system.init();
     await ops.init();
