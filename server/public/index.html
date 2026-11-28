@@ -905,6 +905,11 @@
   .system-tabs { display:flex;gap:7px;margin:12px 0; }
   .system-tabs button { flex:1;min-height:44px;font-size:12px;border-radius:13px;border:1px solid var(--line);font-weight:750; }
   .system-tabs button[aria-pressed="true"] { color:var(--accent);border-color:var(--accent);background:var(--phone-soft); }
+  #v-pc .pc-hero{position:relative;overflow:hidden;padding:19px;border-radius:23px;border:1px solid var(--phone-edge);background:linear-gradient(135deg,var(--phone-soft),var(--surface));margin:0 0 13px;}
+  .pc-hero-top{display:flex;align-items:center;gap:13px;}.pc-hero-icon{width:52px;height:52px;display:grid;place-items:center;border-radius:16px;background:var(--surface);color:var(--accent);border:1px solid var(--phone-edge);flex:none;}.pc-hero-icon svg{width:27px;height:27px;}.pc-hero h2{margin:3px 0;font-size:23px;letter-spacing:-.04em;}.pc-hero .hint{margin:11px 0 0;font-size:12px;line-height:1.45;}
+  .pc-hero-top>div:nth-child(2){flex:1;min-width:0;}.pc-state{display:flex;align-items:center;gap:6px;color:var(--muted);font-size:11px;font-weight:700;}.pc-state:before{content:'';width:7px;height:7px;border-radius:50%;background:currentColor;}.pc-state[data-online="true"]{color:#58b98a;}
+  .pc-switch{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px;background:var(--surface);border:1px solid var(--phone-edge);padding:4px;border-radius:17px;margin-bottom:13px;}.pc-switch button{min-height:43px;font-size:11px;padding:4px;border-radius:12px;color:var(--muted);}.pc-switch button[aria-selected="true"]{background:var(--phone-soft);color:var(--accent);font-weight:750;}
+  .pc-panel{display:grid;gap:10px;}.pc-panel[hidden]{display:none;}.pc-card{padding:15px;background:var(--surface);border:1px solid var(--phone-edge);border-radius:19px;min-width:0;}.pc-card .system-section-title{font-size:15px;margin:0 0 8px;letter-spacing:-.02em;text-transform:none;}.pc-card .system-metrics{margin:8px 0;gap:7px;}.pc-card .system-metric{padding:11px;border-radius:13px;}.pc-card .system-metric strong{font-size:17px;}.pc-card .ops-actions{margin:9px 0 0;}.pc-card .ops-actions button{min-height:45px;}.pc-card .relay-health-caption{font-size:12px;line-height:1.5;}.pc-card input[type=range]{accent-color:var(--accent);}.pc-card .pc-version-input{width:100%;box-sizing:border-box;min-height:44px;border:1px solid var(--line);border-radius:12px;background:var(--phone-soft);color:var(--ink);padding:10px;font:inherit;}.pc-card .pc-bar{height:6px;background:var(--phone-edge);border-radius:9px;overflow:hidden;margin:9px 0 0;}.pc-card .pc-bar span{display:block;height:100%;background:var(--accent);border-radius:9px;}.pc-card #pcTabsList{display:grid;gap:8px;margin-top:10px;}.pc-card #pcTabsList strong{font-size:14px;}.pc-card .pc-links{font-size:12px;color:var(--muted);}
   .system-metrics { display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:12px 0; }
   .system-metric { padding:13px;border-radius:16px;border:1px solid var(--phone-edge);background:var(--phone-soft);min-width:0; }
   .system-metric small { display:block;color:var(--muted);font-size:11px; }
@@ -1224,9 +1229,11 @@
   </div>
 
   <section id="v-pc" class="view" aria-label="PC controls" hidden>
-    <div class="head phone-page-head"><div><span class="page-eyebrow">Windows companion</span><h2 class="section">PC</h2></div><button id="pcRefresh" class="pill" type="button">Refresh</button></div>
-    <p id="pcStatusText" class="hint" role="status">Connect to your PC.</p><div id="pcResults"></div>
-    <section><h3 class="system-section-title">Chrome tabs</h3><button id="pcTabRefresh" type="button" class="secondary">Load tabs</button><p id="pcTabsStatus" class="hint" role="status">Tab access requires opt-in in Chrome.</p><div id="pcTabsList"></div></section>
+    <div class="head phone-page-head"><div><span class="page-eyebrow">Your computer</span><h2 class="section">PC control</h2></div></div>
+    <div class="pc-hero"><div class="pc-hero-top"><span class="pc-hero-icon"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="3" width="18" height="14" rx="2"/><path d="M8 21h8m-4-4v4"/></svg></span><div><span class="pc-state" id="pcOnline">Not connected</span><h2>Windows PC</h2></div><button id="pcRefresh" class="pill" type="button">Refresh</button></div><p id="pcStatusText" class="hint" role="status">Connect to your PC.</p></div>
+    <div class="pc-switch" role="tablist" aria-label="PC control sections"><button role="tab" aria-selected="true" data-pc-section="overview">Overview</button><button role="tab" aria-selected="false" data-pc-section="browser">Browser</button><button role="tab" aria-selected="false" data-pc-section="updates">Updates</button><button role="tab" aria-selected="false" data-pc-section="health">Health</button></div>
+    <div id="pcResults"></div>
+    <section id="pcBrowserTabs" class="pc-card" hidden><h3 class="system-section-title">Chrome tabs</h3><button id="pcTabRefresh" type="button" class="secondary">Load tabs</button><p id="pcTabsStatus" class="hint" role="status">Tab access requires opt-in in Chrome.</p><div id="pcTabsList"></div></section>
   </section>
   <nav id="tabs" aria-label="Sections">
     <button data-view="playing" aria-selected="true"><svg class="i"><use href="#i-bars"/></svg>Playing</button>
@@ -3696,13 +3703,14 @@ function nativeAction(action,value=null){
   if(systemTab!=='native'||systemId||!getToken()||!getCode())return;
   if(action==='chrome_close'&&!confirm('Close all visible Chrome windows on your PC? Unsaved work or prompts may prevent closure.'))return;
   if(action==='companion_update'&&!confirm('Update the Windows companion? It will temporarily disconnect. Chrome will stay open.'))return;
+  if(action==='extension_rollback'&&!confirm('Restore this older signed extension? Automatic extension updates will be paused. Chrome will close and reopen if possible.'))return;
   if(action==='extension_update'&&!confirm('Install this exact signed update? Chrome will close gracefully and reopen if it was open. Review the permissions above first.'))return;
   systemId=reqId();$('systemRefresh').disabled=true;$('systemStatus').textContent='Sending Windows action…';
   if(!rawCmd('native_action',{request:systemId,action,value})){systemDisconnected();return;}
   clearTimeout(systemTimer);systemTimer=setTimeout(()=>{systemId='';$('systemRefresh').disabled=false;$('systemStatus').textContent='No confirmation. Refresh before trying again.';},/^(extension|companion)_/.test(action)?340000:12000);
 }
 function nativeReceive(m){
-  if(pcId&&m.request===pcId){clearTimeout(pcTimer);pcId='';$('pcRefresh').disabled=false;if(view==='pc'&&getToken()&&getCode())drawNative(m,$('pcResults'),$('pcStatusText'),pcAction);return;}
+  if(pcId&&m.request===pcId){clearTimeout(pcTimer);pcId='';$('pcRefresh').disabled=false;if(view==='pc'&&getToken()&&getCode())drawPcDashboard(m);return;}
   if(systemTab!=='native'||!systemId||m.request!==systemId||!getToken()||!getCode())return;
   clearTimeout(systemTimer);systemId='';$('systemRefresh').disabled=false;
   drawNative(m,$('systemResults'),$('systemStatus'),nativeAction);
@@ -3711,7 +3719,7 @@ function drawNative(m,root,status,act){
   root.textContent='';
   if(m.error){status.textContent=m.error;return;}
   const d=m.data||{},s=d.state;
-  if(!d.online){status.textContent='Windows companion offline or not enabled.';root.append(sysEl('p','relay-health-caption','Enable Windows status connection in the companion tray menu. Use the test relay token and PC code. Both relay access codes must be at least eight characters.'));return;}
+  if(!d.online){status.textContent='Windows companion offline or not enabled.';root.append(sysEl('p','relay-health-caption','Enable Windows status connection in the companion tray menu. Use your configured HTTPS relay, room token and PC code. Both relay access codes must be at least eight characters.'));return;}
   if(!s){status.textContent='Connected; no fresh status yet. Refresh shortly.';return;}
   status.textContent='Connected · last snapshot '+dateTime(s.at)+(m.actionMessage?' · '+m.actionMessage:'');
   const gib=n=>Number.isFinite(n)?(n/1024).toFixed(1)+' GB':'Unavailable';
@@ -3741,7 +3749,7 @@ function drawNative(m,root,status,act){
     const updates=sysEl('div','ops-actions');opsButton(updates,'Check / review update',()=>act('extension_check'));root.append(updates);
     if(u.review){const r=u.review,review=sysEl('div','system-metric');review.append(sysEl('strong','',r.installed+' → '+r.version));
       const details=sysEl('pre','',r.details||'No permission or capability changes.');details.style.cssText='white-space:pre-wrap;overflow-wrap:anywhere;margin:8px 0';review.append(details);
-      const actions=sysEl('div','ops-actions');opsButton(actions,'Approve & update extension',()=>act('extension_update',r.hash));review.append(actions);root.append(review);}
+      const actions=sysEl('div','ops-actions');opsButton(actions,r.rollback?'Approve signed rollback':'Approve & update extension',()=>act(r.rollback?'extension_rollback':'extension_update',r.hash));review.append(actions);root.append(review);}
   }else root.append(sysEl('p','relay-health-caption','Enable owner phone extension updates in the companion tray Windows status connection settings. Older companion builds need an update.'));
   if(s.controls!==true){
     root.append(sysEl('p','relay-health-caption','Remote controls are disabled. Enable the separate Windows controls option in the companion tray settings.'));
@@ -3771,13 +3779,57 @@ function drawNative(m,root,status,act){
     for(const [label,cmd] of [['Previous','media_previous'],['Play / pause','media_toggle'],['Next','media_next'],['Stop','media_stop']])opsButton(media,label,()=>act(cmd));root.append(media);
     root.append(sysEl('p','relay-health-caption','Media keys target the app selected by Windows. Apps using a fixed output device may not follow a default-device change.'));
   }
-  root.append(sysEl('p','relay-health-caption','Status is refreshed once a minute and after actions. No PC data is saved in Neon. Available only to the owner phone.'));
+  root.append(sysEl('p','relay-health-caption','Live status refreshes every minute and after actions. Only the owner phone can see it. Encrypted preferences backups are optional.'));
 }
-let pcId='',pcTimer=null,pcTabsId='',pcTabsTimer=null;
+let pcId='',pcTimer=null,pcTabsId='',pcTabsTimer=null,pcSection='overview';
+function selectPcSection(section){
+  pcSection=section;
+  document.querySelectorAll('[data-pc-section]').forEach(b=>b.setAttribute('aria-selected',String(b.dataset.pcSection===section)));
+  document.querySelectorAll('#pcResults .pc-panel').forEach(p=>p.hidden=p.dataset.section!==section);
+  $('pcBrowserTabs').hidden=section!=='browser';
+}
+document.querySelectorAll('[data-pc-section]').forEach(b=>b.onclick=()=>selectPcSection(b.dataset.pcSection));
+function drawPcDashboard(m){
+  const root=$('pcResults'),status=$('pcStatusText'),s=m.data?.state;
+  if(m.error){status.textContent=m.error;return;}
+  const online=m.data?.online===true;
+  $('pcOnline').dataset.online=String(online);$('pcOnline').textContent=online?(s?'Connected':'Connecting'):'Offline';
+  const scratch=sysEl('div');
+  drawNative(m,scratch,status,pcAction);
+  root.textContent='';
+  if(!s){root.append(...scratch.childNodes);selectPcSection(pcSection);return;}
+  const panels={};
+  for(const key of ['overview','browser','updates','health']){const p=sysEl('div','pc-panel');p.dataset.section=key;root.append(p);panels[key]=p;}
+  function card(panel,title){const c=sysEl('section','pc-card');if(title)c.append(sysEl('h3','system-section-title',title));panels[panel].append(c);return c;}
+  let current=card('health','PC status'),heading='';
+  const groups={'Windows companion updates':'updates','Chrome':'browser','Chrome extension updates':'updates','Windows audio':'overview','Windows Now Playing':'overview','Windows media controls':'overview'};
+  for(const child of [...scratch.children]){
+    if(child.classList.contains('system-section-title')){heading=child.textContent;current=card(groups[heading]||'health',heading);continue;}
+    if(heading==='Chrome extension updates'&&child.classList.contains('ops-actions')&&child.textContent.includes('Launch Chrome')){current=card('browser','Chrome controls');current.append(child);continue;}
+    current.append(child);
+  }
+  const summary=card('overview','At a glance');
+  opsMetric(summary,[['Chrome',s.chromeOpen?'Open':s.chromeRunning?'Background':'Closed'],['Companion',s.version||'Unknown']]);
+  if(Number.isFinite(s.ramTotal)&&Number.isFinite(s.ramAvailable)&&s.ramTotal>0){
+    const used=Math.round(100*(s.ramTotal-s.ramAvailable)/s.ramTotal);
+    summary.append(sysEl('small','relay-health-caption','Memory used · '+used+'%'));const bar=sysEl('div','pc-bar'),fill=sysEl('span');fill.style.width=used+'%';bar.append(fill);summary.append(bar);
+  }
+  panels.overview.prepend(summary);
+  const u=s.extensionUpdate,rollback=card('updates','Restore an older signed extension');
+  rollback.append(sysEl('p','relay-health-caption','Enter a published extension version. The original signed archive and permission changes will be verified before approval. Automatic updates pause after rollback.'));
+  if(u?.enabled){const input=sysEl('input','pc-version-input');input.placeholder='e.g. 2.4.5';input.setAttribute('aria-label','Older extension version');input.inputMode='decimal';rollback.append(input);const actions=sysEl('div','ops-actions');opsButton(actions,'Review rollback',()=>{const v=input.value.trim();if(!/^\d{1,5}(\.\d{1,5}){1,3}$/.test(v)){status.textContent='Enter a valid signed version.';return;}pcAction('extension_rollback_check',v);});rollback.append(actions);}
+  else rollback.append(sysEl('p','relay-health-caption','Enable remote extension updates locally first.'));
+  if(u)rollback.append(sysEl('p','relay-health-caption','Automatic updates: '+(u.automatic?'On':'Paused or off')));
+  const health=card('health','Companion diagnostics'),d=s.companionUpdate?.diagnostics;
+  if(d){opsMetric(health,[['Settings mirror',d.settingsMirror?'Present':'Missing'],['Pre-update backup',d.preUpdateBackup?'Present':'Not yet created'],['Settings schema',d.schema??'Unknown'],['Recovered this session',d.recovered?'Yes':'No'],['Cloud backup this session',d.cloudBackupAt?dateTime(d.cloudBackupAt):'Not checked']]);if(d.restart)health.append(sysEl('p','relay-health-caption','Last restart: '+d.restart));}
+  else health.append(sysEl('p','relay-health-caption','Update the companion to view diagnostics.'));
+  const cloud=card('health','Encrypted Neon backup');cloud.append(sysEl('p','relay-health-caption','Open Encrypted cloud backup in the Windows tray menu to save, restore or delete preferences. Passwords, credentials and remote permissions stay local.'));
+  selectPcSection(pcSection);
+}
 function pcClear(){
   clearTimeout(pcTimer);clearTimeout(pcTabsTimer);pcId='';pcTabsId='';
   $('pcRefresh').disabled=false;$('pcTabRefresh').disabled=false;$('pcResults').textContent='';$('pcTabsList').textContent='';
-  $('pcStatusText').textContent='Refresh to connect.';$('pcTabsStatus').textContent='Load tabs to view ordinary web tabs.';
+  $('pcOnline').dataset.online='false';$('pcOnline').textContent='Not connected';$('pcStatusText').textContent='Refresh to connect.';$('pcTabsStatus').textContent='Load tabs to view ordinary web tabs.';
 }
 function pcRequest(action=null,value=null){
   if(view!=='pc'||pcId||!getToken()||!getCode()||ws?.readyState!==1)return;
@@ -3785,7 +3837,7 @@ function pcRequest(action=null,value=null){
   if(!rawCmd(action?'native_action':'native_status',{request:pcId,...(action?{action,value}:{})})){pcClear();return;}
   pcTimer=setTimeout(()=>{pcId='';$('pcRefresh').disabled=false;$('pcStatusText').textContent='No response. Refresh before retrying.';},/^(extension|companion)_/.test(action||'')?340000:15000);
 }
-function pcAction(action,value=null){if(action==='companion_update'&&!confirm('Update the Windows companion? It will temporarily disconnect. Chrome will stay open.'))return;if(action==='chrome_close'&&!confirm('Close all visible Chrome windows?'))return;if(action==='extension_update'&&!confirm('Install this exact signed update? Chrome will close gracefully and reopen if it was open. Review the permissions above first.'))return;pcRequest(action,value);}
+function pcAction(action,value=null){if(action==='extension_rollback'&&!confirm('Restore this older signed extension? Automatic extension updates will be paused. Chrome will close and reopen if possible.'))return;if(action==='companion_update'&&!confirm('Update the Windows companion? It will temporarily disconnect. Chrome will stay open.'))return;if(action==='chrome_close'&&!confirm('Close all visible Chrome windows?'))return;if(action==='extension_update'&&!confirm('Install this exact signed update? Chrome will close gracefully and reopen if it was open. Review the permissions above first.'))return;pcRequest(action,value);}
 function pcTabsRequest(action='list',tabId=null){
   if(view!=='pc'||pcTabsId||!getToken()||!getCode()||ws?.readyState!==1)return;
   if(action==='close'&&!confirm('Close this Chrome tab? Unsaved work may be lost.'))return;
